@@ -1,8 +1,9 @@
 // Package conformance_test binds offline fixtures to the existing core APIs.
 // Run with go test -v ./internal/conformance. CONFORMANCE_VECTORS may point to
 // a scratch copy of vectors/; the specification always comes from this checkout.
-// The new UID-name rows call the landed loader with fixture-supplied trust and
-// an in-memory store. This harness implements no schema or admission state machine.
+// Enrollment registry rows call the public loader with fixture-supplied trust
+// and an in-memory CAS store. This harness implements no validation phases or
+// admission state machine.
 package conformance_test
 
 import (
@@ -14,19 +15,17 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/relux-works/swarma-registrar/internal/ccj"
-	"github.com/relux-works/swarma-registrar/internal/enrollment"
 	"github.com/relux-works/swarma-registrar/internal/envelope"
 	"github.com/relux-works/swarma-registrar/internal/keys"
 	"github.com/relux-works/swarma-registrar/internal/refusal"
 	"github.com/relux-works/swarma-registrar/internal/registration"
-	"github.com/relux-works/swarma-registrar/internal/registry"
 	"github.com/relux-works/swarma-registrar/internal/sig"
+	"github.com/relux-works/swarma-registrar/registry"
 )
 
 type vector struct {
@@ -53,19 +52,28 @@ type vector struct {
 }
 
 type registryFixture struct {
-	PublisherKey         string   `json:"publisher_key"`
-	StationHosts         []string `json:"station_hosts"`
-	Revision             string
-	FirstUse             bool `json:"first_use"`
-	Available, Approved  bool
-	CommitSignatureValid bool `json:"commit_signature_valid"`
-	PinIsExact           bool `json:"pin_is_exact"`
-	PersistAvailable     bool `json:"persist_available"`
-	Files                []struct {
-		Path, Kind string
-		Repeat     int
-		Bytes      string `json:"bytes_base64"`
-	}
+	PublisherKey           string   `json:"publisher_key"`
+	PreviousPublisherKey   string   `json:"previous_publisher_key"`
+	StationHosts           []string `json:"station_hosts"`
+	NonstationHosts        []string `json:"nonstation_hosts"`
+	Revision               string
+	PreviousRevision       string `json:"previous_revision"`
+	FirstUse               *bool  `json:"first_use"`
+	Available, Approved    bool
+	CommitSignatureValid   bool `json:"commit_signature_valid"`
+	PinIsExact             bool `json:"pin_is_exact"`
+	Descendant             bool
+	RollbackStateAvailable bool `json:"rollback_state_available"`
+	PersistAvailable       bool `json:"persist_available"`
+	Files                  []registryFile
+	PreviousFiles          []registryFile `json:"previous_files"`
+}
+
+type registryFile struct {
+	Path, Kind   string
+	PathTemplate string `json:"path_template"`
+	Repeat       int
+	Bytes        string `json:"bytes_base64"`
 }
 
 type pendingCase struct {
@@ -81,102 +89,6 @@ var pendingRows = map[string]pendingCase{
 	"PR28": {"admission/JWT", "audience", "accept"},
 	"PR29": {"admission/JWT", "audience", "accept"},
 	"PR30": {"admission/JWT", "audience", "accept"},
-	"E100": {"enrollment/body-schema", "envelope", "accept"},
-	"E101": {"registry/conflicts", "none", "accept"},
-	"E102": {"registry/preflight", "none", "accept"},
-	"E103": {"registry/persistence", "none", "accept"},
-	"E104": {"registry/preflight", "none", "accept"},
-	"E105": {"registry/preflight", "none", "accept"},
-	"E106": {"enrollment/reserved-sigs", "envelope", "accept"},
-	"E107": {"registry/snapshot-reserved-sigs", "none", "accept"},
-	"E108": {"registry/snapshot-reserved-sigs", "none", "accept"},
-	"E109": {"registry/snapshot-shapes", "none", "accept"},
-	"E110": {"registry/conflicts", "none", "accept"},
-	"E111": {"registry/conflicts", "none", "accept"},
-	"E12":  {"enrollment/body-schema", "envelope", "accept"},
-	"E14":  {"enrollment/body-schema", "envelope", "accept"},
-	"E16":  {"enrollment/body-schema", "envelope", "accept"},
-	"E25":  {"enrollment/body-schema", "envelope", "accept"},
-	"E26":  {"enrollment/body-schema", "envelope", "accept"},
-	"E27":  {"enrollment/body-schema", "envelope", "accept"},
-	"E28":  {"enrollment/body-schema", "envelope", "accept"},
-	"E29":  {"enrollment/body-schema", "envelope", "accept"},
-	"E30":  {"enrollment/body-schema", "envelope", "accept"},
-	"E31":  {"enrollment/body-schema", "envelope", "accept"},
-	"E36":  {"enrollment/reserved-sigs", "envelope", "accept"},
-	"E37":  {"enrollment/reserved-sigs", "envelope", "accept"},
-	"E38":  {"enrollment/body-schema", "envelope", "accept"},
-	"E39":  {"enrollment/body-schema", "envelope", "accept"},
-	"E40":  {"enrollment/body-schema", "envelope", "accept"},
-	"E41":  {"enrollment/body-schema", "envelope", "accept"},
-	"E42":  {"enrollment/body-schema", "envelope", "accept"},
-	"E43":  {"enrollment/body-schema", "envelope", "accept"},
-	"E45":  {"enrollment/body-schema", "envelope", "accept"},
-	"E46":  {"enrollment/body-schema", "envelope", "accept"},
-	"E47":  {"enrollment/body-schema", "envelope", "accept"},
-	"E48":  {"enrollment/body-schema", "envelope", "accept"},
-	"E49":  {"enrollment/body-schema", "envelope", "accept"},
-	"E50":  {"enrollment/body-schema", "envelope", "accept"},
-	"E51":  {"enrollment/body-schema", "envelope", "accept"},
-	"E52":  {"enrollment/body-schema", "envelope", "accept"},
-	"E53":  {"enrollment/body-schema", "envelope", "accept"},
-	"E54":  {"enrollment/body-schema", "envelope", "accept"},
-	"E55":  {"enrollment/body-schema", "envelope", "accept"},
-	"E56":  {"enrollment/body-schema", "envelope", "accept"},
-	"E57":  {"enrollment/body-schema", "envelope", "accept"},
-	"E58":  {"enrollment/body-schema", "envelope", "accept"},
-	"E59":  {"enrollment/body-schema", "envelope", "accept"},
-	"E60":  {"enrollment/body-schema", "envelope", "accept"},
-	"E61":  {"enrollment/body-schema", "envelope", "accept"},
-	"E62":  {"enrollment/body-schema", "envelope", "accept"},
-	"E63":  {"enrollment/body-schema", "envelope", "accept"},
-	"E64":  {"enrollment/body-schema", "envelope", "accept"},
-	"E65":  {"enrollment/body-schema", "envelope", "accept"},
-	"E66":  {"enrollment/body-schema", "envelope", "accept"},
-	"E67":  {"enrollment/body-schema", "envelope", "accept"},
-	"E68":  {"enrollment/body-schema", "envelope", "accept"},
-	"E69":  {"registry/conflicts", "none", "accept"},
-	"E70":  {"registry/conflicts", "none", "accept"},
-	"E71":  {"registry/conflicts", "none", "accept"},
-	"E72":  {"registry/conflicts", "none", "accept"},
-	"E73":  {"registry/history-rollback", "none", "accept"},
-	"E74":  {"registry/history-rollback", "none", "accept"},
-	"E75":  {"registry/history-rollback", "none", "accept"},
-	"E76":  {"registry/history-rollback", "none", "accept"},
-	"E77":  {"registry/history-rollback", "none", "accept"},
-	"E78":  {"registry/preflight", "none", "accept"},
-	"E79":  {"registry/preflight", "none", "accept"},
-	"E80":  {"registry/snapshot-shapes", "none", "accept"},
-	"E81":  {"registry/preflight", "none", "accept"},
-	"E83":  {"enrollment/body-schema", "envelope", "accept"},
-	"E84":  {"enrollment/body-schema", "envelope", "accept"},
-	"E85":  {"enrollment/body-schema", "envelope", "accept"},
-	"E86":  {"enrollment/body-schema", "envelope", "accept"},
-	"E88":  {"registry/preflight", "none", "accept"},
-	"E89":  {"registry/preflight", "none", "accept"},
-	"E90":  {"registry/preflight", "none", "accept"},
-	"E91":  {"enrollment/body-schema", "envelope", "accept"},
-	"E92":  {"enrollment/body-schema", "envelope", "accept"},
-	"E93":  {"enrollment/body-schema", "envelope", "accept"},
-	"E94":  {"enrollment/body-schema", "envelope", "accept"},
-	"E95":  {"enrollment/body-schema", "envelope", "accept"},
-	"E96":  {"enrollment/body-schema", "envelope", "accept"},
-	"E97":  {"enrollment/body-schema", "envelope", "accept"},
-	"E98":  {"enrollment/body-schema", "envelope", "accept"},
-	"E99":  {"enrollment/body-schema", "envelope", "accept"},
-	"PE1":  {"registry/install", "enrollment-positive", "accept"},
-	"PE10": {"registry/install", "enrollment-positive", "accept"},
-	"PE11": {"registry/install", "enrollment-positive", "accept"},
-	"PE12": {"registry/install", "enrollment-positive", "accept"},
-	"PE13": {"registry/install", "enrollment-positive", "accept"},
-	"PE2":  {"registry/install", "enrollment-positive", "accept"},
-	"PE3":  {"registry/install", "enrollment-positive", "accept"},
-	"PE4":  {"registry/install", "enrollment-positive", "accept"},
-	"PE5":  {"registry/install", "enrollment-positive", "accept"},
-	"PE6":  {"registry/install", "enrollment-positive", "accept"},
-	"PE7":  {"registry/install", "enrollment-positive", "accept"},
-	"PE8":  {"registry/install", "enrollment-positive", "accept"},
-	"PE9":  {"registry/install", "enrollment-positive", "accept"},
 	"PR1":  {"admission/JWT-release", "audience", "accept"},
 	"PR10": {"admission/JWT-release", "audience", "accept"},
 	"PR11": {"admission/JWT-release", "audience", "accept"},
@@ -256,13 +168,110 @@ var pendingRows = map[string]pendingCase{
 
 // Executed routes are fixed by row identity, never selected from expected.code.
 var executedRows = map[string]string{
+	"E100": "registry-bootstrap",
+	"E101": "registry-bootstrap",
+	"E102": "registry-bootstrap",
+	"E103": "registry-bootstrap",
+	"E104": "registry-reload",
+	"E105": "registry-bootstrap",
+	"E106": "registry-bootstrap",
+	"E107": "registry-bootstrap",
+	"E108": "registry-bootstrap",
+	"E109": "registry-bootstrap",
+	"E110": "registry-reload",
+	"E111": "registry-bootstrap",
+	"E12":  "registry-bootstrap",
+	"E14":  "registry-bootstrap",
+	"E16":  "registry-bootstrap",
+	"E25":  "registry-bootstrap",
+	"E26":  "registry-bootstrap",
+	"E27":  "registry-bootstrap",
+	"E28":  "registry-bootstrap",
+	"E29":  "registry-bootstrap",
+	"E30":  "registry-bootstrap",
+	"E31":  "registry-bootstrap",
+	"E36":  "registry-bootstrap",
+	"E37":  "registry-bootstrap",
+	"E38":  "registry-bootstrap",
+	"E39":  "registry-bootstrap",
+	"E40":  "registry-bootstrap",
+	"E41":  "registry-bootstrap",
+	"E42":  "registry-bootstrap",
+	"E43":  "registry-bootstrap",
+	"E45":  "registry-bootstrap",
+	"E46":  "registry-bootstrap",
+	"E47":  "registry-bootstrap",
+	"E48":  "registry-bootstrap",
+	"E49":  "registry-bootstrap",
+	"E50":  "registry-bootstrap",
+	"E51":  "registry-bootstrap",
+	"E52":  "registry-bootstrap",
+	"E53":  "registry-bootstrap",
+	"E54":  "registry-bootstrap",
+	"E55":  "registry-bootstrap",
+	"E56":  "registry-bootstrap",
+	"E57":  "registry-bootstrap",
+	"E58":  "registry-bootstrap",
+	"E59":  "registry-bootstrap",
+	"E60":  "registry-bootstrap",
+	"E61":  "registry-bootstrap",
+	"E62":  "registry-bootstrap",
+	"E63":  "registry-bootstrap",
+	"E64":  "registry-bootstrap",
+	"E65":  "registry-bootstrap",
+	"E66":  "registry-bootstrap",
+	"E67":  "registry-bootstrap",
+	"E68":  "registry-bootstrap",
+	"E69":  "registry-bootstrap",
+	"E70":  "registry-bootstrap",
+	"E71":  "registry-bootstrap",
+	"E72":  "registry-bootstrap",
+	"E73":  "registry-bootstrap",
+	"E74":  "registry-reload",
+	"E75":  "registry-reload",
+	"E76":  "registry-reload",
+	"E77":  "registry-reload",
+	"E78":  "registry-bootstrap",
+	"E79":  "registry-bootstrap",
+	"E80":  "registry-bootstrap",
+	"E81":  "registry-reload",
+	"E83":  "registry-bootstrap",
+	"E84":  "registry-bootstrap",
+	"E85":  "registry-bootstrap",
+	"E86":  "registry-bootstrap",
+	"E88":  "registry-bootstrap",
+	"E89":  "registry-bootstrap",
+	"E90":  "registry-bootstrap",
+	"E91":  "registry-bootstrap",
+	"E92":  "registry-bootstrap",
+	"E93":  "registry-bootstrap",
+	"E94":  "registry-bootstrap",
+	"E95":  "registry-bootstrap",
+	"E96":  "registry-bootstrap",
+	"E97":  "registry-bootstrap",
+	"E98":  "registry-bootstrap",
+	"E99":  "registry-bootstrap",
+	"PE1":  "registry-bootstrap",
+	"PE10": "registry-bootstrap",
+	"PE11": "registry-bootstrap",
+	"PE12": "registry-bootstrap",
+	"PE13": "registry-bootstrap",
+	"PE2":  "registry-bootstrap",
+	"PE3":  "registry-bootstrap",
+	"PE4":  "registry-bootstrap",
+	"PE5":  "registry-bootstrap",
+	"PE6":  "registry-reload",
+	"PE7":  "registry-bootstrap",
+	"PE8":  "registry-bootstrap",
+	"PE9":  "registry-reload",
+
 	"R134": "name",
 	"R135": "name",
-	"E112": "registry-names",
-	"E113": "registry-names",
-	"E114": "registry-names",
-	"PE14": "registry-names",
-	"PE15": "registry-names",
+	"E112": "registry-bootstrap",
+	"E113": "registry-bootstrap",
+	"E114": "registry-bootstrap",
+	"PE14": "registry-bootstrap",
+	"PE15": "registry-bootstrap",
 	"E01":  "envelope",
 	"E02":  "envelope",
 	"E03":  "envelope",
@@ -393,14 +402,18 @@ type specRow struct {
 }
 type counts struct{ pass, fail, pending, prefixes int }
 type observation struct {
-	err       error
-	canonical []byte
-	envelope  *envelope.Envelope
-	proof     *registration.Body
-	snapshot  *registry.Snapshot
-	water     *registry.HighWater
-	persisted *registry.HighWater
-	commits   int
+	err                      error
+	canonical                []byte
+	envelope                 *envelope.Envelope
+	proof                    *registration.Body
+	snapshot                 *registry.Snapshot
+	water                    *registry.HighWater
+	persisted                *registry.HighWater
+	commits                  int
+	setupErr                 error
+	before                   *registry.HighWater
+	retained, retainedBefore *registry.HighWater
+	previous                 *registry.Snapshot
 }
 
 // Every planned row is classified exactly once. Executable rows must match the
@@ -468,29 +481,8 @@ func TestVectorConformance(t *testing.T) {
 				if code != want {
 					t.Errorf("DISAGREEMENT %s spec/registrar.md:%d (plan=%s): route=%s core=%s vector=%s prefix-expectation=%s", v.Row, spec.line, spec.outcome, route, code, v.Expected.Code, want)
 				}
-				if route == "registry-names" {
-					// Valid rows publish exactly the stated authority after one CAS;
-					// rejected name neighbors publish nothing and never call the store.
-					if got.err != nil {
-						if got.snapshot != nil || got.water != nil || got.persisted != nil || got.commits != 0 {
-							t.Error("rejected registry candidate published partial authority or called the store")
-						}
-					} else if got.snapshot == nil || got.water == nil || got.commits != 1 || !reflect.DeepEqual(got.persisted, got.water) {
-						t.Error("accepted registry candidate missing exactly-once publication")
-					} else {
-						var ids []string
-						for host, water := range got.water.Hosts {
-							current, ok := got.snapshot.Current(host)
-							if !ok || current.ID != water.ID {
-								t.Error("snapshot and persisted current authority differ")
-							}
-							ids = append(ids, water.ID)
-						}
-						sort.Strings(ids)
-						if !reflect.DeepEqual(ids, v.Expected.State.Authority.RecordIDs) || got.snapshot.Revision() != v.Expected.State.Authority.Revision || got.water.Revision != v.Expected.State.Authority.Revision {
-							t.Error("registry authority differs from fixture state oracle")
-						}
-					}
+				if strings.HasPrefix(route, "registry-") {
+					assertRegistryObservation(t, v, got)
 				}
 				if v.Expected.Canonical != "" && !bytes.Equal(got.canonical, decodeExpected(t, v.Expected.Canonical)) {
 					t.Errorf("DISAGREEMENT %s spec/registrar.md:%d: core canonical bytes differ from vector", v.Row, spec.line)
@@ -540,8 +532,8 @@ func TestVectorConformance(t *testing.T) {
 
 func exercise(v vector, raw []byte, route string) observation {
 	switch route {
-	case "registry-names":
-		return exerciseRegistry(v, raw)
+	case "registry-bootstrap", "registry-reload":
+		return exerciseRegistry(v, raw, route == "registry-bootstrap")
 	case "codec", "extract":
 		value, err := ccj.Parse(raw, refusal.EnrollmentMalformed)
 		if err != nil {
@@ -588,8 +580,8 @@ func exercise(v vector, raw []byte, route string) observation {
 		if route == "envelope" {
 			return out
 		}
-		// Keep the reviewed legacy prefix routes. The new name rows above
-		// call the landed loader rather than duplicate its schema/phases.
+		// Keep the reviewed legacy prefix routes. Registry rows above call
+		// the public loader rather than duplicate its schema/phases.
 		out.err = enrollmentKeys(e.Body)
 		if out.err != nil || route == "enrollment-key" {
 			return out
@@ -608,73 +600,6 @@ func exercise(v vector, raw []byte, route string) observation {
 	default:
 		return observation{err: fmt.Errorf("unknown core route %q", route)}
 	}
-}
-
-// Trust and storage are explicit fixture inputs, not real Git or durability
-// verification. All five new enrollment rows declare operator-approved first use.
-type fixtureVerifier struct {
-	revision string
-	entries  []registry.Entry
-	approved bool
-}
-
-func (f fixtureVerifier) Verify(revision string, entries []registry.Entry) error {
-	if !f.approved || revision != f.revision || !reflect.DeepEqual(entries, f.entries) {
-		return fmt.Errorf("entry set differs from fixture-approved revision")
-	}
-	return nil
-}
-func (f fixtureVerifier) Descends(candidate, previous string) (bool, error) {
-	return false, fmt.Errorf("ancestry is outside these first-use fixtures")
-}
-
-type fixtureStore struct {
-	available bool
-	calls     int
-	state     *registry.HighWater
-}
-
-func (f *fixtureStore) Commit(previous *registry.HighWater, next registry.HighWater) error {
-	f.calls++
-	if !f.available || !reflect.DeepEqual(previous, f.state) {
-		return fmt.Errorf("fixture store unavailable or stale prior state")
-	}
-	f.state = next.Clone()
-	return nil
-}
-
-func exerciseRegistry(v vector, raw []byte) observation {
-	f := v.Fixture.Registry
-	stations := make(map[string]bool, len(f.StationHosts))
-	for _, host := range f.StationHosts {
-		stations[host] = true
-	}
-	policy, err := enrollment.NewPolicy(v.Fixture.Audience, f.PublisherKey, stations)
-	if err != nil {
-		return observation{err: err}
-	}
-	var entries []registry.Entry
-	for _, file := range f.Files {
-		// These rows use ordinary single-record files. Reject unsupported
-		// adapter inputs explicitly rather than silently dropping an entry.
-		if file.Kind != "regular" || file.Repeat != 1 {
-			return observation{err: fmt.Errorf("registry name fixture needs a regular unrepeated entry")}
-		}
-		data, err := base64.RawURLEncoding.Strict().DecodeString(file.Bytes)
-		if err != nil {
-			return observation{err: err}
-		}
-		entries = append(entries, registry.Entry{Path: file.Path, Bytes: data, Kind: registry.Regular})
-	}
-	if len(entries) == 0 || !bytes.Equal(entries[0].Bytes, raw) {
-		return observation{err: fmt.Errorf("input differs from first candidate entry")}
-	}
-	store := &fixtureStore{available: f.PersistAvailable}
-	verifier := fixtureVerifier{revision: f.Revision, entries: entries,
-		approved: f.Available && f.Approved && f.CommitSignatureValid && f.PinIsExact}
-	loader := registry.Loader{Policy: policy, Verifier: verifier, Store: store}
-	snapshot, water, err := loader.Load(registry.Input{Revision: f.Revision, Entries: entries, FirstUse: f.FirstUse})
-	return observation{err: err, snapshot: snapshot, water: water, persisted: store.state, commits: store.calls}
 }
 
 func enrollmentKeys(body map[string]any) error {

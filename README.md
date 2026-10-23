@@ -83,6 +83,7 @@ automatically.
 | Tool | Purpose | Exact entry point | Output |
 | --- | --- | --- | --- |
 | Go 1.26 | Test the module, examples and public API inventories; run static validation. | `go test ./...`; `go test ./internal/...`; `go test -race ./internal/admission/...`; `go vet ./...` | Terminal diagnostics and Go build cache; no generated repository files. |
+| Go conformance harness | Compare committed vectors against landed code and report pass/fail/pending counts per domain. | `go test -v ./internal/conformance`; narrow internal validation: `go test ./internal/...` | Terminal diagnostics; `CONFORMANCE_VECTORS` optionally selects a scratch vector copy. |
 | Go (standard library) | Regenerate vectors or check exact committed bytes and file set. | `GOMAXPROCS=2 go run ./tools/vectorgen`; `GOMAXPROCS=2 go run ./tools/vectorgen -check` | `vectors/registration-1/`, `vectors/enrollment-1/`, `vectors/keys/seeds.json`, `vectors/keys/public-keys.json`; check mode writes nothing. |
 | Python 3 with cryptography | Independently check CCJ-1, cryptography, ordered outcomes, JWT bytes and state. | `python3 tools/vectorcheck/check.py` (dependencies: `python3 -m pip install -r tools/vectorcheck/requirements.txt`) | Terminal verdicts; writes nothing. |
 | Python unittest | Check signed HTTP media-token and structured-name regressions against the independent checker. | `python3 -B -m unittest discover -s tools/vectorcheck -p test_regressions.py -v` | Terminal verdicts; fixtures under `tools/vectorcheck/fixtures/` stay separate from the 305 planned vectors. |
@@ -130,3 +131,22 @@ There is no registrar service listener or live integration target yet.
 
 The [checker regressions](tools/vectorcheck/README.md) exercise signed neighboring
 inputs and exact refusal, JWT and state expectations without expanding Appendix B.
+
+The Go conformance harness executes all 139 enrollment-domain rows, including
+101 complete public-loader scenarios and the retained envelope, signature and
+codec checks. All 96 formerly deferred enrollment rows reach landed checks.
+Registration has 86 executed rows and 80 named pending stages; these counts do
+not qualify HTTP, admission, clock or audit behavior.
+
+Loader scenarios explicitly classify bootstrap versus reload. Legacy bootstrap
+fixtures receive operator approval from the row classification; the harness
+never infers first use from missing storage. Prior authority is established by
+a separate approved public-loader call, including the old publisher pin during
+rotation. Fixture commit trust, exact entries, ancestry and persistence results
+flow through the public caller interfaces. Refused candidates return no new
+snapshot and preserve prior evidence. Validation refusals never call the store;
+the persistence-failure fixture necessarily attempts one failed CAS. Successful
+loads must match the full historical ID oracle, permanent ownership, revision
+and exact highest-sequence current bodies. The adapter does not implement loader
+validation or qualify real Git verification, storage durability or admission
+fencing.
