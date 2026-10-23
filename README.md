@@ -28,14 +28,14 @@ transitional; the reusable core is key proof → enrollment → carrier credenti
 | `spec/registrar.md` | Draft normative formats, HTTP API, registry rules, source findings and vector plan. |
 | `UNRESOLVED_QUESTIONS.md` | Remaining homeserver and Keymaker activation dependencies. |
 | `vectors/` (planned) | Canonical and negative registration/enrollment vectors. |
-| `internal/` | Go byte formats, strict signatures and registration proof validation. |
+| `internal/` | Go byte formats, strict signatures, registration/enrollment validation and in-memory registry snapshots. |
 | `cmd/registrar` (planned) | Registrar service binary in Go. |
 
 ## Status
 
 Service (in progress): the Go core implements CCJ-1, signed envelopes, strict
-key/signature checks and stateless registration proof validation. No service
-endpoint or vector implementation exists yet. Source inspection of tuwunel
+key/signature checks, stateless registration/enrollment validation and in-memory
+registry snapshots. No service endpoint or vector implementation exists yet. Source inspection of tuwunel
 v1.9.3 found that `access_token_ttl` alone cannot provide
 access-token expiry without refresh-token issuance, and JWT login does not
 refuse deactivated accounts. A reviewed change to the operated homeserver must
@@ -58,8 +58,16 @@ contracts have been checked (KM1). See specification §1, §4.3, §10 and Append
 | Python 3 | Count the planned vector rows in the draft. | `python3 -c 'from pathlib import Path; s=Path("spec/registrar.md").read_text().split("## Appendix B.")[1].split("### B.1")[0]; print(sum(line.startswith("\u007c ") for line in s.splitlines())-2)'` | Terminal count only. |
 
 Core tests derive their own inputs from fixed public test seeds and curve
-parameters. Enrollment loading, admission state, HTTP, JWT issuance and audit
-remain outside this implementation. Registration parsing verifies schema, id and
-signature in that order. Name syntax and audience checks are separate methods
+parameters. Enrollment and registry validation use in-memory inputs. The registry
+loader completes all seven snapshot-wide phases before a caller-supplied atomic
+high-water store can publish the result. Commit verification binds the supplied
+entry set to the exact approved signed revision; Git ancestry and durable storage
+also come from caller-supplied interfaces. No live Git, file reader, network or
+process state is implemented. The deployment supplies a validated canonical
+audience, protected pins and externally reconciled rollback evidence. After any
+reload failure, the caller must fence admission rather than reuse an older
+snapshot. Admission state, HTTP, JWT issuance and audit remain outside this
+implementation. Registration parsing verifies schema, id and signature in that
+order. Name syntax and audience checks are separate methods
 so admission can run enrollment checks first, as required by specification §6.1.
 Future service and vector tooling must document their entry points here.

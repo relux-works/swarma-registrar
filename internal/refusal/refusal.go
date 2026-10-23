@@ -8,6 +8,12 @@ type Code string
 const (
 	RegistrationMalformed        Code = "registration_malformed"
 	EnrollmentMalformed          Code = "enrollment_malformed"
+	EnrollmentSigsUnsupported    Code = "enrollment_sigs_unsupported"
+	RegistryUnavailable          Code = "registry_unavailable"
+	RegistryConflict             Code = "registry_conflict"
+	RegistryRollback             Code = "registry_rollback"
+	NameNotPermitted             Code = "name_not_permitted"
+	HostRevoked                  Code = "host_revoked"
 	RequestTooLarge              Code = "request_too_large"
 	RegistrationIDMismatch       Code = "registration_id_mismatch"
 	EnrollmentIDMismatch         Code = "enrollment_id_mismatch"

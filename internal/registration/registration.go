@@ -149,3 +149,12 @@ func (b *Body) CheckAudience(configuredAudience string) error {
 	}
 	return nil
 }
+
+// ParseTimestamp exposes the exact whole-second grammar shared by enrollment key windows.
+func ParseTimestamp(s string) (int64, bool) { return timestamp(s) }
+
+// ValidLegacyName applies the explicit-list grammar and the configured-audience byte cap.
+// Structured names with a leading hyphen are legal request names but are not legacy entries.
+func ValidLegacyName(name, configuredAudience string) bool {
+	return legacy.MatchString(name) && len(name) <= 253-len(configuredAudience)
+}
