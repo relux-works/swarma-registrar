@@ -68,9 +68,15 @@ Open choices and recommendations are tracked in Appendix C.3:
 - **WC5 — Reconciliation and recovery runbook:** recommend operator actions
   bound to the exact digest/revision and independent surviving evidence for
   bootstrap, manual fallback, witness repair/migration and mode changes. Define
-  authorization, durable pending-commit/recovery records and the
-  no-surviving-evidence procedure. A known pending commit needs its exact record;
-  an older equal-digest record cannot resolve it after restart.
+  operator authorization/evidence records and the no-surviving-evidence
+  procedure. The proposed mechanism is now an exact externally durable intent
+  acknowledged before Store.Commit, followed by a matching committed resolution
+  after successful local commit. Local pending metadata is insufficient across
+  whole-host restore. A latest unresolved intent fences regardless of local
+  digest or remembered pending state. Operator completion must bind the intent
+  hash, candidate digest/revision and independent evidence; no automatic
+  roll-forward or rollback from local bytes is permitted. Any intent cancellation
+  or replacement procedure remains a separate open decision.
 
 Option C activation is blocked until these choices and their qualification
 evidence are supplied. This does not block specification review. No automatic

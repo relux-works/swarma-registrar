@@ -355,7 +355,7 @@ The latter MUST contain exactly these members:
 
 | Member | Required value |
 | --- | --- |
-| `Revision` | The accepted full lowercase Git commit id. |
+| `Revision` | The candidate's full lowercase Git commit id. |
 | `Hosts` | Object keyed by exact host label. Each value has exactly `Seq`, `ID`, `Revoked` and `History`: highest positive safe-integer sequence, its body id, boolean tombstone flag, and complete sequence-to-body-id object. History keys are shortest positive decimal sequence strings; aliases such as `01` are forbidden. |
 | `KeyOwners` | Complete retained canonical-public-key-string to host-label object, including historical ownership. |
 | `NameOwners` | Complete retained explicit-name to host-label object, including removed claims. |
@@ -377,12 +377,22 @@ reconciliation; it MUST NOT erase retained history or tombstones.
 A witness record MUST be one CCJ-1 object followed by LF, with exactly `v`
 (integer 1), `stream` (a configured ASCII string matching
 `[a-z0-9][a-z0-9._-]{0,127}`), `seq` (integer 1 through
-9007199254740991), `revision`, `digest`, and `prev_hash`. Revision and digest
-MUST identify the exact committed state above. `prev_hash` MUST be lowercase
+9007199254740991), `kind` (`intent` or `committed`), `revision`, `digest`,
+`prev_hash`, and `intent_hash`. Revision and digest MUST identify the exact
+candidate high-water. `prev_hash` MUST be lowercase
 SHA-256 hex of the previous complete witness line including LF, or 64 zeroes
 at the first record. Sequence MUST increase by exactly one within the stream;
 exhaustion MUST fence, not wrap or reset. Witness sequence is separate from
 host `seq` and §9 admission-audit sequence.
+
+An `intent` MUST have `intent_hash` null. Its `prev_hash` and sequence MUST bind
+the exact expected previous resolved witness head. An empty stream requires
+explicit option A bootstrap authorization before its first intent. There MUST
+be room for both intent and resolution sequences before an intent is appended.
+A `committed` record MUST immediately follow the unresolved intent, with the
+same digest and revision. Its `intent_hash` and `prev_hash` MUST both equal the
+SHA-256 of that complete intent line including LF. No new intent may bypass an
+unresolved intent. A committed record resolves only that exact intent.
 
 The witness MUST durably append before acknowledging. Its authenticated
 acknowledgement MUST bind stream, sequence, revision, complete state digest and
@@ -396,25 +406,43 @@ Acknowledged records MUST NOT be truncated, replaced or renumbered.
 #### 4.5.2 Commit, start and fallback
 
 The consumer MUST serialize registry replacement with new signing/issuance.
-After all §4.4 validation passes, it MUST perform atomic `Store.Commit` first.
-After every successful commit, including unchanged state, it MUST record that
-state at the witness before using the new authority. Until exact acknowledgement,
-the state is **locally committed, witness pending**. Admission MUST remain
-fenced. Neither the old nor the new snapshot may authorize signing/issuance.
-Witness failure MUST NOT cause a compensating local rollback.
+After all §4.4 validation passes, it MUST append the exact candidate's intent
+and obtain its exact durable acknowledgement before calling `Store.Commit`.
+It MUST then commit that exact high-water locally. Only after successful local
+commit may it append the matching `committed` resolving record. It MUST obtain
+that record's exact durable acknowledgement, revalidate local committed bytes
+and the current approved pin, and only then use the new authority. This order
+also applies to an unchanged-state commit. A cached earlier equal-digest record
+MUST NOT replace either acknowledgement.
 
-Timeout, lost/wrong acknowledgement or witness unavailability leaves that
-pending state and yields `registry_unavailable`. The new local high-water is
-retained, not reported as unchanged. A later exact acknowledgement or fresh
-latest-head read confirming that exact record MAY resolve an uncertain append.
-Before publishing authority, the consumer MUST revalidate local committed bytes
-and the current approved pin. A newer/different witness head MUST fence.
-If `Store.Commit` itself fails, durability is indeterminate: no witness append
-or authority publication is permitted until option A reconciliation.
+Admission MUST remain fenced throughout this replacement. Neither the old nor
+the new snapshot may authorize signing/issuance before resolution. The durable
+external intent, rather than host-local pending metadata, survives a whole-host
+restore and records the outstanding obligation.
+
+If the intent append or its acknowledgement fails, `Store.Commit` MUST NOT be
+called. Local high-water is unchanged. The old authority MUST remain fenced:
+this is a failed reload under §4.4, and a lost receipt may hide a durable intent.
+Recovery MUST follow the fresh-head and reconciliation rules below; local bytes
+alone MUST NOT clear this fence. Every witness failure yields
+`registry_unavailable`, without a compensating local rollback.
+
+If `Store.Commit` fails, local durability is indeterminate. The acknowledged
+intent remains unresolved; no resolving append or authority use is permitted
+until explicit option A recovery. If local commit succeeds but the resolving
+append is not durable, the witness head remains the unresolved intent. The new
+local high-water is retained and fenced, not reported as unchanged. If the
+resolving append's outcome or acknowledgement is lost, the consumer MUST remain
+fenced and treat resolution as unproven. A fresh authenticated latest-head reply
+confirming that exact durable `committed` record MAY prove a lost resolution
+receipt; it MUST bind all required acknowledgement fields. A newer/different
+head MUST fence. An actual unresolved intent requires operator recovery below.
 Validation failures still leave high-water unchanged as §4.4 requires.
 
 On every start, option C MUST obtain a fresh authenticated read of the latest
-acknowledged record in the configured stream. The witness MUST answer from its
+durable record in the configured stream, including an intent whose append
+receipt was lost. The witness MUST NOT return an older resolved record while
+an unresolved intent is its head. It MUST answer from its
 authoritative serialized head, not a stale replica, historical-record lookup or
 client cache. The reply MUST bind a fresh unpredictable challenge from this
 lookup. An old authenticated receipt alone is insufficient. Reads and appends
@@ -423,12 +451,14 @@ finite deadline, default five seconds; timeout MUST fence.
 
 The consumer MUST validate local state, the witness record, stream binding,
 sequence/chain continuity and fresh reply. It MUST recompute the local digest
-and compare both digest and revision with the latest record. Equality permits
-reconciliation only; all §4.4 pin, history and snapshot checks still MUST pass.
-This read MUST NOT append a new record or change local high-water. The consumer
-with a known pending commit MUST resolve its exact intended record, not an
-older record with an equal state digest. An indeterminate commit outcome or
-pending-record identity requires option A reconciliation. The consumer
+and compare both digest and revision with the latest record. Only a latest
+`committed` record resolving its exact intent, with digest and revision equal
+to local state, permits reconciliation. All §4.4 pin, history and snapshot checks
+still MUST pass. A latest unresolved `intent` MUST fence and require option A
+operator recovery, whatever the local digest or locally remembered pending
+state. This includes a whole-host restore that erased all local pending identity
+after a changed-state or unchanged-state commit. Equality with an intent MUST
+NOT reconcile. This read MUST NOT append or modify local high-water. The consumer
 MUST reject a head below any trustworthy previously observed sequence, or a
 different record at the same sequence. An advancing head requires append-only
 continuity evidence from the prior head. A restored local sequence floor cannot
@@ -454,6 +484,23 @@ reconciled stream binding and acknowledged current state. Repair of a rolled-
 back witness requires surviving independent evidence, not acceptance of its
 stale head. Without that evidence, both modes remain fenced.
 
+To resolve an intent, the operator MUST first quiesce the consumer and exclude
+older instances. The operator MUST obtain the fresh exact intent and independently
+authenticate the candidate bytes/history and revision it commits to. Recovery
+authorization MUST bind the complete intent hash, candidate digest, revision
+and surviving external evidence. It MUST reconcile all §4.4 history, ownership
+and tombstones; local restored bytes alone MUST NOT prove a commit did or did
+not happen. With that authorization, the consumer MAY recover and durably commit
+the exact intended candidate after full validation, or verify its independently
+reconciled successful commit. It MUST then append and acknowledge the matching
+`committed` record before final revalidation and use. This is an operator action,
+not automatic roll-forward or rollback. The consumer MUST NOT cancel the intent,
+substitute the pre-intent state or start a new stream on its own. If the exact
+candidate cannot be independently recovered/approved, the intent remains
+unresolved and option C remains fenced. An explicit switch to option A MUST
+preserve this evidence; returning to C requires resolving the outstanding intent.
+The operator runbook and any cancellation/replacement design remain open in WC5.
+
 #### 4.5.3 Audit reuse, consumers and threat bounds
 
 The registrar MUST reuse §9's authenticated off-host delivery channel and
@@ -463,8 +510,9 @@ to §9's closed event schema or pretend to be `issued`/`refused` events. A §9
 sink qualifies only if it also supplies the compare-head append and fresh
 latest-head operations above. Ordinary audit shipping alone does not qualify.
 Witness records MUST NOT contain private keys, tokens or enrollment bodies.
-Local commit and witness append are separate durability steps, not a distributed
-atomic transaction. Failure between them has the pending state above.
+Witness intent, local commit and witness resolution are separate durability
+steps, not a distributed atomic transaction. The acknowledged write-ahead intent
+preserves the fence across host restoration between the latter steps.
 
 A second registry consumer, including Keymaker, MUST apply the same commit,
 freshness and fallback rule before using authority. It MUST use either a shared
@@ -483,7 +531,7 @@ reconcile their own state before use. This is not a multi-replica design.
 
 | Threat | Protection and limit |
 | --- | --- |
-| Restore local state and replay a stale witness view | A fresh authoritative latest-head reply exposes the mismatch at an honest witness. Restored receipts or sequence floors cannot establish freshness. A compromised host that bypasses checks, changes protected bindings or controls the authenticated witness view is outside this claim. |
+| Restore local state and replay a stale witness view | At an honest witness, a fresh latest head is either the unresolved write-ahead intent (fence regardless of local state) or a resolved commit (compare digest/revision). A host restore cannot erase the external intent after either changed-state or unchanged-state commit. Restored local receipts/floors do not establish freshness. A compromised host bypassing checks, changing protected bindings or controlling the authenticated witness view is outside this claim. |
 | Witness outage or partition | No automatic reconciliation or new authority release; explicit evidence-based option A recovery remains available. Availability is deliberately sacrificed. |
 | Replay an old acknowledgement | Exact stream/sequence/record binding, compare-head append and challenge-bound latest reads prevent its use as proof of a newer commit or current startup state. Authentication alone does not prove latestness. |
 | Roll back or equivocate at the witness | Observed regression, same-sequence change or broken continuity fences. An undetectably restored or malicious witness and host with no independent surviving head can agree on stale state; matching hashes alone cannot reveal that rollback. |
@@ -1437,59 +1485,68 @@ These are planned gates, not passing implementation evidence.
 
 ### B.2 External-witness lifecycle (normative plan; no fixtures yet)
 
-These 33 additional rows plan §4.5 state transitions. W/PW identifiers are
+These 37 additional rows plan §4.5 state transitions. W/PW identifiers are
 separate from the 310 byte-vector rows above; no witness fixture or executable
 conformance is claimed. Each case starts with a valid signed registry and
 protected configuration. Unless changed below, local state L and latest durable
-witness state L have equal digest/revision at sequence n, with trusted continuity
-and fresh authenticated replies. Only one consumer instance may serve.
+witness resolved-commit state L have equal digest/revision at sequence n, with
+trusted continuity and fresh authenticated replies. Only one consumer instance
+may serve. Unless changed below, a successful replacement writes intent n+1,
+commits locally, then writes matching committed resolution n+2.
 
 Each future fixture MUST distinguish local durable high-water, usable authority,
 witness head/receipt and readiness. Admission accounting MUST remain unchanged;
 these are loader/startup operations, not admission requests. Record/ack traces
 MUST be exact. W rows MUST assert the intended fence and lack of new signing/
-issuance, not merely an error. Commit-success/witness-failure rows retain the
-new local state and pending fence, unlike validation refusals in Appendix A.
+issuance, not merely an error. Intent failure leaves local high-water unchanged.
+Commit-success/resolution-failure rows retain the new local state and external
+unresolved-intent fence, unlike validation refusals in Appendix A.
 No witness operation may weaken history, ownership, tombstones or protected pins.
 
 | Id | Rule | Defect / boundary | Expected result | Positive control |
 | --- | --- | --- | --- | --- |
 | W1 | Startup equality | Restore local L while the fresh latest witness records newer M | registry_unavailable; local L unchanged; no reconciliation | PW1 |
-| W2 | Unwitnessed local advance | Local M, fresh witness still L | registry_unavailable; M retained, fenced | PW1 |
+| W2 | Unresolved local advance | Intent for M is acknowledged; commit M succeeds but resolving append is not durable | registry_unavailable; M retained, latest intent unresolved, fenced | PW2 |
 | W3 | Missing local evidence | Witness L survives but local high-water is missing | registry_unavailable; no implicit bootstrap or state reconstruction from a digest | PW1 |
 | W4 | Missing witness evidence | Valid local L but stream has no record | registry_unavailable; no implicit first use | PW1 |
 | W5 | Witness unavailable at start | Read is unreachable or exceeds its finite deadline | registry_unavailable; no automatic reconciliation | PW1 |
 | W6 | Replayed stale view | Replay L's authentic old receipt/reply against a new lookup challenge while authoritative head is M | registry_unavailable; stale reply is not latest evidence | PW1 |
 | W7 | Protected binding | Reply/receipt belongs to another stream or unauthenticated witness | registry_unavailable; no stream replacement or reconciliation | PW1 |
-| W8 | Exact acknowledgement | Commit M succeeds; receipt changes the final digest/hash byte or revision | registry_unavailable; M durable, authority fenced; no compensating rollback | PW2 |
-| W9 | Lost acknowledgement | Commit M succeeds; append result/ack is unknown and no fresh latest-head confirmation is obtainable | registry_unavailable; M durable and witness result unknown, fenced | PW3 |
+| W8 | Exact resolving acknowledgement | Intent acknowledged and commit M succeeds; resolving receipt changes the final digest/hash byte, revision or intent hash | registry_unavailable; M durable, resolution unproven, authority fenced; no rollback | PW2 |
+| W9 | Lost resolving acknowledgement | Intent acknowledged and commit M succeeds; resolving append/ack is unknown and no fresh latest-head confirmation is obtainable | registry_unavailable; M durable, resolution unproven, fenced | PW3 |
 | W10 | Witness rollback | Fresh head sequence n-1 is below independently surviving trusted n | registry_unavailable; backwards head is not adopted | PW4 |
 | W11 | Witness equivocation | Fresh record differs at the trusted sequence n, even if its state digest matches | registry_unavailable; same-sequence replacement is not adopted | PW4 |
 | W12 | Continuity | Fresh head advances but its chain cannot extend trusted n | registry_unavailable; no reset/truncation of the accepted chain | PW4 |
-| W13 | Release ordering | Store.Commit(M) succeeds; attempt authority use before witness acknowledgement | registry_unavailable; neither old L nor pending M may authorize signing | PW2 |
-| W14 | Local commit error | Store.Commit reports failure, including ambiguous durability | registry_unavailable; no witness append or snapshot use; option A required | PW5 |
-| W15 | Old receipt at new commit | Commit M succeeds; replay the acknowledged record for L at sequence n | registry_unavailable; M remains witness pending | PW2 |
-| W16 | Concurrent append | Two proposals compare the same previous witness head; one is already committed | Losing different proposal is refused; no duplicate sequence or losing authority release | PW6 |
+| W13 | Release ordering | Intent acknowledged and Store.Commit(M) succeeds; attempt authority use before resolving acknowledgement | registry_unavailable; neither old L nor pending M may authorize signing | PW2 |
+| W14 | Local commit error | Intent acknowledged; Store.Commit reports failure, including ambiguous durability | registry_unavailable; intent unresolved; no resolving append or snapshot use; option A required | PW5 |
+| W15 | Old receipt at new commit | Intent acknowledged and commit M succeeds; replay L's resolved record at n in place of the new resolution | registry_unavailable; old record cannot resolve the new intent | PW2 |
+| W16 | Concurrent intent append | Two intents compare the same previous resolved head; one intent is already durable | Losing different proposal is refused before Store.Commit; no duplicate sequence or losing authority release | PW6 |
 | W17 | Split-brain prerequisite | A replacement cannot establish exclusion of an older serving instance | Replacement fenced before commit/use; a witness CAS alone is insufficient | PW6 |
-| W18 | False option A evidence | Operator confirms a restored local digest using only the same restored local file/receipt | No reconciliation in either mode; no signing/issuance | PW7 |
+| W18 | False option A evidence | Latest intent is unresolved; operator relies only on restored local bytes/receipt to confirm state or cancel/resolve the intent | No reconciliation or intent resolution; no signing/issuance; external intent retained | PW5 |
 | W19 | Complete-state digest | Keep revision/current sequence fixed but change retained history, revoked flag, historical key owner or removed-name owner | Digest changes for each isolated mutation; old receipt cannot reconcile the changed state | PW2 |
-| W20 | Every successful commit | Commit identical L again but omit the new witness record | Local L retained; authority remains pending; old receipt does not acknowledge this commit | PW8 |
+| W20 | Every successful commit | Acknowledged intent for identical L; commit L succeeds but omit its committed resolution | Local L retained; external intent fences despite equal digest; old receipt is insufficient | PW8 |
 | W21 | Explicit fallback | Witness becomes unreachable; automatically change to option A without operator reconciliation | registry_unavailable; no automatic downgrade | PW7 |
-| W22 | Final local binding | After exact receipt for M, local committed bytes or approved pin change before publication | registry_unavailable; receipt cannot authorize the different state/pin | PW2 |
-| W23 | Sequence exhaustion | Last witness sequence is 9007199254740991; another commit needs a record | Fence; never wrap, reset or switch to an empty stream | PW4 |
+| W22 | Final local binding | After exact resolving receipt for M, local committed bytes or approved pin change before publication | registry_unavailable; receipt cannot authorize the different state/pin | PW2 |
+| W23 | Sequence exhaustion | Last resolved sequence is 9007199254740990; insufficient space for both intent and resolution | Fence before intent or Store.Commit; never wrap, reset or switch streams | PW4 |
 | W24 | Invalid digest preimage | Omit a map, substitute null, add an unknown field or use history-key alias 01 | No accepted digest/reconciliation; existing authority and witness head unchanged | PW1 |
-| W25 | Pending restart identity | Restart with a known pending unchanged-state commit; fresh head shows only the preceding equal-digest record | No automatic resolution of the pending commit; exact intended record or option A reconciliation required | PW3 |
-| PW1 | Fresh equal startup | Valid local L; fresh challenge-bound latest head records L with correct stream/continuity | Reconciled; no local mutation or witness append; ordinary registry validation still required | PE6 |
-| PW2 | Witnessed replacement | Valid descendant M; local commit succeeds; exact durable witness record n+1 is acknowledged; final bytes/pin match | M becomes usable only after acknowledgement; local and witnessed M retained | PE6 |
-| PW3 | Lost-receipt recovery | Witness durably appended M but ack was lost; a fresh latest-head read confirms the exact M record | Resolve pending and use M after final validation; no second append | PW2 |
-| PW4 | Monotonic advance | Trusted n; fresh n+1 record extends it exactly and matches local state | Reconciled; preserve trusted continuity; no sequence reset | PW1 |
-| PW5 | Commit-error recovery | Quiesce after ambiguous commit; operator reconciles actual durable state against independent surviving evidence and selects option A | Reconciled only after explicit option A recovery; no automatic witness append on the failed commit | PW7 |
-| PW6 | Serialized ownership | Prior instance excluded; sole consumer commits the next expected witness head | One append and acknowledgement; only the reconciled instance serves | PW2 |
+| W25 | Remembered pending restart | Restart remembers an unchanged-state commit; latest durable head is its unresolved intent | Operator recovery required even though local digest equals the intent; no automatic resolution | PW3 |
+| W26 | Whole-host restore after changed-state commit | Acknowledge intent for M; commit M; resolution not durable; restore snapshot L with all local pending identity erased | Fresh latest intent survives; fence and require option A despite restored L matching the older resolved record | PW1, PW9 |
+| W27 | Whole-host restore after unchanged-state commit | Acknowledge intent for L; commit L; resolution not durable; restore pre-intent snapshot with all local pending identity erased | Fresh latest intent survives; fence and require option A despite equal local/intent/older-resolved digests | PW1, PW9 |
+| W28 | Intent failure before commit | Intent append or exact receipt fails, including no durability, lost receipt or wrong digest/hash | No Store.Commit or resolving append; local L unchanged; old authority fenced as failed reload; any durable intent survives | PW2 |
+| PW1 | Fresh equal startup | Valid local L; fresh challenge-bound latest committed head resolves its intent for L with correct stream/continuity | Reconciled; no local mutation or witness append; ordinary registry validation still required | PE6 |
+| PW2 | Witnessed replacement | Valid M; intent n+1 exactly acknowledged; Store.Commit(M) succeeds; matching committed n+2 exactly acknowledged; final bytes/pin match | M usable only after both acknowledgements in order; complete pair and local M retained | PE6 |
+| PW3 | Lost-resolution-receipt recovery | Intent acknowledged; commit M succeeds; committed n+2 is durable but ack was lost; fresh latest read proves that exact resolution | Use M only after proof/final validation; no second append or unresolved intent | PW2 |
+| PW4 | Monotonic advance | Trusted resolved n; intent n+1 and matching committed n+2 extend it exactly; final local state matches | Reconciled; preserve complete pair/continuity; no sequence reset | PW1 |
+| PW5 | Operator intent recovery | Quiesce; fresh unresolved intent; operator independently authenticates and authorizes exact candidate/digest/revision/intent hash and surviving history evidence; recover/verify its durable commit and acknowledge matching resolution | Resolve only the exact intent; final validation before authority use; no local-only or automatic recovery | PW7 |
+| PW6 | Serialized ownership | Prior instance excluded; sole consumer appends next expected intent, commits, then appends its resolution | One intent/resolution pair; only the reconciled instance serves | PW2 |
 | PW7 | Manual fallback | Witness unavailable; operator verifies exact local digest/history against independent surviving evidence and explicitly selects option A | Option A reconciliation permits otherwise valid authority; every later start still needs reconciliation | PE6 |
-| PW8 | Unchanged successful commit | Commit identical L again; append and acknowledge the next witness record with the same state digest | Exactly one new sequence; authority usable after its acknowledgement; exact retry does not append twice | PW2 |
+| PW8 | Unchanged successful commit | Acknowledge new intent for identical L, commit L, then acknowledge its exact committed resolution | Exactly two new sequences; authority usable after resolution; exact retries append neither record twice | PW2 |
+| PW9 | Resolved-commit restart | For each changed-state M and unchanged-state L case, complete both acknowledged records and restart with the exact resolved local state and no local pending marker | Latest head is matching committed resolution; reconcile after normal validation, distinguishing both W26/W27 restores and preserving PW1 | PW1 |
 
 Future instrument controls MUST include admitting W13 before acknowledgement
-and accepting W6's stale reply. Each control MUST fail its named assertion;
+and accepting W6's stale reply. They MUST also remove or move the intent after
+Store.Commit and demonstrate failure of both W26 and W27 startup assertions.
+Each control MUST fail its named assertion;
 an unrelated setup failure is not a detected violation. Restore of both host
 and witness with no independent surviving head is the explicit §4.5.3 limit,
 not a negative test that can claim detection from equal hashes.
@@ -1578,7 +1635,8 @@ witness, fresh-head protocol or instance-exclusion mechanism.
 | Separate typed witness stream over the §9 channel; LF-inclusive record hash and exact receipt | Reuse authenticated off-host durability without changing the closed admission-audit schema or mixing sequence spaces. |
 | Stable protected stream binding; positive safe-integer sequence, hash continuity and compare-head append | Prevent empty-stream resets, accidental consumer collisions and conflicting records at one position. |
 | Stream id limited to 128 ASCII identifier bytes; sequences bounded by CCJ-1 safe integers; exhaustion fences | Bound record parsing, avoid identifier normalization and forbid counter wrap. |
-| Local commit, then witness, then authority use; explicit pending state | The two durable stores have no atomic transaction; a lost acknowledgement cannot justify rollback or continued old authority. |
+| Acknowledged witness intent, local commit, acknowledged matching resolution, then authority use | Proposed content-review choice: a whole-host restore can erase any local pending marker before a post-commit witness append. The write-ahead external intent preserves that obligation for both changed-state and unchanged-state commits. |
+| Intent failure leaves old authority fenced with no Store.Commit; operator alone resolves an actual unresolved intent | Preserve §4.4 failed-reload safety and avoid treating an uncertain external append or restored local bytes as freshness evidence. |
 | Fresh challenge-bound authoritative latest read, not cached receipt equality | A valid old receipt and rolled-back local file can agree while both are stale. |
 | Five-second default per witness operation; fence on failure, explicit option A recovery | Bound startup/reload waiting while preserving the existing failure-closed rule. |
 | Reuse registry_unavailable for witness fences, preserving restricted loader diagnostics | Registry authority is unavailable; this introduces no HTTP or helper refusal code. |
@@ -1594,7 +1652,7 @@ file or an audit shipping adapter. Recommendations are not adopted mechanisms.
 | WC2 | Transport, authentication, fresh-head request/reply framing and stable stream provisioning | Extend the authenticated audit transport with typed append/read operations, protected peer pins and challenge-bound linearizable latest-head replies. Specify exact wire types, nonce strength, credentials/rotation, record limits and continuity proofs before implementation. A signed historical record alone is insufficient. |
 | WC3 | Cross-consumer shared stream versus independent streams and synchronized registry rollout | Prefer independent consumer-bound streams on the same external service, with common registry/pin policy. If one stream is shared, define serialized writer ownership and fence lagging readers; qualify both consumers without defining helper internals here. |
 | WC4 | Serving-instance exclusion and takeover evidence | Retain one active instance per consumer; require operator-confirmed old-instance shutdown/isolation before replacement. Qualify that exclusion persists throughout authority use. Any future distributed lease must fence signing as well as writes and needs its own design. |
-| WC5 | Option A runbook, first stream bootstrap, witness repair/migration, mode changes and durable pending-commit identity | Require an explicit operator action bound to exact digest, revision, surviving evidence and chosen mode; preserve every tombstone/history claim. Establish the first witnessed head only from independently approved state, never an empty-file heuristic. Define authorization, durable pending/recovery records and loss-of-evidence procedure before activation. |
+| WC5 | Option A runbook, first stream bootstrap, witness repair/migration, mode changes and operator intent recovery authorization | Use externally durable acknowledged intent before Store.Commit, not local pending metadata. Bind recovery to exact intent hash, candidate digest/revision and independent surviving history evidence. Define operator authorization/evidence records, bootstrap and loss-of-evidence procedure before activation. This slice permits completion of the exact candidate; any cancellation/replacement procedure needs a separate explicit decision and MUST NOT be inferred from restored local bytes. |
 
 No service code, socket implementation, vector files, live-account tests,
 network-registry API or deployment change is included in this draft.
