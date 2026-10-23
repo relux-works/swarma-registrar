@@ -14,10 +14,13 @@ verify commit and envelope with the same pins and rule. HS3 accepts stock
 86,400-second access-token target without refresh-token issuance is accepted.
 HS1 records the source-confirmed `algorithm="EdDSA"` configuration correction.
 
+KM1 is bound: the Keymaker reference in §1 uses landed main head
+`f5bbba2281c224c2c120cc422644cc8a1fda1bf8`; the cited helper, peer-UID and enrollment
+contracts have been checked.
+
 Remaining dependencies:
 
 - HS2 / HS4: the chosen reviewed change to the operated homeserver must provide access-token expiry without refresh-token issuance and refuse JWT login for deactivated accounts. Deployment remains blocked until that change is qualified. Specification, vectors and service code continue meanwhile; §11's lock/containment and logout steps remain required.
-- KM1: the Keymaker reference in §1 is cited at `35386512` and bound to the main head landed from PR #1. Re-check it against that landed main head before implementation activation.
 
 These are implementation and qualification dependencies, not unresolved choices
 of signer, leeway, token lifetime or homeserver-fix path. This file records no

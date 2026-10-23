@@ -41,9 +41,9 @@ qualified. Specification, vectors and service code continue meanwhile.
 
 The offline enrollment-publisher signature and protected common pins, stock
 60-second JWT leeway, and 86,400-second access-token target are accepted.
-The Keymaker specification is cited at `35386512`, bound to the main head landed
-from PR #1; its landed-head reference must be re-checked before implementation
-activation. See specification §1, §4.3, §10 and Appendix C.
+The Keymaker specification is bound to landed main head
+`f5bbba2281c224c2c120cc422644cc8a1fda1bf8`; its cited helper, peer-UID and enrollment
+contracts have been checked (KM1). See specification §1, §4.3, §10 and Appendix C.
 
 ## Tools
 

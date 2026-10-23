@@ -20,14 +20,12 @@ to perform work. Humans use a separate identity-provider login path.
 | Enrollment publisher | Offline authority that signs records; registry maintainers publish them through reviewed, signed commits. |
 
 The helper interface belongs to the [Keymaker specification,
-`swarma-keymaker spec/keymaker.md` at `35386512`](https://github.com/relux-works/swarma-keymaker/blob/35386512/spec/keymaker.md), operations
+`swarma-keymaker spec/keymaker.md` at `f5bbba2281c224c2c120cc422644cc8a1fda1bf8`](https://github.com/relux-works/swarma-keymaker/blob/f5bbba2281c224c2c120cc422644cc8a1fda1bf8/spec/keymaker.md), operations
 `hello { versions: [1] }` and `sign_registration { name, aud }`. Keymaker uses
 the framing convention in broker §13.1. This document MUST NOT be treated as a
 second socket or helper-refusal specification. Its `uid_map` format is the data
-contract Keymaker consumes. The reference is bound to the head that lands on
-`swarma-keymaker` main from PR #1; `35386512` is the cited PR head. Before
-implementation activation, the reference MUST be re-checked against the landed
-main head (decision KM1).
+contract Keymaker consumes. The reference is bound to the landed
+`swarma-keymaker` main head cited above (decision KM1).
 
 A station has its own OS account, carrier identity and keys. The registrar
 cannot observe a remote caller's UID; only Keymaker enforces that boundary.
@@ -1253,15 +1251,15 @@ These decisions are settled and normative in the defining sections.
 | HS2 / HS4 | A reviewed change to the operated homeserver must provide access-token expiry without refresh-token issuance and refuse JWT login for deactivated accounts. Deployment is blocked until that change is qualified; specification, vectors and service code continue. | The pinned stock login path does not meet these requirements; the homeserver change is the chosen path. |
 | HS3 | Accept the stock 60-second JWT leeway, including equality; revocation accounts for `exp + 60`. | The accepted bearer exposure matches the inspected validator. |
 | Access-token lifetime | Accept 86,400 seconds without refresh-token issuance. | Use the accepted 24-hour target; deployment still requires the qualified homeserver change. |
-| KM1 | Bind the Keymaker reference to the main head landed from PR #1, cited at `35386512` in §1; re-check against the landed main head before implementation activation. | Keep the helper contract in Keymaker and verify the reference after landing. |
+| KM1 | Bind the Keymaker reference to landed main head `f5bbba2281c224c2c120cc422644cc8a1fda1bf8`, cited in §1. | Keep the helper contract in Keymaker; the landed reference has been verified. |
 | JWT | `nbf=iat` and `exp=iat+120` for every issued JWT. | Keep the issued lifetime fixed independently of proof lifetime. |
 | Components | Registrar owns formats/data semantics; Keymaker owns the helper interface, peer enforcement and host key. | Each normative contract has one component owner. |
 
 ### C.2 Decision status and activation dependencies (informative)
 
 The content review settled the choices below. Remaining dependencies are the
-reviewed homeserver change and its qualification, and the Keymaker landed-head
-reference re-check. They do not block specification, vector or service-code work
+reviewed homeserver change and its qualification. They do not block
+specification, vector or service-code work
 and do not permit an unsupported service activation. E1 is settled in C.1 and
 §4.3; it is not an open question.
 
@@ -1271,7 +1269,7 @@ and do not permit an unsupported service activation. E1 is settled in C.1 and
 | HS2 | The reviewed homeserver change must provide 86,400-second access-token expiry without refresh-token issuance. | Decided; deployment blocked pending that change and its qualification. |
 | HS3 | Accept stock 60-second JWT leeway, including equality; revocation accounts for `exp + 60`. | Accepted; no remaining leeway choice. |
 | HS4 | The reviewed homeserver change must refuse JWT login for deactivated accounts. Keep §11's lock/containment and logout procedure. | Decided; deployment blocked pending that change and its qualification. |
-| KM1 | Use the Keymaker specification cited at `35386512` in §1, bound to the main head landed from PR #1. | Reference bound; landed-main head re-check required before implementation activation. |
+| KM1 | Use the Keymaker specification at landed main head `f5bbba2281c224c2c120cc422644cc8a1fda1bf8` in §1. | Bound; cited helper, peer-UID and enrollment contracts verified at the landed head. |
 | Access-token lifetime | 86,400 seconds without refresh-token issuance. | Accepted; deployment still gated by HS2 qualification. |
 
 Other source-gap choices made for determinism are listed completely by category:
