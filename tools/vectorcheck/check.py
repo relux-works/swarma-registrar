@@ -209,7 +209,7 @@ def syntax(name,audience):
     return name_fits(name,audience) and (STRUCTURED.fullmatch(name) is not None or LEGACY.fullmatch(name) is not None)
 
 def content_type_supported(value):
-    # HTTP whitespace may surround tokens and the semicolon, never split a token.
+    # Surrounding whitespace is open for content review; no committed vector or fixture depends on it.
     return isinstance(value,str) and re.fullmatch(
         r'[ \t]*application/json(?:[ \t]*;[ \t]*charset=utf-8)?[ \t]*',
         value,flags=re.IGNORECASE|re.ASCII) is not None

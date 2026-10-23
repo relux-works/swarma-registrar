@@ -14,7 +14,8 @@ class CheckerRegressions(unittest.TestCase):
         cls.seeds = json.loads((root / 'vectors/keys/seeds.json').read_text())
         check.verify_test_keys(root / 'vectors', cls.seeds)
         expected = {
-            'media-json', 'media-charset', 'media-type-space', 'media-subtype-space',
+            'media-json', 'media-charset', 'media-charset-case',
+            'media-type-space', 'media-subtype-space',
             'leading-hyphen-enrollment', 'leading-hyphen-registration',
             'explicit-structured-invalid', 'enrollment-overlength', 'registration-overlength',
         }
@@ -30,13 +31,15 @@ class CheckerRegressions(unittest.TestCase):
                 except check.Rejected as exc:
                     self.fail(f'{name}: {exc}')
 
-    # Invalid type-token spacing must refuse; ordinary JSON and charset controls accept.
+    # Invalid type-token spacing refuses; plain JSON and both unquoted charset spellings accept.
     def test_media_type_token_boundaries(self):
-        self.verify_fixtures('media-json', 'media-charset', 'media-type-space')
+        self.verify_fixtures('media-json', 'media-charset', 'media-charset-case',
+                             'media-type-space')
 
     # Invalid subtype-token spacing must refuse with the same valid nearby controls.
     def test_media_subtype_token_boundaries(self):
-        self.verify_fixtures('media-json', 'media-charset', 'media-subtype-space')
+        self.verify_fixtures('media-json', 'media-charset', 'media-charset-case',
+                             'media-subtype-space')
 
     # Signed structured UID names accept; explicit-list grammar and mxid cap stay strict.
     def test_signed_enrollment_structured_union(self):

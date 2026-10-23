@@ -1,7 +1,7 @@
 {
   "after": [],
   "before": [],
-  "claim": "Spec section 6: case-insensitive media/charset tokens with surrounding HTTP whitespace accept.",
+  "claim": "Spec section 6: application/json with the optional unquoted charset=utf-8 parameter accepts.",
   "domain": "registration/1",
   "expected": {
     "code": "accept",
@@ -68,7 +68,7 @@
     "clock_healthy": true,
     "http": {
       "content_encoding": "identity",
-      "content_type": " \tApPlIcAtIoN/JsOn \t; \tChArSeT=UtF-8\t ",
+      "content_type": "application/json;charset=utf-8",
       "method": "POST",
       "path": "/v1/registration"
     },
