@@ -791,6 +791,23 @@ that repeats both checks and the complete 4-second hold before fixing its own
 start. No surviving evidence means no admission; an ordinary startup wait is
 not a recovery timeout. Retained nonces MUST NOT be cleared to recover a clock.
 
+On any process-lifetime clock fence, including during startup, the registrar
+MUST stop admitting and follow the normal bounded shutdown drain: join pending
+HTTP handlers and detached audit records, then close the sink only after both
+joins succeed. After successful drain and sink closure it MUST exit with the
+dedicated clock-fence code **75** and fixed diagnostic `registrar: clock fenced`,
+without secrets or paths. Code 75 MUST be distinct from configuration, non-clock
+startup and drain failure exits. A drain failure retains its existing non-zero
+exit and diagnostic, MUST NOT report code 75, and MUST NOT close the sink under
+pending work. The deployment supervisor MUST automatically restart on failure
+only after the previous process has exited, preserving the single-replica premise
+that old admission stops before new launch; a start rate limit MUST bound restart
+loops, and a limit-stopped unit requires operator recovery. The replacement MUST
+repeat both provider checks and the full hold as above. With prompt healthy
+checks, the hold/check contribution is about 4 seconds plus provider sampling;
+drain, supervisor backoff, scheduling and barrier waits add availability cost
+without relaxing safety.
+
 Option A establishes the selected source's NTS status from configuration,
 not authenticated per-source NTS data. Misconfiguration or compromised source/
 configuration evidence can invalidate the assumed UTC bound; this is a residual
@@ -1625,7 +1642,7 @@ not a negative test that can claim detection from equal hashes.
 
 ### B.3 Platform-time provider and startup lifecycle (normative plan; no fixtures yet)
 
-These 27 plans are separate from the unchanged 310 byte rows, B.1 integration
+These 33 plans are separate from the unchanged 310 byte rows, B.1 integration
 plans and B.2 witness plans. T/PT ids do not add vector files or claim executable
 startup qualification. Negative rows precede their resolving positive controls.
 Use one serving instance, an excluded prior instance, otherwise valid registry,
@@ -1667,6 +1684,10 @@ Source-selection negatives do not claim authenticated per-source NTS observation
 | T18 | No in-place clock recovery | After T5/T14/T15/T16/T17, restore good evidence, acknowledge and wait, but do not restart | Original process never reopens, resets its barrier or releases a JWT | PT4 |
 | T19 | Wall progress cannot complete hold | Advance UTC by 4 seconds while only 0.5 monotonic seconds elapse; attempt to fix start | Still no qualified start or admission; only monotonic elapsed time counts | PT1 |
 | T20 | Only shared production provider supplies evidence | No provider sample, but a production path substitutes a local healthy flag or unqualified synchronization status | Startup fenced; test fixtures do not authorize a production bypass | PT1 |
+| T21 | Serving after a lifetime fence | Fence a serving process, offer fresh otherwise valid proofs before/during drain, and restore provider health before it exits | No new admission or JWT; existing late accounting follows the retention rules above. Continuing to serve fails; successful drain leads to code 75, never in-place reopening | PT8 |
+| T22 | Replacement launched before old exit (deployment negative) | Supervisor launches the replacement while the fenced old process is still draining, even if old admission has stopped and new checks appear healthy | Deployment qualification fails the exit-before-launch premise; replacement admission MUST NOT be enabled | PT8 |
+| T23 | Drain failure cannot masquerade as a clock exit | After a clock fence, independently inject a failed/timed-out handler join or detached-audit drain; attempt code 75 or sink closure with pending work | Existing shutdown failure remains non-zero (currently 1), with `registrar: shutdown failed`; no code 75 or premature sink closure, no JWT | PT8 |
+| T24 | Rate-limit stop requires operator recovery | Failed starts exhaust the configured start limit and stop the unit; restore provider health and wait past the limit interval without operator action | No automatic restart or admission after the limit stop; healthy evidence and elapsed time do not replace operator recovery | PT9 |
 | PT1 | Healthy fixed start and new barrier | Both provider checks healthy/unexpired within cap; hold exactly 4 monotonic seconds; fixed UTC=1004.3, barrier=1035; at now=1035 offer fresh iat=1035 and nonce | Admit otherwise valid proof once; one reservation/debit per budget, one JWT | PR1 |
 | PT2 | Inclusive provider boundaries | At fixed-instant check all sources nts, selected name or address matches; leap Normal, sync age=2048, offset=+0.5 or -0.5, root distance=1, delta_sample=1.5; authority fresh; initial check also passed, full hold completed | Provider gates and startup pass at inclusive bounds; fresh proof at the barrier admits | PT1 |
 | PT3 | Small new sample retains common hold | T4 old process/launch readings; new delta_sample=0.1 but hold=4, fixed UTC=1004.61, barrier=1035; at now=1035 replay old iat=1032 then use fresh iat=1035 and nonce | Old proof clock_skew without reservation/debit; fresh control admits once | PT1 |
@@ -1674,6 +1695,8 @@ Source-selection negatives do not claim authenticated per-source NTS observation
 | PT5 | Authority not yet expired: separate startup/admission controls | (a) Sample UTC=1000; first check UTC=1295.999 (age=295.999); hold 4; fixed recheck UTC=1299.999 (age=299.999), barrier=1330. Refresh authority before UTC=1300; later at UTC=1330 use fresh iat=1330 and nonce. (b) Already-qualified process fixed at UTC=1000, barrier=1031, sample UTC=1000; at UTC=1299.999 (age=299.999) offer fresh iat=1299 and nonce, finish release before UTC=1300, then refresh before age=300 | (a) Near-expiry startup check passes with no immediate JWT; later proof admits under refreshed authority. (b) Barrier/skew and unexpired authority hold throughout issuance; one JWT. Each issuance reserves/debits once; all other provider gates healthy | PT1 |
 | PT6 | Normal monotonic progression | Qualified process, healthy fresh provider evidence; UTC advances continuously with monotonic, including repeated floored integer readings | No false backward-step fence; fresh proof at/after barrier admits | PT1 |
 | PT7 | Client backoff includes hold | Healthy fixed start after H=4; client is 30 seconds behind; by fixed instant+61 seconds (initial check+65, ignoring added latency) request new proof and nonce | Fresh proof satisfies barrier/skew; old proof is not rehabilitated; extras require stated margin, not indefinite proof replay | PT1 |
+| PT8 | Supervised clock recovery | Fence -> stop admission -> join pending handlers and detached audit -> close sink -> exit 75 with `registrar: clock fenced` -> supervisor restart after old exit within the start budget. New initial UTC=1000; both checks pass, hold=4 monotonic seconds, fixed UTC=1004, barrier=1035; at UTC=1035 use fresh iat=1035 and nonce, all other gates valid | No operator needed for this clock restart; no old/new overlap, no JWT before the new barrier; the new proof admits once, with one reservation/debit per budget | PT1 |
+| PT9 | Operator recovery after start-limit stop | T24 unit remains stopped; operator diagnoses and repairs the cause, clears the start-limit failure and explicitly starts it; repeat the healthy PT8 path with fresh evidence | Restart resumes only after operator action and old exit; both checks/full hold still required, fresh proof at the new barrier admits once | PT8 |
 
 A future lifecycle harness must kill bounded controls that (a) skip/shorten the
 hold at T2/T3, (b) use only the new sample at T4, (c) ignore the second check at
@@ -1817,6 +1840,8 @@ concerns time-source evidence, separately from §4.5 reconciliation option A/C.
 | Fix start only after the hold and successful second provider check | Proposed for content review: preserve the floor(fixed start)+31 barrier while checking freshness/health at its derivation. The old process must stop admitting before launch. |
 | Reject variable hold delta_cap+delta_sample+1 | Rejected alternative: 2.6 seconds at sample=0.1, up to 4 at sample=1.5, versus fixed 4; it adds sample/hold/recheck coupling with no extra safety. New-sample-only 2*delta_sample+1 is unsafe, not an optimization. |
 | Any detected backward UTC step fences the registrar for its process lifetime | Proposed for content review: stricter than the shared >1-second incident/hold; health loss and authority expiry have the same permanent fence. |
+| Clock-fence exit code 75 and fixed `registrar: clock fenced` diagnostic after successful shutdown drain | Proposed dedicated type: distinct from configuration/non-clock startup/drain failures (currently generic exit 1). Drain failure retains its own failure and never becomes a successful clock-fence exit. Implementation belongs to the evidence-source slice. |
+| Supervisor example: Restart=on-failure, RestartSec=2s, StartLimitIntervalSec=60s, StartLimitBurst=5 | Recorded operating choice for deployment review: start only after old exit, bound restart loops, and require the operator after a limit stop. Values may be tuned with a finite rate budget; they never shorten the hold or waive other admission gates. |
 | Client horizon 4+61=65 seconds plus evidence/scheduling/transport margin | Proposed for content review: replace the former 61-second startup budget; Keymaker clients obtain a new proof/nonce and diagnose persistent refusal rather than replay indefinitely. |
 | Preserve 310 legacy byte fixtures as abstract post-hold admission inputs | Explicitly approved fixture boundary: R125 is not a realizable new-start trace. B.3 alone plans real provider/hold lifecycle qualification. No vector bytes or row text change. |
 

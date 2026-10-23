@@ -211,6 +211,46 @@ establish clock ordering, off-host durability or deployment readiness. The
 loopback issuance control injects trusted fixed-time evidence and an exact-hash
 in-memory remote; these test adapters are not selectable in the executable.
 
+### Deployment: supervised clock recovery (target)
+
+The [clock recovery requirement](spec/registrar.md#7-time-replay-concurrency-and-limits-normative)
+stops admission on a process-lifetime clock fence, joins pending handlers and
+detached audit work as on shutdown, and closes the sink only after the joins.
+Successful drain then exits with proposed code **75** and the fixed diagnostic
+`registrar: clock fenced`. Drain failure retains its existing non-zero failure
+(currently 1) and shutdown diagnostic; it must not be reported as code 75.
+The supervisor launches a replacement only after the old process has exited.
+
+Example unit fragment, merged into the deployment's service unit:
+
+```ini
+[Unit]
+StartLimitIntervalSec=60s
+StartLimitBurst=5
+
+[Service]
+Restart=on-failure
+RestartSec=2s
+```
+
+Keep exit 75 classified as failure so `Restart=on-failure` can restart it.
+[systemd.service](https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html#Restart=)
+defines restart behavior and delay; [systemd.unit](https://www.freedesktop.org/software/systemd/man/latest/systemd.unit.html#StartLimitIntervalSec=)
+defines the start budget. These example values are recorded in Appendix C.
+After a start-limit stop, the operator must diagnose the cause and explicitly
+recover/start the unit; restored health or elapsed time alone does not restart it.
+With prompt healthy checks each clock restart adds about 4 seconds of hold plus
+provider sampling; drain, the example 2-second backoff, scheduling and barrier
+waits are separate availability costs and do not weaken safety.
+
+The binary **does not yet implement the clock-fence exit** or this supervised
+recovery path; it belongs to the evidence-source implementation slice. The
+fragment does not establish deployment readiness: verified registry authority,
+signing and authenticated audit gates still apply. In particular, the current
+binary's interactive per-process reconciliation above is not supplied or bypassed
+by automatic clock recovery. Existing legacy vector rows, including R132's
+operator wording, remain abstract admission inputs; B.3 plans the real lifecycle.
+
 ## Tools
 
 | Tool | Purpose | Exact entry point | Output |
