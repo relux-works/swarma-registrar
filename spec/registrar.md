@@ -19,12 +19,15 @@ to perform work. Humans use a separate identity-provider login path.
 | a2a CLI | Carries helper proof to registrar and login JWT to homeserver. Holds its resulting access token, never the host or registrar private key. |
 | Enrollment publisher | Offline authority that signs records; registry maintainers publish them through reviewed, signed commits. |
 
-The helper interface belongs to **Keymaker specification**, operations
+The helper interface belongs to the [Keymaker specification,
+`swarma-keymaker spec/keymaker.md` at `35386512`](https://github.com/relux-works/swarma-keymaker/blob/35386512/spec/keymaker.md), operations
 `hello { versions: [1] }` and `sign_registration { name, aud }`. Keymaker uses
 the framing convention in broker §13.1. This document MUST NOT be treated as a
 second socket or helper-refusal specification. Its `uid_map` format is the data
-contract Keymaker consumes. An implementation MUST bind the exact Keymaker
-specification revision before activation; its publication is an open dependency.
+contract Keymaker consumes. The reference is bound to the head that lands on
+`swarma-keymaker` main from PR #1; `35386512` is the cited PR head. Before
+implementation activation, the reference MUST be re-checked against the landed
+main head (decision KM1).
 
 A station has its own OS account, carrier identity and keys. The registrar
 cannot observe a remote caller's UID; only Keymaker enforces that boundary.
@@ -229,13 +232,17 @@ identity remotely. Helper behavior when executable identity cannot be proven
 is owned by Keymaker; the check MUST NOT silently become UID-only there.
 All `uid_map` schema/consistency failures yield `enrollment_malformed`.
 
-### 4.3 Phase-0 signatures and pins (decisions P3, P5) (normative)
+### 4.3 Phase-0 signatures and pins (decisions P3, P5, E1) (normative)
 
 The registry MUST be read from a configured local, non-agent-writable path at
 an explicitly configured full Git commit object id. Registrar and Keymaker
-MUST use the same configured revision, audience and verification rule. Location and
-transport of that registry are deployment matters. Neither service follows a
-mutable branch, fetches implicitly, or treats a working tree as authority.
+MUST use the same configured revision, audience, pins and verification rule.
+The pin configuration (registry-maintainer verification-key allowlist, approved
+registry revision and enrollment-publisher public key) MUST be root-owned and
+MUST NOT be writable by agent accounts. Both services MUST verify the signed
+commit and the envelope signature with these same pins and the same rule.
+Location and transport of that registry are deployment matters. Neither service
+follows a mutable branch, fetches implicitly, or treats a working tree as authority.
 
 The pinned commit MUST have a valid signature under an out-of-band configured
 registry-maintainer verification-key allowlist, and MUST be the reviewed
@@ -243,11 +250,12 @@ protected-branch revision approved by the operator. A valid signature alone
 does not prove review; the deployment pin is the operator's approval evidence.
 Commit-author text, an embedded key and mere object existence are not trust.
 
-To preserve the signed-envelope construction, **this draft additionally requires
-an offline Ed25519 enrollment-publisher signature** in `sig`. The publisher is
-a record-signing key class, separate from host keys, JWT keys, broker roots and
-future phone/device keys. The verifier knows exactly one current publisher
-public key in the §3.1 `ed25519:` encoding from protected, out-of-band configuration; there is no body-supplied
+Phase 0 MUST carry a real enrollment-envelope signature in `sig`, made with
+one offline Ed25519 enrollment-publisher key (decision E1). The owner holds this
+key offline. The publisher is a record-signing key class, separate from host
+keys, JWT keys, broker roots and future phone/device keys. The verifier knows
+exactly one current publisher public key in the §3.1 `ed25519:` encoding, pinned
+out of band in the root-owned configuration above; there is no body-supplied
 issuer or key-selection hint. No private publisher key resides at the registrar
 or helper. Rotation of this pin requires the operator to re-sign the loaded
 record history and advance the approved registry pin atomically while retaining
@@ -255,9 +263,8 @@ body/sequence/tombstone history. It MUST NOT reset rollback state. Publisher
 rotation changes envelope signatures but not record ids.
 
 The signed commit is the phase-0 enrollment authority; the envelope signature
-is an additional integrity check, not self-enrollment. This extra offline pin
-is a proposal for a source gap (Appendix C); it does not implement `sigs[]` or
-pretend a software key is a presence-gated owner signature.
+is an additional integrity check, not self-enrollment. This settled phase-0
+rule does not implement `sigs[]` or claim a presence-gated owner-device signature.
 
 ### 4.4 Snapshot selection and rollback (normative)
 
@@ -658,8 +665,15 @@ validate_nbf = true
 validate_signature = true
 ```
 
+The operated homeserver MUST provide access-token expiry after 86,400 seconds
+without refresh-token issuance and MUST refuse JWT login for deactivated
+accounts. A reviewed homeserver change MUST provide both requirements and be
+qualified before deployment (§10.3); no configuration keys for that change are
+specified here. Specification, vectors and service implementation may continue
+while deployment is blocked.
+
 Agent login requests MUST NOT request refresh tokens; credentials MUST NOT
-persist one. The required access-token lifetime is 86,400 seconds, with no
+persist one. The accepted access-token lifetime is 86,400 seconds, with no
 agent refresh-token issuance. Setting `refresh_token_ttl = 0` MUST NOT be used
 as a supposed refresh-token disable switch: in this version it means no expiry
 of a refresh token. Human SSO provisioning is separately operator-controlled;
@@ -699,19 +713,20 @@ acceptance checks.
 
 **Access-token expiry without refresh tokens is not supported by stock
 v1.9.3's inspected login path.** The `access_token_ttl` setting alone cannot
-meet §10.1. Deployment MUST remain blocked until an independently reviewed
-homeserver change or a verified alternative version provides expiry without
-refresh-token issuance. Discarding a refresh token client-side, requesting one
-secretly, or asserting a CLI timeout is server-side expiry MUST NOT be used as
-a substitute. The operator must resolve this conflict (Appendix C).
+meet §10.1. The chosen path is a reviewed change to the operated homeserver
+providing both access-token expiry without refresh-token issuance and refusal
+of JWT login for deactivated accounts. Deployment MUST remain blocked until
+that change is qualified. Specification, vectors and service code continue
+meanwhile. Discarding a refresh token client-side, requesting one secretly, or
+asserting a CLI timeout is server-side expiry MUST NOT be used as a substitute.
 
-The 60-second JWT leeway is an explicit extension of nominal bearer validity,
-not the registrar's 30-second proof skew. The operator MUST accept that exposure
-or qualify a homeserver change with zero/configurable leeway before activation.
+The stock 60-second JWT leeway is accepted (decision HS3). It extends nominal
+bearer validity and is separate from the registrar's 30-second proof skew.
 Revocation MUST account for a pending JWT being usable through `exp + 60`.
-A claim that the stock homeserver rejects deactivated users' JWT logins is also
-unsupported by this version. These are source-confirmed divergences from a
-naive reading of the CIP, not unverified claims. No live compatibility claim is
+The pinned stock version does not reject JWT login for deactivated accounts;
+that refusal is a requirement of the chosen homeserver change, not a claim
+about stock behavior. These are source-confirmed divergences from a naive
+reading of the CIP, not unverified claims. No live compatibility claim is
 made. Reload atomicity, revocation ordering and end-to-end account behavior
 still require isolated qualification; never test against a production server.
 
@@ -1196,7 +1211,7 @@ this plan. Integration cases are separate from the two-domain byte vectors:
 | I4 | Required JWT issuer, audience, exp and nbf checks apply. | Missing/wrong claims refuse; valid one-audience token passes. |
 | I5 | Allowed alg is EdDSA with configured Ed25519 public PEM. | HS256/none and mismatched key refuse; typ/kid are not assumed server gates. |
 | I6 | Homeserver exp+60 and nbf-60 equality boundaries match inspected version. | exp+61 and nbf-61 refuse; a modified version records its own exact bounds. |
-| I7 | A qualified replacement issues 24-hour access tokens without refresh tokens. | Stock v1.9.3 no-refresh login is an expected unsupported control, never a green expiry claim. |
+| I7 | The qualified reviewed homeserver change issues 86,400-second access tokens without refresh tokens. | Stock v1.9.3 no-refresh login is an expected unsupported control, never a green expiry claim. |
 | I8 | Coordinated registrar/homeserver key switch admits only current signatures. | Old signature refuses after switch; existing access tokens require separate logout. |
 | I9 | CLI atomically persists exactly three credential fields with mode 0600. | JWT, password, refresh token and secret-bearing errors never reach file, stdout or logs. |
 | I11 | Keymaker refuses a wrong audience before producing a proof. | Correct configured audience and permitted name produce a registrar-verifiable proof; refusal name belongs to Keymaker. |
@@ -1204,6 +1219,7 @@ this plan. Integration cases are separate from the two-domain byte vectors:
 | I10 | Restart refuses the previously accepted +30-second-future proof with an empty nonce cache. | Fresh proof at/after the skew-covering barrier passes; waiting never rehabilitates the old proof. |
 | I13 | `second_login_has_same_mxid`: repeat the identical JWT under the pinned state below; assert `(second.status, second.user_id) == (200, first.user_id)`. | A signature-corrupted token is the separate invalid-token control from I1; no single-use jti guarantee is claimed. |
 | I14 | Configured limiter capacities of zero prevent admission startup as a configuration error. | Capacities of 1 start successfully and follow PR25/R129; no infinite Retry-After is issued. |
+| I15 | The qualified reviewed homeserver change refuses an otherwise valid JWT login for a deactivated account. | The same valid JWT for that account while active and unlocked succeeds; the deactivated-account refusal creates no device or access token. |
 
 I13 replaces the former R113 homeserver-replay row; it is an integration
 assertion, not a two-domain format verdict. Pin the homeserver to the §10.2
@@ -1233,23 +1249,30 @@ These decisions are settled and normative in the defining sections.
 | P2 | `uid_map` is required on every station host. Group-only mode is removed entirely; there is no legacy flag. | Per-station OS accounts must define the helper authorization boundary. |
 | P3 | Phase 0 trusts a pinned, verified signed-commit registry revision; any `sigs` member is refused. The target is per-record owner-device signing. | Publish a verifiable phase-0 authority while keeping future owner-signature semantics explicit. |
 | P5 | Registrar and Keymaker read the same pinned revision from configured local paths, with the same verification rule; location is deployment-owned. | Do not bake registry placement or mutable fetching into the admission protocol. |
+| E1 | Phase 0 requires one offline Ed25519 enrollment-publisher signature; the owner holds the key offline. Root-owned, non-agent-writable configuration pins the publisher key out of band, the maintainer allowlist and approved revision; both services verify commit and envelope with the same pins and rule (§4.3). | Accepted by the content review; preserve signed envelopes alongside signed-commit authority. |
+| HS2 / HS4 | A reviewed change to the operated homeserver must provide access-token expiry without refresh-token issuance and refuse JWT login for deactivated accounts. Deployment is blocked until that change is qualified; specification, vectors and service code continue. | The pinned stock login path does not meet these requirements; the homeserver change is the chosen path. |
+| HS3 | Accept the stock 60-second JWT leeway, including equality; revocation accounts for `exp + 60`. | The accepted bearer exposure matches the inspected validator. |
+| Access-token lifetime | Accept 86,400 seconds without refresh-token issuance. | Use the accepted 24-hour target; deployment still requires the qualified homeserver change. |
+| KM1 | Bind the Keymaker reference to the main head landed from PR #1, cited at `35386512` in §1; re-check against the landed main head before implementation activation. | Keep the helper contract in Keymaker and verify the reference after landing. |
 | JWT | `nbf=iat` and `exp=iat+120` for every issued JWT. | Keep the issued lifetime fixed independently of proof lifetime. |
 | Components | Registrar owns formats/data semantics; Keymaker owns the helper interface, peer enforcement and host key. | Each normative contract has one component owner. |
 
-### C.2 Open questions (informative)
+### C.2 Decision status and activation dependencies (informative)
 
-The source-gap proposals below bind this draft's vectors until content review
-changes them. They do not reopen P2/P3/P5 and do not permit an unsupported
-service activation. Changing a proposal requires updating its rules and plan.
+The content review settled the choices below. Remaining dependencies are the
+reviewed homeserver change and its qualification, and the Keymaker landed-head
+reference re-check. They do not block specification, vector or service-code work
+and do not permit an unsupported service activation. E1 is settled in C.1 and
+§4.3; it is not an open question.
 
-| Question | Draft position and reason | Status |
+| Item | Decision | Status |
 | --- | --- | --- |
-| E1 | Keep a real phase-0 enrollment envelope signature using a separately pinned offline Ed25519 enrollment publisher. CIP-0019 defines a signed envelope but no phase-0 signer/key-selection rule. | Proposed envelope detail for content review; additional publisher pin needs approval. |
-| HS1 | Explicit `algorithm="EdDSA"` is required in addition to `format="EDDSA"`; the source independently selects the algorithm and defaults to HS256. | Source-confirmed correction to the CIP configuration example. |
-| HS2 | Require 24-hour access expiry and no refresh-token issuance; stock v1.9.3 cannot supply both. Choose an upstream correction or a qualified alternative version. | Blocking operator/platform decision before deployment; no workaround proposed. |
-| HS3 | Document stock 60-second JWT leeway, including equality, rather than asserting a strict 120-second accepted lifetime. | Operator must accept the longer bearer exposure or request a qualified change. |
-| HS4 | Deactivation alone does not gate JWT login in the pinned source. Require lock/containment while outstanding JWTs remain usable and subsequent logout. | Procedure needs isolated qualification or a corrected homeserver version. |
-| KM1 | Registrar owns data semantics; Keymaker owns socket, refusal and peer/executable enforcement. No second helper implementation/layout is introduced here. | Exact published Keymaker revision/link required before implementation activation. |
+| HS1 | Explicit `algorithm="EdDSA"` is required in addition to `format="EDDSA"`; the source independently selects the algorithm and defaults to HS256. | Source-confirmed configuration correction. |
+| HS2 | The reviewed homeserver change must provide 86,400-second access-token expiry without refresh-token issuance. | Decided; deployment blocked pending that change and its qualification. |
+| HS3 | Accept stock 60-second JWT leeway, including equality; revocation accounts for `exp + 60`. | Accepted; no remaining leeway choice. |
+| HS4 | The reviewed homeserver change must refuse JWT login for deactivated accounts. Keep §11's lock/containment and logout procedure. | Decided; deployment blocked pending that change and its qualification. |
+| KM1 | Use the Keymaker specification cited at `35386512` in §1, bound to the main head landed from PR #1. | Reference bound; landed-main head re-check required before implementation activation. |
+| Access-token lifetime | 86,400 seconds without refresh-token issuance. | Accepted; deployment still gated by HS2 qualification. |
 
 Other source-gap choices made for determinism are listed completely by category:
 
@@ -1282,7 +1305,6 @@ Other source-gap choices made for determinism are listed completely by category:
 | JWT iat is issuance time; no kid; PKCS#8 private / SPKI public PEM | Separate proof freshness from fixed token lifetime and match one-key homeserver verification. |
 | Local durable audit plus off-host acknowledgement before release; 5-second deadline | Off-host audit cannot be claimed from best-effort buffering, and sink stalls must be bounded. |
 | Typed runtime/audit/registry errors and loader-only diagnostics | CIP lists admission refusals but leaves infrastructure and enrollment validation failures unnamed. |
-| Access-token target 86,400 seconds | CIP recommends 12–24 hours; use its recommended upper endpoint while retaining the explicit stock-version blocker. |
 
 No service code, socket implementation, vector files, live-account tests,
 network-registry API or deployment change is included in this draft.

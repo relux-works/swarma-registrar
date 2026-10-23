@@ -13,8 +13,8 @@ Lore: **Morpheus** — the registrar that admits identities to the carrier.
 
 The design reference is [CIP-0019](https://github.com/relux-works/curator-spec/blob/main/cips/CIP-0019-carrier-admission-by-public-key.md).
 The [module specification](spec/registrar.md) defines exact draft rules,
-ordered refusals and a negative-first vector plan. Settled decisions, remaining
-proposals and homeserver activation blockers are in [open questions](UNRESOLVED_QUESTIONS.md).
+ordered refusals and a negative-first vector plan. Settled decisions and remaining
+activation dependencies are in [open questions](UNRESOLVED_QUESTIONS.md).
 
 ## End state
 
@@ -26,16 +26,24 @@ transitional; the reusable core is key proof → enrollment → carrier credenti
 | Path | Purpose |
 | --- | --- |
 | `spec/registrar.md` | Draft normative formats, HTTP API, registry rules, source findings and vector plan. |
-| `UNRESOLVED_QUESTIONS.md` | Pending content decisions and activation dependencies. |
+| `UNRESOLVED_QUESTIONS.md` | Remaining homeserver and Keymaker activation dependencies. |
 | `vectors/` (planned) | Canonical and negative registration/enrollment vectors. |
 | `cmd/registrar` (planned) | Registrar service binary in Go. |
 
 ## Status
 
 Specification only. No service or vector implementation exists yet. Source
-inspection of tuwunel v1.9.3 found that access-token expiry without refresh-token
-issuance needs a homeserver correction or a qualified alternative version;
-`access_token_ttl` alone does not meet that requirement. See specification §10.
+inspection of tuwunel v1.9.3 found that `access_token_ttl` alone cannot provide
+access-token expiry without refresh-token issuance, and JWT login does not
+refuse deactivated accounts. A reviewed change to the operated homeserver must
+provide both requirements; deployment stays blocked until that change is
+qualified. Specification, vectors and service code continue meanwhile.
+
+The offline enrollment-publisher signature and protected common pins, stock
+60-second JWT leeway, and 86,400-second access-token target are accepted.
+The Keymaker specification is cited at `35386512`, bound to the main head landed
+from PR #1; its landed-head reference must be re-checked before implementation
+activation. See specification §1, §4.3, §10 and Appendix C.
 
 ## Tools
 
