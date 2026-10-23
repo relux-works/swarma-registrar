@@ -624,6 +624,10 @@ func registrationCase(r row) M {
 		mapv(f["http"])["content_type"] = "app lication/json"
 	case "R137":
 		mapv(f["http"])["content_type"] = "application/j son"
+	case "R138":
+		mapv(f["http"])["content_type"] = `application/json;charset="utf-8"`
+	case "R139":
+		mapv(f["http"])["content_type"] = "application/json;charset = utf-8"
 	case "PR3": // Baseline lifetime is exactly 120.
 	case "PR4", "PR21":
 		body["exp"] = ts(61)
@@ -658,6 +662,12 @@ func registrationCase(r row) M {
 		f["name_capacity"] = 1
 	case "PR30":
 		mapv(f["http"])["content_type"] = "Application/JSON;Charset=UtF-8"
+	case "PR31":
+		mapv(f["http"])["content_type"] = "application/json;charset=utf-8"
+	case "PR32":
+		mapv(f["http"])["content_type"] = "application/json ;\tcharset=utf-8"
+	case "PR33":
+		mapv(f["http"])["content_type"] = " \tapplication/json;charset=utf-8\t "
 	}
 	env := envelope(body, host)
 	n, _ := strconv.Atoi(strings.TrimPrefix(r.ID, "R"))

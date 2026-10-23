@@ -26,8 +26,8 @@ transitional; the reusable core is key proof → enrollment → carrier credenti
 | Path | Purpose |
 | --- | --- |
 | `spec/registrar.md` | Draft normative formats, HTTP API, registry rules, source findings and vector plan. |
-| `UNRESOLVED_QUESTIONS.md` | Remaining activation dependencies and the open media-type whitespace question. |
-| `vectors/` | 305 committed negative-first registration/enrollment fixtures and public test keys; all 305 Appendix B rows are instantiated. |
+| `UNRESOLVED_QUESTIONS.md` | Remaining activation dependencies and settled media-type decisions. |
+| `vectors/` | 310 committed negative-first registration/enrollment fixtures and public test keys; all 310 Appendix B rows are instantiated. |
 | `internal/` | Go byte formats, strict signatures, registration/enrollment validation and in-memory registry snapshots. |
 | `internal/adapters/` | Offline pinned Git, durable local state/audit, file signer, clock evidence boundary and strict startup configuration. |
 | `cmd/registrar` (planned) | Registrar service binary in Go. |
@@ -38,7 +38,7 @@ Service (in progress): the Go core implements CCJ-1, signed envelopes, strict
 key/signature checks, stateless registration/enrollment validation, in-memory
 registry snapshots, an internal admission core and a net/http handler with
 injected dependencies.
-The repository also contains 305 offline format vectors, with a Go generator
+The repository also contains 310 offline format vectors, with a Go generator
 and an independent Python checker. No service listener exists yet. These
 fixtures do not qualify a running service or homeserver.
 Source inspection of tuwunel v1.9.3 found that `access_token_ttl` alone cannot provide
@@ -93,7 +93,7 @@ automatically.
 | Go 1.26, Git and OpenSSH ssh-keygen | Check local adapters and internal packages; create disposable signed Git fixtures with generated test keys. | `GOMAXPROCS=2 go test ./internal/...`; `GOMAXPROCS=2 go vet ./...`; focused adapter checks: `go test ./internal/adapters` | Terminal verdicts; fixture files in Go's temporary directory (set `TMPDIR` to a scratch directory). No network. |
 | Go (standard library) | Regenerate vectors or check exact committed bytes and file set. | `GOMAXPROCS=2 go run ./tools/vectorgen`; `GOMAXPROCS=2 go run ./tools/vectorgen -check` | `vectors/registration-1/`, `vectors/enrollment-1/`, `vectors/keys/seeds.json`, `vectors/keys/public-keys.json`; check mode writes nothing. |
 | Python 3 with cryptography | Independently check CCJ-1, cryptography, ordered outcomes, JWT bytes and state. | `python3 tools/vectorcheck/check.py` (dependencies: `python3 -m pip install -r tools/vectorcheck/requirements.txt`) | Terminal verdicts; writes nothing. |
-| Python unittest | Check signed HTTP media-token and structured-name regressions against the independent checker. | `python3 -B -m unittest discover -s tools/vectorcheck -p test_regressions.py -v` | Terminal verdicts; fixtures under `tools/vectorcheck/fixtures/` stay separate from the 305 planned vectors. |
+| Python unittest | Check signed HTTP media-token and structured-name regressions against the independent checker. | `python3 -B -m unittest discover -s tools/vectorcheck -p test_regressions.py -v` | Terminal verdicts; fixtures under `tools/vectorcheck/fixtures/` stay separate from the 310 planned vectors. |
 | Git | Inspect scope and check documentation whitespace. | `git diff --check`; `git diff --stat`; `git diff -- spec/registrar.md README.md UNRESOLVED_QUESTIONS.md` | Terminal diagnostics and diff; no generated repository files. |
 | curl | Retrieve the pinned public validator source for inspection. | `mkdir -p .temp/spec-source-review` then `curl --fail --location https://raw.githubusercontent.com/Keats/jsonwebtoken/900010fb1be550ec2cfa8c32038eb154f9ef56d7/src/validation.rs --output .temp/spec-source-review/validation.rs` | Source in the created task-scoped scratch directory. |
 | Python 3 | Count the planned vector rows in the draft. | `python3 -c 'from pathlib import Path; s=Path("spec/registrar.md").read_text().split("## Appendix B.")[1].split("### B.1")[0]; print(sum(line.startswith("\u007c ") for line in s.splitlines())-2)'` | Terminal count only. |
@@ -121,8 +121,9 @@ process ID and retained audit-chain head. The internal/httpapi package provides
 `httpapi.New(admitter)` and a standard `net/http` Handler for checks 1–7 at
 `POST /v1/registration`. Mount it directly to preserve routing refusal behavior.
 It bounds received bodies, audits early refusals and writes safe JSON with
-no-store headers. Surrounding media-header whitespace remains unspecified;
-implementation comments describe the current MIME parser behavior. Tests use
+no-store headers. Section 6 now fixes media-header OWS boundaries and requires
+unquoted charset values. HTTP implementation alignment remains pending; the
+new media vectors are stage-pending in the Go conformance harness. Tests use
 `httptest` without a listener. HTTPS, transport deadlines, ingress limits and
 concrete clock, signer, storage and off-host adapters belong to deployment.
 Registration parsing verifies schema, id and signature in that
@@ -164,7 +165,7 @@ inputs and exact refusal, JWT and state expectations without expanding Appendix 
 The Go conformance harness executes all 139 enrollment-domain rows, including
 101 complete public-loader scenarios and the retained envelope, signature and
 codec checks. All 96 formerly deferred enrollment rows reach landed checks.
-Registration has 86 executed rows and 80 named pending stages; these counts do
+Registration has 86 executed rows and 85 named pending stages; these counts do
 not qualify HTTP, admission, clock or audit behavior.
 
 Loader scenarios explicitly classify bootstrap versus reload. Legacy bootstrap

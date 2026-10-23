@@ -84,6 +84,11 @@ type pendingCase struct {
 // admission or registry load. R106 deliberately masks an ID mismatch with an
 // audit override; its core-prefix expectation is separate from the final code.
 var pendingRows = map[string]pendingCase{
+	"R138": {"http/media (quoted charset refusal awaits HTTP alignment)", "registration", "accept"},
+	"R139": {"http/media (equals whitespace refusal awaits HTTP alignment)", "registration", "accept"},
+	"PR31": {"http/media + admission/JWT-release", "audience", "accept"},
+	"PR32": {"http/media + admission/JWT-release", "audience", "accept"},
+	"PR33": {"http/media + admission/JWT-release", "audience", "accept"},
 	"R136": {"http/media", "registration", "accept"},
 	"R137": {"http/media", "registration", "accept"},
 	"PR28": {"admission/JWT", "audience", "accept"},

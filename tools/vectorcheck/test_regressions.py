@@ -17,6 +17,16 @@ class CheckerRegressions(unittest.TestCase):
         expected = {
             'media-json', 'media-charset', 'media-charset-case',
             'media-type-space', 'media-subtype-space',
+            'media-semicolon-ows',
+            'media-field-ows',
+            'media-combined-ows',
+            'media-quoted-charset',
+            'media-quoted-charset-case',
+            'media-equals-space',
+            'media-equals-left-space',
+            'media-equals-right-tab',
+            'media-charset-name-space',
+            'media-charset-value-space',
             'leading-hyphen-enrollment', 'leading-hyphen-registration',
             'explicit-structured-invalid', 'enrollment-overlength', 'registration-overlength',
         }
@@ -46,6 +56,39 @@ class CheckerRegressions(unittest.TestCase):
     # New planned headers carry their exact token witnesses and ordered outcomes/state.
     def test_planned_media_token_boundaries(self):
         self.verify_rows('PR1', 'PR30', 'R136', 'R137')
+
+    # The adopted media rows pin exact quoted, assignment and OWS witnesses.
+    def test_planned_media_ruling(self):
+        self.verify_rows('PR31', 'PR32', 'PR33', 'R138', 'R139')
+
+    # SP/HTAB around separators/fields accept; either side of '=' still refuses
+    # with no JWT or accounting change, using otherwise identical signed bodies.
+    def test_media_ows_boundaries(self):
+        self.verify_fixtures('media-json', 'media-charset', 'media-semicolon-ows',
+                             'media-field-ows', 'media-combined-ows', 'media-equals-space',
+                             'media-equals-left-space', 'media-equals-right-tab')
+
+    # Unquoted charset tokens accept; quoting either case refuses with no JWT,
+    # no reservation/debit and unchanged authority, as the §6 narrowing requires.
+    def test_media_unquoted_charset(self):
+        self.verify_fixtures('media-charset', 'media-charset-case',
+                             'media-quoted-charset', 'media-quoted-charset-case')
+
+    # Parameter tokens cannot contain whitespace, alongside a valid unquoted control.
+    def test_media_parameter_tokens(self):
+        self.verify_fixtures('media-charset', 'media-charset-name-space',
+                             'media-charset-value-space')
+
+    # The media predicate permits only SP/HTAB at OWS boundaries; this focused
+    # check does not qualify a real HTTP parser or exercise admission state.
+    def test_media_ows_is_only_sp_htab(self):
+        for whitespace, supported in [(' ', True), ('\t', True), ('\r', False),
+                                     ('\n', False), ('\v', False), ('\f', False),
+                                     ('\u00a0', False)]:
+            for header in [whitespace+'application/json'+whitespace,
+                           'application/json'+whitespace+';'+whitespace+'charset=utf-8']:
+                with self.subTest(header=header):
+                    self.assertEqual(check.content_type_supported(header), supported)
 
     # Signed leading-hyphen requests cover both sides of the mxid cap and an empty role.
     def test_planned_request_name_union_and_boundaries(self):

@@ -1,7 +1,7 @@
 # Offline format vectors
 
-The 305 cases instantiate the two-domain table in specification Appendix B.
-Registration has 136 negative and 30 positive cases. Enrollment has 114 negative
+The 310 cases instantiate the two-domain table in specification Appendix B.
+Registration has 138 negative and 33 positive cases. Enrollment has 114 negative
 and 25 positive cases, including ten independent codec controls. Appendix B.1
 homeserver integration plans remain separate qualification requirements; these
 files do not simulate successful live logins.
@@ -65,8 +65,11 @@ both algorithms and allowed noncanonical wire order/escaping. R18/E18 pin
 exactly 17 containers; PC3 preserves its inner array order at allowed depth 16.
 Leading-hyphen structured-name controls include exact 255/256-byte mxid
 boundaries, malformed roles and legacy-only explicit-list neighbors. Media
-controls distinguish internal token spaces from unquoted charset case variants;
-no expectation relies on surrounding whitespace or quoted charset spellings.
+controls distinguish internal token spaces from unquoted charset case variants.
+They also pin accepted SP/HTAB around the charset separator and complete field
+value, refusal of whitespace around `=`, and refusal of quoted charset values
+under the deliberate RFC 9110 narrowing in specification §6. The dedicated
+unquoted charset control differs from its quoted neighbor only in quotation.
 
 Clock verification, Git approval/signature/ancestry results, filesystem entry
 kinds, atomic persistence, signer availability, sink acknowledgements and

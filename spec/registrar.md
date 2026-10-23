@@ -388,6 +388,13 @@ isolated loopback tests. The body is the §2 registration envelope. The only
 accepted media type is `application/json`, optionally `charset=utf-8`
 (case-insensitive media/charset tokens); other parameters, multiple content-type
 values and content encodings other than absent/`identity` are unsupported.
+Optional whitespace (SP / HTAB) MAY surround the complete field value and the
+`;` separating the charset parameter. Whitespace MUST NOT split type, subtype,
+parameter-name or parameter-value tokens, or occur around `=`.
+The charset value MUST be unquoted; quoted values, including any case of
+`"utf-8"`, MUST yield `unsupported_media_type`. Refusing quoted values deliberately
+narrows [RFC 9110 §5.6.6](https://www.rfc-editor.org/rfc/rfc9110.html#section-5.6.6),
+which permits quoted parameter values.
 Responses MUST have `Content-Type: application/json` and `Cache-Control: no-store`.
 
 Success is `200 {"jwt":"<compact-JWS>"}` with exactly one member. Refusal is
@@ -899,7 +906,7 @@ Canonicalization-only rows test the CCJ-1 codec independently of the body
 schema; their success is `accept (codec)`. All other accepts mean admission,
 registry installation or the specified emission assertion, not just parsing.
 
-The plan contains **305 rows**: registration/1 has 136 negative and 30 positive
+The plan contains **310 rows**: registration/1 has 138 negative and 33 positive
 rows; enrollment/1 has 114 negative and 25 positive rows, including the ten
 codec controls. These are planned rows, not a count of implemented fixtures.
 
@@ -1167,6 +1174,8 @@ audience. All other prerequisites and healthy audit use Appendix A defaults.
 | R135 | registration/1 | Leading-hyphen malformed structured name | PR28 with signed request name `-node_p_`: missing role, also outside legacy grammar; valid matching enrollment unchanged | name_invalid; no reservation or debit | PR28 |
 | R136 | registration/1 | Media type token boundary | Content-Type `app lication/json`; otherwise PR1 | unsupported_media_type; no reservation or debit | PR1 |
 | R137 | registration/1 | Media subtype token boundary | Content-Type `application/j son`; otherwise PR1 | unsupported_media_type; no reservation or debit | PR1 |
+| R138 | registration/1 | Unquoted charset requirement | Content-Type `application/json;charset="utf-8"`; otherwise PR31 | unsupported_media_type; no reservation or debit | PR31 |
+| R139 | registration/1 | Charset equals boundary | Content-Type `application/json;charset = utf-8`; otherwise PR31 | unsupported_media_type; no reservation or debit | PR31 |
 | E112 | enrollment/1 | Leading-hyphen structured UID mxid upper neighbor | PE15 with UID-map name `-node_project_rolex`: 256-byte mxid, valid structured grammar; explicit `legacy.dev` still fits | enrollment_malformed | PE15 |
 | E113 | enrollment/1 | Leading-hyphen explicit entry remains legacy-only | PE14 with additional explicit entry `-node_project_role`; same valid structured UID name, but explicit entry fails legacy grammar | enrollment_malformed | PE14 |
 | E114 | enrollment/1 | Leading-hyphen malformed structured UID name | PE14 with UID-map name `-node_p_`: missing role, also outside legacy grammar | enrollment_malformed | PE14 |
@@ -1213,6 +1222,9 @@ audience. All other prerequisites and healthy audit use Appendix A defaults.
 | PR28 | registration/1 | Leading-hyphen structured request host | Valid signed request for `-node_project_role`, host `-node`, matching enrollment and default audience | accept | PR1 |
 | PR29 | registration/1 | Leading-hyphen structured request at mxid cap | PR28 with the configured 235-byte audience above; `-node_project_role` makes the mxid exactly 255 bytes | accept | PR28 |
 | PR30 | registration/1 | Permitted case-insensitive charset tokens | PR1 with Content-Type `Application/JSON;Charset=UtF-8`, with no whitespace ambiguity | accept | PR1 |
+| PR31 | registration/1 | Unquoted charset control | PR1 with Content-Type `application/json;charset=utf-8` | accept | PR1 |
+| PR32 | registration/1 | Charset separator OWS | PR31 with Content-Type `application/json ;\tcharset=utf-8`, where `\t` denotes HTAB | accept | PR31 |
+| PR33 | registration/1 | Complete field-value OWS | PR31 with Content-Type ` \tapplication/json;charset=utf-8\t `, where `\t` denotes HTAB | accept | PR31 |
 | PE14 | enrollment/1 | Leading-hyphen structured UID name | Valid publisher-signed station enrollment for host `-node`, prefix `-node_`, UID-map name `-node_project_role`, default audience | accept | PE1 |
 | PE15 | enrollment/1 | Leading-hyphen structured UID name at mxid cap | PE14 with the configured 235-byte audience above; UID-map name `-node_project_role` makes the mxid exactly 255 bytes | accept | PE14 |
 | PC1 | enrollment/1 | CCJ codec: Object order | Keys include a supplementary scalar and a BMP scalar; sort by scalar, not UTF-16 code unit | accept (codec) | PC1 |
@@ -1324,6 +1336,7 @@ Other source-gap choices made for determinism are listed completely by category:
 | Conservative lowercase legacy localpart grammar and configured-audience 255-byte mxid bound | Preserve exact legacy exceptions without admitting Matrix case folding or arbitrary reserved punctuation. |
 | No cross-host explicit structured-name claims; legacy explicit names cannot move across hosts even through history | Preserve namespace attribution and prevent stale historical claims from authorizing reassignment; same-host removal/re-addition remains allowed. |
 | Exact media-type parameters, identity-only content encoding and 404/405 routing | Avoid implicit decoder and routing-dependent refusal behavior. |
+| SP/HTAB around media-field values and charset separators; contiguous `=` and unquoted charset values | Follow RFC 9110 whitespace boundaries while deliberately narrowing its quoted parameter syntax to an unquoted charset token. |
 | Ordered HTTP checks, empty error details, final authority and signing-generation revalidation | Multi-defect vectors need one result; cancel pending old-key issuance at cutover rather than release an already invalid token. |
 | Snapshot-wide loader phases in bytewise Git-path order; conflict before rollback | Combined-defect snapshots need a single diagnostic independent of filesystem traversal. |
 | Separate authority, accounting, audit and readiness fixture oracles | Rejection forbids unauthorized authority changes while permitting mandatory nonce consumption, limiter debits, audit appends and fences. |

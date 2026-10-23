@@ -209,7 +209,9 @@ def syntax(name,audience):
     return name_fits(name,audience) and (STRUCTURED.fullmatch(name) is not None or LEGACY.fullmatch(name) is not None)
 
 def content_type_supported(value):
-    # Surrounding whitespace is open for content review; no committed vector or fixture depends on it.
+    # Section 6 permits only SP/HTAB around the field value and charset separator.
+    # Tokens and '=' stay contiguous. Quoted charset values are refused,
+    # deliberately narrowing RFC 9110's parameter syntax.
     return isinstance(value,str) and re.fullmatch(
         r'[ \t]*application/json(?:[ \t]*;[ \t]*charset=utf-8)?[ \t]*',
         value,flags=re.IGNORECASE|re.ASCII) is not None
@@ -485,7 +487,12 @@ def verify_witness(vector):
     # These case-specific assertions establish the named defect, beyond its HTTP verdict.
     row=vector['row'];raw=b64(vector['input']['bytes_base64'])
     media_rows={'R136':'app lication/json','R137':'application/j son',
-                'PR30':'Application/JSON;Charset=UtF-8'}
+                'PR30':'Application/JSON;Charset=UtF-8',
+                'R138':'application/json;charset="utf-8"',
+                'R139':'application/json;charset = utf-8',
+                'PR31':'application/json;charset=utf-8',
+                'PR32':'application/json ;\tcharset=utf-8',
+                'PR33':' \tapplication/json;charset=utf-8\t '}
     if row in media_rows:
         require(vector['fixture']['http']['content_type']==media_rows[row],'exact media-token witness')
     name_rows={'R134','R135','PR28','PR29','E112','E113','E114','PE14','PE15'}
