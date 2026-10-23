@@ -484,6 +484,29 @@ def ordinary_ed_equation(public,signature,message):
 def verify_witness(vector):
     # These case-specific assertions establish the named defect, beyond its HTTP verdict.
     row=vector['row'];raw=b64(vector['input']['bytes_base64'])
+    media_rows={'R136':'app lication/json','R137':'application/j son',
+                'PR30':'Application/JSON;Charset=UtF-8'}
+    if row in media_rows:
+        require(vector['fixture']['http']['content_type']==media_rows[row],'exact media-token witness')
+    name_rows={'R134','R135','PR28','PR29','E112','E113','E114','PE14','PE15'}
+    if row in name_rows:
+        f=vector['fixture'];env=parse(raw)
+        enrollment=vector['domain']=='enrollment/1'
+        if enrollment:
+            require(f['registry'].get('first_use') is True,'explicit bootstrap fixture input')
+        owner=env['body'] if enrollment else parse(b64(f['registry']['files'][0]['bytes_base64']))['body']
+        require(owner['host']=='-node' and owner['names']['prefix']=='-node_','leading-hyphen owner witness')
+        require('-node' in f['registry']['station_hosts'],'leading-hyphen station witness')
+        explicit=['legacy.dev','-node_project_role'] if row=='E113' else ['legacy.dev']
+        require(owner['names']['explicit']==explicit,'legacy-only explicit neighbor witness')
+        name='-node_project_rolex' if row in ('R134','E112') else '-node_p_' if row in ('R135','E114') else '-node_project_role'
+        require(owner['uid_map']==[{'uid':1001,'names':[name if enrollment else 'legacy.dev']}],'UID-map witness')
+        if not enrollment:
+            require(env['body']['name']==name and env['body']['aud']==f['audience'],'request-name witness')
+        audience='.'.join(['a'*63,'b'*63,'c'*63,'d'*43]) if row in ('R134','PR29','E112','PE15') else 'example.org'
+        require(f['audience']==audience,'configured-audience witness')
+        if row in ('R134','PR29','E112','PE15'):
+            require(len(('@'+name+':'+audience).encode())==(256 if row in ('R134','E112') else 255),'exact mxid-boundary witness')
     if row in ('R18','E18','PC3'):
         def container_depth(v):
             if isinstance(v,dict):return 1+max((container_depth(x) for x in v.values()),default=0)

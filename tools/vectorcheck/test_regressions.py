@@ -10,6 +10,7 @@ class CheckerRegressions(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         root = Path(__file__).resolve().parents[2]
+        cls.vector_root = root / 'vectors'
         cls.fixtures = Path(__file__).resolve().parent / 'fixtures'
         cls.seeds = json.loads((root / 'vectors/keys/seeds.json').read_text())
         check.verify_test_keys(root / 'vectors', cls.seeds)
@@ -30,6 +31,29 @@ class CheckerRegressions(unittest.TestCase):
                     check.verify(vector, self.seeds)
                 except check.Rejected as exc:
                     self.fail(f'{name}: {exc}')
+
+    def verify_rows(self, *rows):
+        for row in rows:
+            with self.subTest(row=row):
+                domain = 'enrollment-1' if row.startswith(('E', 'PE')) else 'registration-1'
+                group = '1-positive' if row.startswith('P') else '0-negative'
+                vector = check.parse((self.vector_root / domain / group / (row + '.json')).read_bytes())
+                try:
+                    check.verify(vector, self.seeds)
+                except check.Rejected as exc:
+                    self.fail(f'{row}: {exc}')
+
+    # New planned headers carry their exact token witnesses and ordered outcomes/state.
+    def test_planned_media_token_boundaries(self):
+        self.verify_rows('PR1', 'PR30', 'R136', 'R137')
+
+    # Signed leading-hyphen requests cover both sides of the mxid cap and an empty role.
+    def test_planned_request_name_union_and_boundaries(self):
+        self.verify_rows('PR28', 'PR29', 'R134', 'R135')
+
+    # Signed enrollment neighbors retain legacy-only explicit names and exact mxid limits.
+    def test_planned_enrollment_name_union_and_boundaries(self):
+        self.verify_rows('PE14', 'PE15', 'E112', 'E113', 'E114')
 
     # Invalid type-token spacing refuses; plain JSON and both unquoted charset spellings accept.
     def test_media_type_token_boundaries(self):

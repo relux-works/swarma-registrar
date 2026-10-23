@@ -1,0 +1,78 @@
+{
+  "claim": "Leading-hyphen structured UID name at mxid cap: PE14 with the configured 235-byte audience above; UID-map name `-node_project_role` makes the mxid exactly 255 bytes",
+  "domain": "enrollment/1",
+  "expected": {
+    "code": "accept",
+    "state": {
+      "admission_ready": true,
+      "audit_outcomes": [],
+      "authority": {
+        "record_ids": [
+          "sha256:0c9008a1c30fc70f42fe5f3fc3e5c2f87161fefae9cbe7a190bdeb5afa318b8c"
+        ],
+        "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "authority_installed": true,
+      "limiter_events": [],
+      "nonce_cache": [],
+      "prior_authority_preserved": false
+    }
+  },
+  "fixture": {
+    "actual_start_millis": 1893455969000,
+    "audience": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.ddddddddddddddddddddddddddddddddddddddddddd",
+    "audit": {
+      "local_available": true,
+      "remote_ack": true
+    },
+    "clock_fenced": false,
+    "clock_healthy": true,
+    "http": {
+      "content_encoding": "identity",
+      "content_type": "application/json",
+      "method": "POST",
+      "path": "/v1/registration"
+    },
+    "key_capacity": 10,
+    "limiter_events": [],
+    "monotonic_now": 60,
+    "name_capacity": 3,
+    "nonce_cache": [],
+    "now": 1893456060,
+    "registry": {
+      "approved": true,
+      "available": true,
+      "commit_signature_valid": true,
+      "descendant": true,
+      "files": [
+        {
+          "bytes_base64": "eyJib2R5Ijp7Imhvc3QiOiItbm9kZSIsImtleXMiOlt7ImtleSI6ImVkMjU1MTk6MTFxWUFZS3hDcmZWU183VHlXUUhPZzdoY3ZQYXBpTWxyd0lhYVBjSFVSbyIsIm5vdF9hZnRlciI6IjIwMzEtMDEtMDFUMDA6MDA6MDBaIiwibm90X2JlZm9yZSI6IjIwMzAtMDEtMDFUMDA6MDA6MDBaIn1dLCJuYW1lcyI6eyJleHBsaWNpdCI6WyJsZWdhY3kuZGV2Il0sInByZWZpeCI6Ii1ub2RlXyJ9LCJzZXEiOjEsInN0YXRlIjoiYWN0aXZlIiwidHlwZSI6ImVucm9sbG1lbnQvMSIsInVpZF9tYXAiOlt7Im5hbWVzIjpbIi1ub2RlX3Byb2plY3Rfcm9sZSJdLCJ1aWQiOjEwMDF9XX0sImlkIjoic2hhMjU2OjBjOTAwOGExYzMwZmM3MGY0MmZlNWYzZmMzZTVjMmY4NzE2MWZlZmFlOWNiZTdhMTkwYmRlYjVhZmEzMThiOGMiLCJzaWciOiJlbmYtb1lnSEdkd0lrY3J6MjJLejFyaDlPUXZJcy02czEwN3JRT2tDaGVlQk1IckVlaVpzRHdDdHpLRE5oVC1LaldJZVcwRUxKaE1SOThKTTNLVUdDdyJ9",
+          "kind": "regular",
+          "path": "enrollments/a.json",
+          "repeat": 1
+        }
+      ],
+      "first_use": true,
+      "persist_available": true,
+      "pin_is_exact": true,
+      "previous_files": [],
+      "publisher_key": "ed25519:PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw",
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "rollback_state_available": true,
+      "station_hosts": [
+        "-node",
+        "host-b"
+      ]
+    },
+    "signer_available": true,
+    "signing_generation": "A",
+    "start_barrier": 1893456000,
+    "startup_verified": true
+  },
+  "input": {
+    "bytes_base64": "eyJib2R5Ijp7Imhvc3QiOiItbm9kZSIsImtleXMiOlt7ImtleSI6ImVkMjU1MTk6MTFxWUFZS3hDcmZWU183VHlXUUhPZzdoY3ZQYXBpTWxyd0lhYVBjSFVSbyIsIm5vdF9hZnRlciI6IjIwMzEtMDEtMDFUMDA6MDA6MDBaIiwibm90X2JlZm9yZSI6IjIwMzAtMDEtMDFUMDA6MDA6MDBaIn1dLCJuYW1lcyI6eyJleHBsaWNpdCI6WyJsZWdhY3kuZGV2Il0sInByZWZpeCI6Ii1ub2RlXyJ9LCJzZXEiOjEsInN0YXRlIjoiYWN0aXZlIiwidHlwZSI6ImVucm9sbG1lbnQvMSIsInVpZF9tYXAiOlt7Im5hbWVzIjpbIi1ub2RlX3Byb2plY3Rfcm9sZSJdLCJ1aWQiOjEwMDF9XX0sImlkIjoic2hhMjU2OjBjOTAwOGExYzMwZmM3MGY0MmZlNWYzZmMzZTVjMmY4NzE2MWZlZmFlOWNiZTdhMTkwYmRlYjVhZmEzMThiOGMiLCJzaWciOiJlbmYtb1lnSEdkd0lrY3J6MjJLejFyaDlPUXZJcy02czEwN3JRT2tDaGVlQk1IckVlaVpzRHdDdHpLRE5oVC1LaldJZVcwRUxKaE1SOThKTTNLVUdDdyJ9"
+  },
+  "mode": "registry",
+  "positive_control": "PE14",
+  "row": "PE15"
+}

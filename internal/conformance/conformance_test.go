@@ -1,7 +1,8 @@
 // Package conformance_test binds offline fixtures to the existing core APIs.
 // Run with go test -v ./internal/conformance. CONFORMANCE_VECTORS may point to
 // a scratch copy of vectors/; the specification always comes from this checkout.
-// This harness implements no enrollment schema, loader or admission state machine.
+// The new UID-name rows call the landed loader with fixture-supplied trust and
+// an in-memory store. This harness implements no schema or admission state machine.
 package conformance_test
 
 import (
@@ -13,15 +14,18 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/relux-works/swarma-registrar/internal/ccj"
+	"github.com/relux-works/swarma-registrar/internal/enrollment"
 	"github.com/relux-works/swarma-registrar/internal/envelope"
 	"github.com/relux-works/swarma-registrar/internal/keys"
 	"github.com/relux-works/swarma-registrar/internal/refusal"
 	"github.com/relux-works/swarma-registrar/internal/registration"
+	"github.com/relux-works/swarma-registrar/internal/registry"
 	"github.com/relux-works/swarma-registrar/internal/sig"
 )
 
@@ -32,15 +36,35 @@ type vector struct {
 	}
 	Fixture struct {
 		Audience string
-		Registry struct {
-			PublisherKey string `json:"publisher_key"`
-		}
+		Registry registryFixture
 	}
 	Expected struct {
 		Code      string
 		Canonical string `json:"canonical_bytes_base64"`
 		ID        string
 		JWT       *struct{ Claims struct{ JTI string } }
+		State     struct {
+			Authority struct {
+				RecordIDs []string `json:"record_ids"`
+				Revision  string
+			}
+		}
+	}
+}
+
+type registryFixture struct {
+	PublisherKey         string   `json:"publisher_key"`
+	StationHosts         []string `json:"station_hosts"`
+	Revision             string
+	FirstUse             bool `json:"first_use"`
+	Available, Approved  bool
+	CommitSignatureValid bool `json:"commit_signature_valid"`
+	PinIsExact           bool `json:"pin_is_exact"`
+	PersistAvailable     bool `json:"persist_available"`
+	Files                []struct {
+		Path, Kind string
+		Repeat     int
+		Bytes      string `json:"bytes_base64"`
 	}
 }
 
@@ -52,6 +76,11 @@ type pendingCase struct {
 // admission or registry load. R106 deliberately masks an ID mismatch with an
 // audit override; its core-prefix expectation is separate from the final code.
 var pendingRows = map[string]pendingCase{
+	"R136": {"http/media", "registration", "accept"},
+	"R137": {"http/media", "registration", "accept"},
+	"PR28": {"admission/JWT", "audience", "accept"},
+	"PR29": {"admission/JWT", "audience", "accept"},
+	"PR30": {"admission/JWT", "audience", "accept"},
 	"E100": {"enrollment/body-schema", "envelope", "accept"},
 	"E101": {"registry/conflicts", "none", "accept"},
 	"E102": {"registry/preflight", "none", "accept"},
@@ -227,6 +256,13 @@ var pendingRows = map[string]pendingCase{
 
 // Executed routes are fixed by row identity, never selected from expected.code.
 var executedRows = map[string]string{
+	"R134": "name",
+	"R135": "name",
+	"E112": "registry-names",
+	"E113": "registry-names",
+	"E114": "registry-names",
+	"PE14": "registry-names",
+	"PE15": "registry-names",
 	"E01":  "envelope",
 	"E02":  "envelope",
 	"E03":  "envelope",
@@ -361,6 +397,10 @@ type observation struct {
 	canonical []byte
 	envelope  *envelope.Envelope
 	proof     *registration.Body
+	snapshot  *registry.Snapshot
+	water     *registry.HighWater
+	persisted *registry.HighWater
+	commits   int
 }
 
 // Every planned row is classified exactly once. Executable rows must match the
@@ -428,6 +468,30 @@ func TestVectorConformance(t *testing.T) {
 				if code != want {
 					t.Errorf("DISAGREEMENT %s spec/registrar.md:%d (plan=%s): route=%s core=%s vector=%s prefix-expectation=%s", v.Row, spec.line, spec.outcome, route, code, v.Expected.Code, want)
 				}
+				if route == "registry-names" {
+					// Valid rows publish exactly the stated authority after one CAS;
+					// rejected name neighbors publish nothing and never call the store.
+					if got.err != nil {
+						if got.snapshot != nil || got.water != nil || got.persisted != nil || got.commits != 0 {
+							t.Error("rejected registry candidate published partial authority or called the store")
+						}
+					} else if got.snapshot == nil || got.water == nil || got.commits != 1 || !reflect.DeepEqual(got.persisted, got.water) {
+						t.Error("accepted registry candidate missing exactly-once publication")
+					} else {
+						var ids []string
+						for host, water := range got.water.Hosts {
+							current, ok := got.snapshot.Current(host)
+							if !ok || current.ID != water.ID {
+								t.Error("snapshot and persisted current authority differ")
+							}
+							ids = append(ids, water.ID)
+						}
+						sort.Strings(ids)
+						if !reflect.DeepEqual(ids, v.Expected.State.Authority.RecordIDs) || got.snapshot.Revision() != v.Expected.State.Authority.Revision || got.water.Revision != v.Expected.State.Authority.Revision {
+							t.Error("registry authority differs from fixture state oracle")
+						}
+					}
+				}
 				if v.Expected.Canonical != "" && !bytes.Equal(got.canonical, decodeExpected(t, v.Expected.Canonical)) {
 					t.Errorf("DISAGREEMENT %s spec/registrar.md:%d: core canonical bytes differ from vector", v.Row, spec.line)
 				}
@@ -476,6 +540,8 @@ func TestVectorConformance(t *testing.T) {
 
 func exercise(v vector, raw []byte, route string) observation {
 	switch route {
+	case "registry-names":
+		return exerciseRegistry(v, raw)
 	case "codec", "extract":
 		value, err := ccj.Parse(raw, refusal.EnrollmentMalformed)
 		if err != nil {
@@ -522,8 +588,8 @@ func exercise(v vector, raw []byte, route string) observation {
 		if route == "envelope" {
 			return out
 		}
-		// Adapt only existing key APIs; the remaining enrollment schema and
-		// snapshot phases are intentionally not reproduced in this test.
+		// Keep the reviewed legacy prefix routes. The new name rows above
+		// call the landed loader rather than duplicate its schema/phases.
 		out.err = enrollmentKeys(e.Body)
 		if out.err != nil || route == "enrollment-key" {
 			return out
@@ -542,6 +608,73 @@ func exercise(v vector, raw []byte, route string) observation {
 	default:
 		return observation{err: fmt.Errorf("unknown core route %q", route)}
 	}
+}
+
+// Trust and storage are explicit fixture inputs, not real Git or durability
+// verification. All five new enrollment rows declare operator-approved first use.
+type fixtureVerifier struct {
+	revision string
+	entries  []registry.Entry
+	approved bool
+}
+
+func (f fixtureVerifier) Verify(revision string, entries []registry.Entry) error {
+	if !f.approved || revision != f.revision || !reflect.DeepEqual(entries, f.entries) {
+		return fmt.Errorf("entry set differs from fixture-approved revision")
+	}
+	return nil
+}
+func (f fixtureVerifier) Descends(candidate, previous string) (bool, error) {
+	return false, fmt.Errorf("ancestry is outside these first-use fixtures")
+}
+
+type fixtureStore struct {
+	available bool
+	calls     int
+	state     *registry.HighWater
+}
+
+func (f *fixtureStore) Commit(previous *registry.HighWater, next registry.HighWater) error {
+	f.calls++
+	if !f.available || !reflect.DeepEqual(previous, f.state) {
+		return fmt.Errorf("fixture store unavailable or stale prior state")
+	}
+	f.state = next.Clone()
+	return nil
+}
+
+func exerciseRegistry(v vector, raw []byte) observation {
+	f := v.Fixture.Registry
+	stations := make(map[string]bool, len(f.StationHosts))
+	for _, host := range f.StationHosts {
+		stations[host] = true
+	}
+	policy, err := enrollment.NewPolicy(v.Fixture.Audience, f.PublisherKey, stations)
+	if err != nil {
+		return observation{err: err}
+	}
+	var entries []registry.Entry
+	for _, file := range f.Files {
+		// These rows use ordinary single-record files. Reject unsupported
+		// adapter inputs explicitly rather than silently dropping an entry.
+		if file.Kind != "regular" || file.Repeat != 1 {
+			return observation{err: fmt.Errorf("registry name fixture needs a regular unrepeated entry")}
+		}
+		data, err := base64.RawURLEncoding.Strict().DecodeString(file.Bytes)
+		if err != nil {
+			return observation{err: err}
+		}
+		entries = append(entries, registry.Entry{Path: file.Path, Bytes: data, Kind: registry.Regular})
+	}
+	if len(entries) == 0 || !bytes.Equal(entries[0].Bytes, raw) {
+		return observation{err: fmt.Errorf("input differs from first candidate entry")}
+	}
+	store := &fixtureStore{available: f.PersistAvailable}
+	verifier := fixtureVerifier{revision: f.Revision, entries: entries,
+		approved: f.Available && f.Approved && f.CommitSignatureValid && f.PinIsExact}
+	loader := registry.Loader{Policy: policy, Verifier: verifier, Store: store}
+	snapshot, water, err := loader.Load(registry.Input{Revision: f.Revision, Entries: entries, FirstUse: f.FirstUse})
+	return observation{err: err, snapshot: snapshot, water: water, persisted: store.state, commits: store.calls}
 }
 
 func enrollmentKeys(body map[string]any) error {

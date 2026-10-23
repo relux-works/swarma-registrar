@@ -327,6 +327,10 @@ func restartStep(millis, now int64, healthy bool) M {
 	return M{"event": "restart", "actual_start_millis": epoch*1000 + millis, "now": epoch + now, "startup_verified": healthy}
 }
 
+func boundaryAudience() string {
+	return strings.Join([]string{strings.Repeat("a", 63), strings.Repeat("b", 63), strings.Repeat("c", 63), strings.Repeat("d", 43)}, ".")
+}
+
 func registrationCase(r row) M {
 	body := reg()
 	f := fixture()
@@ -598,6 +602,28 @@ func registrationCase(r row) M {
 		f["actual_start_millis"] = epoch * 1000
 		f["start_barrier"] = epoch + 31
 		before = append(before, clockStep(40, false), clockStep(60, true))
+	case "R134", "R135", "PR28", "PR29":
+		body["name"] = "-node_project_role"
+		rg["station_hosts"] = []any{"-node", "host-b"}
+		setBody(rg, func(b M) {
+			b["host"] = "-node"
+			mapv(b["names"])["prefix"] = "-node_"
+			mapv(b["uid_map"].([]any)[0])["names"] = []any{"legacy.dev"}
+		})
+		if r.ID == "R134" || r.ID == "PR29" {
+			f["audience"] = boundaryAudience()
+			body["aud"] = f["audience"]
+		}
+		if r.ID == "R134" {
+			body["name"] = "-node_project_rolex"
+		}
+		if r.ID == "R135" {
+			body["name"] = "-node_p_"
+		}
+	case "R136":
+		mapv(f["http"])["content_type"] = "app lication/json"
+	case "R137":
+		mapv(f["http"])["content_type"] = "application/j son"
 	case "PR3": // Baseline lifetime is exactly 120.
 	case "PR4", "PR21":
 		body["exp"] = ts(61)
@@ -630,6 +656,8 @@ func registrationCase(r row) M {
 	case "PR25":
 		f["key_capacity"] = 1
 		f["name_capacity"] = 1
+	case "PR30":
+		mapv(f["http"])["content_type"] = "Application/JSON;Charset=UtF-8"
 	}
 	env := envelope(body, host)
 	n, _ := strconv.Atoi(strings.TrimPrefix(r.ID, "R"))
@@ -1121,6 +1149,24 @@ func enrollmentCase(r row) M {
 		third := clone(body)
 		third["seq"] = 3
 		files(body, next, third)
+	case "E112", "E113", "E114", "PE14", "PE15":
+		rg["first_use"] = true // Explicit operator bootstrap input for the core-loader adapter.
+		body["host"] = "-node"
+		names["prefix"] = "-node_"
+		uid["names"] = []any{"-node_project_role"}
+		rg["station_hosts"] = []any{"-node", "host-b"}
+		if r.ID == "E112" || r.ID == "PE15" {
+			f["audience"] = boundaryAudience()
+		}
+		if r.ID == "E112" {
+			uid["names"] = []any{"-node_project_rolex"}
+		}
+		if r.ID == "E113" {
+			names["explicit"] = []any{"legacy.dev", "-node_project_role"}
+		}
+		if r.ID == "E114" {
+			uid["names"] = []any{"-node_p_"}
+		}
 	}
 	env := envelope(body, pubKey)
 	raw := ccj(env)

@@ -1,0 +1,116 @@
+{
+  "after": [],
+  "before": [],
+  "claim": "Leading-hyphen structured request host: Valid signed request for `-node_project_role`, host `-node`, matching enrollment and default audience",
+  "domain": "registration/1",
+  "expected": {
+    "code": "accept",
+    "jwt": {
+      "claims": {
+        "aud": [
+          "example.org"
+        ],
+        "exp": 1893456180,
+        "iat": 1893456060,
+        "iss": "swarma-registrar",
+        "jti": "sha256:d3e92cbe6dfafb40f3493aeca60e48dbe9ddad4b5df0465fa0d798adea1b0aea",
+        "nbf": 1893456060,
+        "sub": "-node_project_role"
+      },
+      "compact": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiZXhhbXBsZS5vcmciXSwiZXhwIjoxODkzNDU2MTgwLCJpYXQiOjE4OTM0NTYwNjAsImlzcyI6InN3YXJtYS1yZWdpc3RyYXIiLCJqdGkiOiJzaGEyNTY6ZDNlOTJjYmU2ZGZhZmI0MGYzNDkzYWVjYTYwZTQ4ZGJlOWRkYWQ0YjVkZjA0NjVmYTBkNzk4YWRlYTFiMGFlYSIsIm5iZiI6MTg5MzQ1NjA2MCwic3ViIjoiLW5vZGVfcHJvamVjdF9yb2xlIn0.vmCHfR2ADgcjBE2RGrZzkwa7a1GqroId96BfqMFr8M5KFNKanCaSeAIu0yZQJ3MjSVEWsTieEHZM7aJuG5W7DQ",
+      "header": {
+        "alg": "EdDSA",
+        "typ": "JWT"
+      },
+      "signature": "vmCHfR2ADgcjBE2RGrZzkwa7a1GqroId96BfqMFr8M5KFNKanCaSeAIu0yZQJ3MjSVEWsTieEHZM7aJuG5W7DQ"
+    },
+    "state": {
+      "audit_outcomes": [
+        "issued"
+      ],
+      "audit_ready": true,
+      "authority": {
+        "record_ids": [
+          "sha256:96813fe4e8a3a3658d501a2c0fc4cfb862f40efe0401ac0910afb376738b9401"
+        ],
+        "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "clock_fenced": false,
+      "limiter_events": [
+        {
+          "at": 60,
+          "key": "ed25519:11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+          "name": "-node_project_role"
+        }
+      ],
+      "nonce_cache": [
+        {
+          "expires": 1893456210,
+          "key": "ed25519:11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+          "nonce": "AAECAwQFBgcICQoLDA0ODw"
+        }
+      ],
+      "registry_ready": true,
+      "scheduled_revocation_applied": false,
+      "signer_ready": true,
+      "signing_generation": "A",
+      "start_barrier": 1893456000
+    }
+  },
+  "fixture": {
+    "actual_start_millis": 1893455969000,
+    "audience": "example.org",
+    "audit": {
+      "local_available": true,
+      "remote_ack": true
+    },
+    "clock_fenced": false,
+    "clock_healthy": true,
+    "http": {
+      "content_encoding": "identity",
+      "content_type": "application/json",
+      "method": "POST",
+      "path": "/v1/registration"
+    },
+    "key_capacity": 10,
+    "limiter_events": [],
+    "monotonic_now": 60,
+    "name_capacity": 3,
+    "nonce_cache": [],
+    "now": 1893456060,
+    "registry": {
+      "approved": true,
+      "available": true,
+      "commit_signature_valid": true,
+      "descendant": true,
+      "files": [
+        {
+          "bytes_base64": "eyJib2R5Ijp7Imhvc3QiOiItbm9kZSIsImtleXMiOlt7ImtleSI6ImVkMjU1MTk6MTFxWUFZS3hDcmZWU183VHlXUUhPZzdoY3ZQYXBpTWxyd0lhYVBjSFVSbyIsIm5vdF9hZnRlciI6IjIwMzEtMDEtMDFUMDA6MDA6MDBaIiwibm90X2JlZm9yZSI6IjIwMzAtMDEtMDFUMDA6MDA6MDBaIn1dLCJuYW1lcyI6eyJleHBsaWNpdCI6WyJsZWdhY3kuZGV2Il0sInByZWZpeCI6Ii1ub2RlXyJ9LCJzZXEiOjEsInN0YXRlIjoiYWN0aXZlIiwidHlwZSI6ImVucm9sbG1lbnQvMSIsInVpZF9tYXAiOlt7Im5hbWVzIjpbImxlZ2FjeS5kZXYiXSwidWlkIjoxMDAxfV19LCJpZCI6InNoYTI1Njo5NjgxM2ZlNGU4YTNhMzY1OGQ1MDFhMmMwZmM0Y2ZiODYyZjQwZWZlMDQwMWFjMDkxMGFmYjM3NjczOGI5NDAxIiwic2lnIjoiVnV1b0F5bENDWWlTUlNETXpVUDZMWGtfTmFaYXNjUjNnSTZPV3IxSVczU24xSUV5VnVLTlliRk9lUEdId19fUVlFSzZsMXBsWV9DOURVNlJrU2tsQ2cifQ",
+          "kind": "regular",
+          "path": "enrollments/a.json",
+          "repeat": 1
+        }
+      ],
+      "persist_available": true,
+      "pin_is_exact": true,
+      "previous_files": [],
+      "publisher_key": "ed25519:PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw",
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "rollback_state_available": true,
+      "station_hosts": [
+        "-node",
+        "host-b"
+      ]
+    },
+    "signer_available": true,
+    "signing_generation": "A",
+    "start_barrier": 1893456000,
+    "startup_verified": true
+  },
+  "input": {
+    "bytes_base64": "eyJib2R5Ijp7ImF1ZCI6ImV4YW1wbGUub3JnIiwiZXhwIjoiMjAzMC0wMS0wMVQwMDowMzowMFoiLCJpYXQiOiIyMDMwLTAxLTAxVDAwOjAxOjAwWiIsImtleSI6ImVkMjU1MTk6MTFxWUFZS3hDcmZWU183VHlXUUhPZzdoY3ZQYXBpTWxyd0lhYVBjSFVSbyIsIm5hbWUiOiItbm9kZV9wcm9qZWN0X3JvbGUiLCJub25jZSI6IkFBRUNBd1FGQmdjSUNRb0xEQTBPRHciLCJ0eXBlIjoicmVnaXN0cmF0aW9uLzEifSwiaWQiOiJzaGEyNTY6ZDNlOTJjYmU2ZGZhZmI0MGYzNDkzYWVjYTYwZTQ4ZGJlOWRkYWQ0YjVkZjA0NjVmYTBkNzk4YWRlYTFiMGFlYSIsInNpZyI6IlJMYXQxOWF4Yk5pSTk4RmtNeGhNMzNRVnhhUFNwZWFITVREVFgzTWN0blllQ01ISUhjT2ZjcFRMaE9OcEx6MEtwbFRTRUxPVVNLXzQxVFJFWlV3MUFBIn0"
+  },
+  "mode": "admission",
+  "positive_control": "PR1",
+  "row": "PR28"
+}
