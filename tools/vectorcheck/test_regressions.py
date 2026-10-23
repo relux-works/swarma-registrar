@@ -1,4 +1,5 @@
 """Signed neighbor fixtures for checker guards, separate from Appendix B inventory."""
+import copy
 import json
 from pathlib import Path
 import unittest
@@ -52,6 +53,55 @@ class CheckerRegressions(unittest.TestCase):
                     check.verify(vector, self.seeds)
                 except check.Rejected as exc:
                     self.fail(f'{row}: {exc}')
+
+    # These rows retain their deciding nonce/budget rule while legitimate signed
+    # prefixes build both kinds of accounting; no private state is installed.
+    def test_reachable_accounting_traces(self):
+        self.verify_rows('R83', 'R84', 'R86', 'R87', 'R111', 'R129', 'PR13', 'PR14', 'PR18')
+
+    def reachable_row(self, row):
+        group = '1-positive' if row.startswith('P') else '0-negative'
+        return check.parse((self.vector_root / 'registration-1' / group / (row+'.json')).read_bytes())
+
+    # Removing a genuine prefix must not be silently replaced by seeded state.
+    def test_reachable_prefix_required(self):
+        vector = self.reachable_row('R83')
+        check.verify(vector, self.seeds)
+        broken = copy.deepcopy(vector)
+        broken['before'] = []
+        with self.assertRaisesRegex(check.Rejected, 'outcome disagreement: computed accept, stored nonce_replayed'):
+            check.verify(broken, self.seeds)
+
+    # Erasing the explicit clocks loses the exact 60-second pruning boundary.
+    def test_reachable_trace_clock_required(self):
+        vector = self.reachable_row('PR13')
+        check.verify(vector, self.seeds)
+        broken = copy.deepcopy(vector)
+        for step in broken['before']:
+            del step['monotonic_now']
+        with self.assertRaisesRegex(check.Rejected, 'outcome disagreement: computed rate_limited, stored accept'):
+            check.verify(broken, self.seeds)
+
+    # A declared monotonic trace may not move backward; healthy forward controls
+    # above still traverse real signature, authority and accounting checks.
+    def test_reachable_trace_clock_regression(self):
+        vector = self.reachable_row('PR13')
+        check.verify(vector, self.seeds)
+        broken = copy.deepcopy(vector)
+        broken['before'][0]['monotonic_now'] = 1
+        broken['before'][1]['monotonic_now'] = 0
+        with self.assertRaisesRegex(check.Rejected, 'trace monotonic time must not regress'):
+            check.verify(broken, self.seeds)
+
+    # R111 succeeds at the original release instant; the same fresh proof one
+    # monotonic second earlier still refuses. This pins time, not a retry bypass.
+    def test_reachable_release_boundary(self):
+        vector = self.reachable_row('R111')
+        check.verify(vector, self.seeds)
+        broken = copy.deepcopy(vector)
+        broken['after'][0]['monotonic_now'] = 60
+        with self.assertRaisesRegex(check.Rejected, 'outcome disagreement: computed rate_limited, stored accept'):
+            check.verify(broken, self.seeds)
 
     # New planned headers carry their exact token witnesses and ordered outcomes/state.
     def test_planned_media_token_boundaries(self):

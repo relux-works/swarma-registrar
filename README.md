@@ -93,7 +93,7 @@ automatically.
 | Go 1.26, Git and OpenSSH ssh-keygen | Check local adapters and internal packages; create disposable signed Git fixtures with generated test keys. | `GOMAXPROCS=2 go test ./internal/...`; `GOMAXPROCS=2 go vet ./...`; focused adapter checks: `go test ./internal/adapters` | Terminal verdicts; fixture files in Go's temporary directory (set `TMPDIR` to a scratch directory). No network. |
 | Go (standard library) | Regenerate vectors or check exact committed bytes and file set. | `GOMAXPROCS=2 go run ./tools/vectorgen`; `GOMAXPROCS=2 go run ./tools/vectorgen -check` | `vectors/registration-1/`, `vectors/enrollment-1/`, `vectors/keys/seeds.json`, `vectors/keys/public-keys.json`; check mode writes nothing. |
 | Python 3 with cryptography | Independently check CCJ-1, cryptography, ordered outcomes, JWT bytes and state. | `python3 tools/vectorcheck/check.py` (dependencies: `python3 -m pip install -r tools/vectorcheck/requirements.txt`) | Terminal verdicts; writes nothing. |
-| Python unittest | Check signed HTTP media-token and structured-name regressions against the independent checker. | `python3 -B -m unittest discover -s tools/vectorcheck -p test_regressions.py -v` | Terminal verdicts; fixtures under `tools/vectorcheck/fixtures/` stay separate from the 310 planned vectors. |
+| Python unittest | Check signed HTTP media-token, structured-name and reachable-accounting regressions against the independent checker. | `python3 -B -m unittest discover -s tools/vectorcheck -p test_regressions.py -v` | Terminal verdicts; fixtures under `tools/vectorcheck/fixtures/` stay separate from the 310 planned vectors. |
 | Git | Inspect scope and check documentation whitespace. | `git diff --check`; `git diff --stat`; `git diff -- spec/registrar.md README.md UNRESOLVED_QUESTIONS.md` | Terminal diagnostics and diff; no generated repository files. |
 | curl | Retrieve the pinned public validator source for inspection. | `mkdir -p .temp/spec-source-review` then `curl --fail --location https://raw.githubusercontent.com/Keats/jsonwebtoken/900010fb1be550ec2cfa8c32038eb154f9ef56d7/src/validation.rs --output .temp/spec-source-review/validation.rs` | Source in the created task-scoped scratch directory. |
 | Python 3 | Count the planned vector rows in the draft. | `python3 -c 'from pathlib import Path; s=Path("spec/registrar.md").read_text().split("## Appendix B.")[1].split("### B.1")[0]; print(sum(line.startswith("\u007c ") for line in s.splitlines())-2)'` | Terminal count only. |
@@ -140,15 +140,20 @@ pending counts, checks exact responses, JWTs, audit lines and accounting, and
 replays declared restart, clock, revocation and signing-generation traces through
 injected interfaces. R105 reaches its initial accounting through three preceding
 requests (issued, replay, replay), retains their audit chain, then executes the
-unchanged main request. Nine rows retain specific pending reasons: R83, R84 and
-PR18 need nonce state without limiter events; R86, R87, R111, R129, PR13 and PR14
-need limiter events without nonce state. The request API cannot produce those
-literal combinations. Initial registry permission comes from fixture rollback
-evidence, separately from empty storage; missing evidence fences admission.
-The older prefix harness retains its own classifications.
-The media rows R138, R139, PR31, PR32 and PR33 execute through the aligned HTTP
-layer. The HTTP/admission harness reports 162 passed, zero failed and nine pending
-registration rows; the existing nine pending classifications are unchanged.
+unchanged main request. R83, R84, R86, R87, R111, R129, PR13, PR14 and PR18
+start with empty accounting and declare successful signed requests in `before`.
+Each timed request carries `now` (UTC seconds) and `monotonic_now` (elapsed whole
+seconds); omitted per-request monotonic time retains the fixture default. The
+main request uses the fixture's original times. Prefix nonces, both budget
+histories and every audit line are retained. R111 also checks `Retry-After: 1`
+and successful release at second 61; PR13 prunes only the event at second 0.
+The independent checker executes these same declared requests, derives their
+verdicts/JWTs and compares exact accounting; it does not install the target state.
+Initial registry permission comes from fixture rollback evidence, separately from
+empty storage; missing evidence fences admission. The older prefix harness
+retains its own classifications. The media rows R138, R139, PR31, PR32 and PR33
+execute through the aligned HTTP layer. The HTTP/admission harness reports
+171 passed, zero failed and zero pending registration rows.
 Read-only inspection checks private accounting after requests have quiesced;
 it never seeds or modifies service state. External adapters and live concurrency
 remain unqualified. `go test -race ./internal/conformance/...` checks this harness

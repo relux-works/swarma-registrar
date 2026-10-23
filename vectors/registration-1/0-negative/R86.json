@@ -1,12 +1,303 @@
 {
   "after": [],
-  "before": [],
+  "before": [
+    {
+      "bytes_base64": "eyJib2R5Ijp7ImF1ZCI6ImV4YW1wbGUub3JnIiwiZXhwIjoiMjAzMC0wMS0wMVQwMDowMjowMFoiLCJpYXQiOiIyMDMwLTAxLTAxVDAwOjAwOjAwWiIsImtleSI6ImVkMjU1MTk6MTFxWUFZS3hDcmZWU183VHlXUUhPZzdoY3ZQYXBpTWxyd0lhYVBjSFVSbyIsIm5hbWUiOiJob3N0LWFfcHJvamVjdF9yMCIsIm5vbmNlIjoiQVFJREJBVUdCd2dKQ2dzTURRNFBFQSIsInR5cGUiOiJyZWdpc3RyYXRpb24vMSJ9LCJpZCI6InNoYTI1Njo2Yzg0MzgyMDg3YjIzNDgyN2FjMDhkY2MzY2E2YzUxMzU2MjA1MWJlZGVhZTNhODM0YTIxMTM5ZmIyNTRiZDU5Iiwic2lnIjoiQkVTakFKcnJnRVZZSGE5YWxaQ1pyNGxtdGpOY28zcFhjNldwUHMwcnJyTUxvTXJ5RHZNeXRHV1luTVBZMDF2YWF4UUZWQXFnVnEtOGc5QnYteldYRGcifQ",
+      "event": "request",
+      "expected": {
+        "code": "accept",
+        "jwt": {
+          "claims": {
+            "aud": [
+              "example.org"
+            ],
+            "exp": 1893456121,
+            "iat": 1893456001,
+            "iss": "swarma-registrar",
+            "jti": "sha256:6c84382087b234827ac08dcc3ca6c513562051bedeae3a834a21139fb254bd59",
+            "nbf": 1893456001,
+            "sub": "host-a_project_r0"
+          },
+          "compact": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiZXhhbXBsZS5vcmciXSwiZXhwIjoxODkzNDU2MTIxLCJpYXQiOjE4OTM0NTYwMDEsImlzcyI6InN3YXJtYS1yZWdpc3RyYXIiLCJqdGkiOiJzaGEyNTY6NmM4NDM4MjA4N2IyMzQ4MjdhYzA4ZGNjM2NhNmM1MTM1NjIwNTFiZWRlYWUzYTgzNGEyMTEzOWZiMjU0YmQ1OSIsIm5iZiI6MTg5MzQ1NjAwMSwic3ViIjoiaG9zdC1hX3Byb2plY3RfcjAifQ.O2yy-0m788qpsarzvdHMSwSieW_1UyuBda_JQB74xq7puxjXv1TjJKBEYZsPkPxwtqjdc8zGhi7p7N6JIOOFDQ",
+          "header": {
+            "alg": "EdDSA",
+            "typ": "JWT"
+          },
+          "signature": "O2yy-0m788qpsarzvdHMSwSieW_1UyuBda_JQB74xq7puxjXv1TjJKBEYZsPkPxwtqjdc8zGhi7p7N6JIOOFDQ"
+        }
+      },
+      "monotonic_now": 1,
+      "now": 1893456001
+    },
+    {
+      "bytes_base64": "eyJib2R5Ijp7ImF1ZCI6ImV4YW1wbGUub3JnIiwiZXhwIjoiMjAzMC0wMS0wMVQwMDowMjowMFoiLCJpYXQiOiIyMDMwLTAxLTAxVDAwOjAwOjAwWiIsImtleSI6ImVkMjU1MTk6MTFxWUFZS3hDcmZWU183VHlXUUhPZzdoY3ZQYXBpTWxyd0lhYVBjSFVSbyIsIm5hbWUiOiJob3N0LWFfcHJvamVjdF9yMSIsIm5vbmNlIjoiQWdNRUJRWUhDQWtLQ3d3TkRnOFFFUSIsInR5cGUiOiJyZWdpc3RyYXRpb24vMSJ9LCJpZCI6InNoYTI1NjoxMTc0MjBjZWE1NWI5Mzk1NGNjYTc2M2JmM2UzZThmOTUwYmI3NmUzZDIyMDAxNjA0OGUzNzM0NDAwOTQzNzE5Iiwic2lnIjoiX2hxay1fWVNzT2RWT0lmaWVFa2paak5ZNWxpRVRrV0NFOEFmdjZWbDd1cWxobW4weUVNZHB2b1FyTXlLRTBGWWpLdndWLXlURUw1dFVzYU1PV2VyQkEifQ",
+      "event": "request",
+      "expected": {
+        "code": "accept",
+        "jwt": {
+          "claims": {
+            "aud": [
+              "example.org"
+            ],
+            "exp": 1893456121,
+            "iat": 1893456001,
+            "iss": "swarma-registrar",
+            "jti": "sha256:117420cea55b93954cca763bf3e3e8f950bb76e3d220016048e3734400943719",
+            "nbf": 1893456001,
+            "sub": "host-a_project_r1"
+          },
+          "compact": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiZXhhbXBsZS5vcmciXSwiZXhwIjoxODkzNDU2MTIxLCJpYXQiOjE4OTM0NTYwMDEsImlzcyI6InN3YXJtYS1yZWdpc3RyYXIiLCJqdGkiOiJzaGEyNTY6MTE3NDIwY2VhNTViOTM5NTRjY2E3NjNiZjNlM2U4Zjk1MGJiNzZlM2QyMjAwMTYwNDhlMzczNDQwMDk0MzcxOSIsIm5iZiI6MTg5MzQ1NjAwMSwic3ViIjoiaG9zdC1hX3Byb2plY3RfcjEifQ.YLQfXRW_o-Er9Jsl3ePlY7sxTqS-NHxge6j0DrYXXMG8GYEEt0fHh5SLOrPh9xXbhvF6cwW_jfbB33_dV6TDCQ",
+          "header": {
+            "alg": "EdDSA",
+            "typ": "JWT"
+          },
+          "signature": "YLQfXRW_o-Er9Jsl3ePlY7sxTqS-NHxge6j0DrYXXMG8GYEEt0fHh5SLOrPh9xXbhvF6cwW_jfbB33_dV6TDCQ"
+        }
+      },
+      "monotonic_now": 1,
+      "now": 1893456001
+    },
+    {
+      "bytes_base64": "eyJib2R5Ijp7ImF1ZCI6ImV4YW1wbGUub3JnIiwiZXhwIjoiMjAzMC0wMS0wMVQwMDowMjowMFoiLCJpYXQiOiIyMDMwLTAxLTAxVDAwOjAwOjAwWiIsImtleSI6ImVkMjU1MTk6MTFxWUFZS3hDcmZWU183VHlXUUhPZzdoY3ZQYXBpTWxyd0lhYVBjSFVSbyIsIm5hbWUiOiJob3N0LWFfcHJvamVjdF9yMiIsIm5vbmNlIjoiQXdRRkJnY0lDUW9MREEwT0R4QVJFZyIsInR5cGUiOiJyZWdpc3RyYXRpb24vMSJ9LCJpZCI6InNoYTI1NjpmMWY4NzQ1OGUzNDMwZmFmZmRmMTM3NTJkMmIyZTc4NTJjOTU2YWJjZjlmYmZmYWUyN2QwNGRjZDc5NzRhNmY3Iiwic2lnIjoieGdqcHM5c09RY05sTXFlWXVaVndPbW1qalVJSmFGTFpfZFlqYnhTVF9SVjZtdHBTaThsWjlyX1FmWnQtVUFCNUw1Ulo2VTB0ZDVUajBMVHdmbnFfQXcifQ",
+      "event": "request",
+      "expected": {
+        "code": "accept",
+        "jwt": {
+          "claims": {
+            "aud": [
+              "example.org"
+            ],
+            "exp": 1893456121,
+            "iat": 1893456001,
+            "iss": "swarma-registrar",
+            "jti": "sha256:f1f87458e3430faffdf13752d2b2e7852c956abcf9fbffae27d04dcd7974a6f7",
+            "nbf": 1893456001,
+            "sub": "host-a_project_r2"
+          },
+          "compact": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiZXhhbXBsZS5vcmciXSwiZXhwIjoxODkzNDU2MTIxLCJpYXQiOjE4OTM0NTYwMDEsImlzcyI6InN3YXJtYS1yZWdpc3RyYXIiLCJqdGkiOiJzaGEyNTY6ZjFmODc0NThlMzQzMGZhZmZkZjEzNzUyZDJiMmU3ODUyYzk1NmFiY2Y5ZmJmZmFlMjdkMDRkY2Q3OTc0YTZmNyIsIm5iZiI6MTg5MzQ1NjAwMSwic3ViIjoiaG9zdC1hX3Byb2plY3RfcjIifQ.MuhaztLfHaTXfcPOyNkMQChCVOTZ2lZ7pmGFN_TruI-eZB6Ve5vpYMvyXQxn5_UIWr-XnJQQbNwPqGq4Pq-cDw",
+          "header": {
+            "alg": "EdDSA",
+            "typ": "JWT"
+          },
+          "signature": "MuhaztLfHaTXfcPOyNkMQChCVOTZ2lZ7pmGFN_TruI-eZB6Ve5vpYMvyXQxn5_UIWr-XnJQQbNwPqGq4Pq-cDw"
+        }
+      },
+      "monotonic_now": 1,
+      "now": 1893456001
+    },
+    {
+      "bytes_base64": "eyJib2R5Ijp7ImF1ZCI6ImV4YW1wbGUub3JnIiwiZXhwIjoiMjAzMC0wMS0wMVQwMDowMjowMFoiLCJpYXQiOiIyMDMwLTAxLTAxVDAwOjAwOjAwWiIsImtleSI6ImVkMjU1MTk6MTFxWUFZS3hDcmZWU183VHlXUUhPZzdoY3ZQYXBpTWxyd0lhYVBjSFVSbyIsIm5hbWUiOiJob3N0LWFfcHJvamVjdF9yMyIsIm5vbmNlIjoiQkFVR0J3Z0pDZ3NNRFE0UEVCRVNFdyIsInR5cGUiOiJyZWdpc3RyYXRpb24vMSJ9LCJpZCI6InNoYTI1Njo3ZWMxOGM1NGEyNmZiYTFmOTYzNjRhM2UwZmQ0OTRlY2VhYWY0Zjc4ZTZhN2I4YjdkNDFhOWMzYTIwYmM3NTdiIiwic2lnIjoieTFHZ3p6NUZQc1hKbmM4WE1vNS1JYzI1ekFOWlVqZmlDMWN6cG9HOUFLMVl4RFE0V1pITU9GTGN0bjE4bDFHZHluR3EyMVVvU2xPdXNxYU5IMmFTQkEifQ",
+      "event": "request",
+      "expected": {
+        "code": "accept",
+        "jwt": {
+          "claims": {
+            "aud": [
+              "example.org"
+            ],
+            "exp": 1893456121,
+            "iat": 1893456001,
+            "iss": "swarma-registrar",
+            "jti": "sha256:7ec18c54a26fba1f96364a3e0fd494eceaaf4f78e6a7b8b7d41a9c3a20bc757b",
+            "nbf": 1893456001,
+            "sub": "host-a_project_r3"
+          },
+          "compact": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiZXhhbXBsZS5vcmciXSwiZXhwIjoxODkzNDU2MTIxLCJpYXQiOjE4OTM0NTYwMDEsImlzcyI6InN3YXJtYS1yZWdpc3RyYXIiLCJqdGkiOiJzaGEyNTY6N2VjMThjNTRhMjZmYmExZjk2MzY0YTNlMGZkNDk0ZWNlYWFmNGY3OGU2YTdiOGI3ZDQxYTljM2EyMGJjNzU3YiIsIm5iZiI6MTg5MzQ1NjAwMSwic3ViIjoiaG9zdC1hX3Byb2plY3RfcjMifQ.6GuCr0dBgqrL35lSWXQMDOCE7q8igDq39s4dBewM2Va6TL8-EAMxte6jma_W8dbx5jblJt9YD8lYqbDWumo3DQ",
+          "header": {
+            "alg": "EdDSA",
+            "typ": "JWT"
+          },
+          "signature": "6GuCr0dBgqrL35lSWXQMDOCE7q8igDq39s4dBewM2Va6TL8-EAMxte6jma_W8dbx5jblJt9YD8lYqbDWumo3DQ"
+        }
+      },
+      "monotonic_now": 1,
+      "now": 1893456001
+    },
+    {
+      "bytes_base64": "eyJib2R5Ijp7ImF1ZCI6ImV4YW1wbGUub3JnIiwiZXhwIjoiMjAzMC0wMS0wMVQwMDowMjowMFoiLCJpYXQiOiIyMDMwLTAxLTAxVDAwOjAwOjAwWiIsImtleSI6ImVkMjU1MTk6MTFxWUFZS3hDcmZWU183VHlXUUhPZzdoY3ZQYXBpTWxyd0lhYVBjSFVSbyIsIm5hbWUiOiJob3N0LWFfcHJvamVjdF9yNCIsIm5vbmNlIjoiQlFZSENBa0tDd3dORGc4UUVSSVRGQSIsInR5cGUiOiJyZWdpc3RyYXRpb24vMSJ9LCJpZCI6InNoYTI1Njo0NjIxY2YxNTNlNjEwNDE1Yjk1MDdhYzZiZDdiZWM4OTg3ZTEzYTMyMTliYzEwMGVlNDExY2ZhN2UzYzkwYjYzIiwic2lnIjoiMEE5UjcxVE1ZZlF3V1VSdWNOR0FZT1BITC1NbnJWNmJ2eWNJQzlTa2NpbFFJekh2TXlpZFhvNXU1YTB3b2FKd3lPNjdKdWJQZlk0UjFtRXkyVVlJRFEifQ",
+      "event": "request",
+      "expected": {
+        "code": "accept",
+        "jwt": {
+          "claims": {
+            "aud": [
+              "example.org"
+            ],
+            "exp": 1893456121,
+            "iat": 1893456001,
+            "iss": "swarma-registrar",
+            "jti": "sha256:4621cf153e610415b9507ac6bd7bec8987e13a3219bc100ee411cfa7e3c90b63",
+            "nbf": 1893456001,
+            "sub": "host-a_project_r4"
+          },
+          "compact": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiZXhhbXBsZS5vcmciXSwiZXhwIjoxODkzNDU2MTIxLCJpYXQiOjE4OTM0NTYwMDEsImlzcyI6InN3YXJtYS1yZWdpc3RyYXIiLCJqdGkiOiJzaGEyNTY6NDYyMWNmMTUzZTYxMDQxNWI5NTA3YWM2YmQ3YmVjODk4N2UxM2EzMjE5YmMxMDBlZTQxMWNmYTdlM2M5MGI2MyIsIm5iZiI6MTg5MzQ1NjAwMSwic3ViIjoiaG9zdC1hX3Byb2plY3RfcjQifQ.lHg-usWw3USnRs1butwPhcd8Q8lp1d-LzgXm-37x7okQUc2xF89hNrWvUIW8oyUMi1FmFbFlTEtW_r_SZiyJBA",
+          "header": {
+            "alg": "EdDSA",
+            "typ": "JWT"
+          },
+          "signature": "lHg-usWw3USnRs1butwPhcd8Q8lp1d-LzgXm-37x7okQUc2xF89hNrWvUIW8oyUMi1FmFbFlTEtW_r_SZiyJBA"
+        }
+      },
+      "monotonic_now": 1,
+      "now": 1893456001
+    },
+    {
+      "bytes_base64": "eyJib2R5Ijp7ImF1ZCI6ImV4YW1wbGUub3JnIiwiZXhwIjoiMjAzMC0wMS0wMVQwMDowMjowMFoiLCJpYXQiOiIyMDMwLTAxLTAxVDAwOjAwOjAwWiIsImtleSI6ImVkMjU1MTk6MTFxWUFZS3hDcmZWU183VHlXUUhPZzdoY3ZQYXBpTWxyd0lhYVBjSFVSbyIsIm5hbWUiOiJob3N0LWFfcHJvamVjdF9yNSIsIm5vbmNlIjoiQmdjSUNRb0xEQTBPRHhBUkVoTVVGUSIsInR5cGUiOiJyZWdpc3RyYXRpb24vMSJ9LCJpZCI6InNoYTI1NjoxMzU2YTY1MTUxNmMwYWYwOTgyZTI0ZTBhZmQxZDliYTY2MzU5NDY3OGE0NDA0NzQyMmY4MDJhMjA4ZDkyYzA2Iiwic2lnIjoiYjFFMzlDTnppQnVPU0tXU0c1TGpkMDZhN2dEcFZETDUxTFdsMGJ0eDRNcUlITHptdHlhWWxhQTFHTUdaNmhWNl9iMEF0Q0pCdnNPa0NINGstQXVDQ0EifQ",
+      "event": "request",
+      "expected": {
+        "code": "accept",
+        "jwt": {
+          "claims": {
+            "aud": [
+              "example.org"
+            ],
+            "exp": 1893456121,
+            "iat": 1893456001,
+            "iss": "swarma-registrar",
+            "jti": "sha256:1356a651516c0af0982e24e0afd1d9ba663594678a44047422f802a208d92c06",
+            "nbf": 1893456001,
+            "sub": "host-a_project_r5"
+          },
+          "compact": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiZXhhbXBsZS5vcmciXSwiZXhwIjoxODkzNDU2MTIxLCJpYXQiOjE4OTM0NTYwMDEsImlzcyI6InN3YXJtYS1yZWdpc3RyYXIiLCJqdGkiOiJzaGEyNTY6MTM1NmE2NTE1MTZjMGFmMDk4MmUyNGUwYWZkMWQ5YmE2NjM1OTQ2NzhhNDQwNDc0MjJmODAyYTIwOGQ5MmMwNiIsIm5iZiI6MTg5MzQ1NjAwMSwic3ViIjoiaG9zdC1hX3Byb2plY3RfcjUifQ.nZRUcgU3rhA5N5xoBhjYSsk29jHfkxAI26WM5uPY_SJuf_4r2jfUM3UDZH3jsD_HiT9XSIOM2oiLk9sFqwW2Ag",
+          "header": {
+            "alg": "EdDSA",
+            "typ": "JWT"
+          },
+          "signature": "nZRUcgU3rhA5N5xoBhjYSsk29jHfkxAI26WM5uPY_SJuf_4r2jfUM3UDZH3jsD_HiT9XSIOM2oiLk9sFqwW2Ag"
+        }
+      },
+      "monotonic_now": 1,
+      "now": 1893456001
+    },
+    {
+      "bytes_base64": "eyJib2R5Ijp7ImF1ZCI6ImV4YW1wbGUub3JnIiwiZXhwIjoiMjAzMC0wMS0wMVQwMDowMjowMFoiLCJpYXQiOiIyMDMwLTAxLTAxVDAwOjAwOjAwWiIsImtleSI6ImVkMjU1MTk6MTFxWUFZS3hDcmZWU183VHlXUUhPZzdoY3ZQYXBpTWxyd0lhYVBjSFVSbyIsIm5hbWUiOiJob3N0LWFfcHJvamVjdF9yNiIsIm5vbmNlIjoiQndnSkNnc01EUTRQRUJFU0V4UVZGZyIsInR5cGUiOiJyZWdpc3RyYXRpb24vMSJ9LCJpZCI6InNoYTI1NjpiZTc0NTMzZGE3OWU2YmY1NzViNThmYzk1MWNiMzgxMjk1ZWQyYmFhMzliMzA0ZDhiZWVlNmRmNjI1NWQ1Mjk3Iiwic2lnIjoiYXpDMGpYejh6Nkc2Zk1yOThVVFpUc0JIUGlsdWtYWHZ3SldZVVFiR3QydDNqb194alJ2WDdJM2MzNElIS0gwSHZLSFRoZ3NybTI4LVlKZU1jZXFKRHcifQ",
+      "event": "request",
+      "expected": {
+        "code": "accept",
+        "jwt": {
+          "claims": {
+            "aud": [
+              "example.org"
+            ],
+            "exp": 1893456121,
+            "iat": 1893456001,
+            "iss": "swarma-registrar",
+            "jti": "sha256:be74533da79e6bf575b58fc951cb381295ed2baa39b304d8beee6df6255d5297",
+            "nbf": 1893456001,
+            "sub": "host-a_project_r6"
+          },
+          "compact": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiZXhhbXBsZS5vcmciXSwiZXhwIjoxODkzNDU2MTIxLCJpYXQiOjE4OTM0NTYwMDEsImlzcyI6InN3YXJtYS1yZWdpc3RyYXIiLCJqdGkiOiJzaGEyNTY6YmU3NDUzM2RhNzllNmJmNTc1YjU4ZmM5NTFjYjM4MTI5NWVkMmJhYTM5YjMwNGQ4YmVlZTZkZjYyNTVkNTI5NyIsIm5iZiI6MTg5MzQ1NjAwMSwic3ViIjoiaG9zdC1hX3Byb2plY3RfcjYifQ.H9Wmdqqa-TuYjE9rm8Bg7wlVa3dsvsY1dStzfcDnXFqG0-_QcoUKID3SoHVSzSBsRpmo7hHjeRlQMGgQcQJ1AA",
+          "header": {
+            "alg": "EdDSA",
+            "typ": "JWT"
+          },
+          "signature": "H9Wmdqqa-TuYjE9rm8Bg7wlVa3dsvsY1dStzfcDnXFqG0-_QcoUKID3SoHVSzSBsRpmo7hHjeRlQMGgQcQJ1AA"
+        }
+      },
+      "monotonic_now": 1,
+      "now": 1893456001
+    },
+    {
+      "bytes_base64": "eyJib2R5Ijp7ImF1ZCI6ImV4YW1wbGUub3JnIiwiZXhwIjoiMjAzMC0wMS0wMVQwMDowMjowMFoiLCJpYXQiOiIyMDMwLTAxLTAxVDAwOjAwOjAwWiIsImtleSI6ImVkMjU1MTk6MTFxWUFZS3hDcmZWU183VHlXUUhPZzdoY3ZQYXBpTWxyd0lhYVBjSFVSbyIsIm5hbWUiOiJob3N0LWFfcHJvamVjdF9yNyIsIm5vbmNlIjoiQ0FrS0N3d05EZzhRRVJJVEZCVVdGdyIsInR5cGUiOiJyZWdpc3RyYXRpb24vMSJ9LCJpZCI6InNoYTI1NjpiYzI3MTE1OGU0MjBiYjQ4OTA4OWM2Njc3OTdmYmU3YTQ2MDkwMGNjZjNjYWYxYzQwNDAwYTFmYWZkYjZhYTY1Iiwic2lnIjoia3NjV2xvOG5JVDlmWEh0MUtmeW94RFF4NURqZk42XzV2LS1kalJqU0Y3eVlyTmw3dGdzcWViRXBJSEF3NkpEMmMtdWMzN0lNczBqa2VuVG5qaXpqQVEifQ",
+      "event": "request",
+      "expected": {
+        "code": "accept",
+        "jwt": {
+          "claims": {
+            "aud": [
+              "example.org"
+            ],
+            "exp": 1893456121,
+            "iat": 1893456001,
+            "iss": "swarma-registrar",
+            "jti": "sha256:bc271158e420bb489089c667797fbe7a460900ccf3caf1c40400a1fafdb6aa65",
+            "nbf": 1893456001,
+            "sub": "host-a_project_r7"
+          },
+          "compact": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiZXhhbXBsZS5vcmciXSwiZXhwIjoxODkzNDU2MTIxLCJpYXQiOjE4OTM0NTYwMDEsImlzcyI6InN3YXJtYS1yZWdpc3RyYXIiLCJqdGkiOiJzaGEyNTY6YmMyNzExNThlNDIwYmI0ODkwODljNjY3Nzk3ZmJlN2E0NjA5MDBjY2YzY2FmMWM0MDQwMGExZmFmZGI2YWE2NSIsIm5iZiI6MTg5MzQ1NjAwMSwic3ViIjoiaG9zdC1hX3Byb2plY3RfcjcifQ.YQrfxUNkF3qN7RLcVkDX7bjVeB8-7W-JzIFuF0kLsM72VADhTAC42Ad_4D3pPwyi5l3THzJdvQ2qjL9JRyW8Cw",
+          "header": {
+            "alg": "EdDSA",
+            "typ": "JWT"
+          },
+          "signature": "YQrfxUNkF3qN7RLcVkDX7bjVeB8-7W-JzIFuF0kLsM72VADhTAC42Ad_4D3pPwyi5l3THzJdvQ2qjL9JRyW8Cw"
+        }
+      },
+      "monotonic_now": 1,
+      "now": 1893456001
+    },
+    {
+      "bytes_base64": "eyJib2R5Ijp7ImF1ZCI6ImV4YW1wbGUub3JnIiwiZXhwIjoiMjAzMC0wMS0wMVQwMDowMjowMFoiLCJpYXQiOiIyMDMwLTAxLTAxVDAwOjAwOjAwWiIsImtleSI6ImVkMjU1MTk6MTFxWUFZS3hDcmZWU183VHlXUUhPZzdoY3ZQYXBpTWxyd0lhYVBjSFVSbyIsIm5hbWUiOiJob3N0LWFfcHJvamVjdF9yOCIsIm5vbmNlIjoiQ1FvTERBME9EeEFSRWhNVUZSWVhHQSIsInR5cGUiOiJyZWdpc3RyYXRpb24vMSJ9LCJpZCI6InNoYTI1Njo5ODk0ZmE0NzRmNTQzNWI3YTIxYTc3NjQ3OTc2MzYyZDYyMTllMTA2OThlMjZhMzQ5OWQ0YWY3NWUwZjU0ODQ1Iiwic2lnIjoidk5zRGFWYXY5dy1hZGxsUWxObFRFdHZwT0JVMFY5MXAtcVBXaVdSZXRZTEk0RXFTSTY3MEREd004TmVwUXB1MHZVekdRdmg3dWQxbEQ0V0x4UldyQWcifQ",
+      "event": "request",
+      "expected": {
+        "code": "accept",
+        "jwt": {
+          "claims": {
+            "aud": [
+              "example.org"
+            ],
+            "exp": 1893456121,
+            "iat": 1893456001,
+            "iss": "swarma-registrar",
+            "jti": "sha256:9894fa474f5435b7a21a77647976362d6219e10698e26a3499d4af75e0f54845",
+            "nbf": 1893456001,
+            "sub": "host-a_project_r8"
+          },
+          "compact": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiZXhhbXBsZS5vcmciXSwiZXhwIjoxODkzNDU2MTIxLCJpYXQiOjE4OTM0NTYwMDEsImlzcyI6InN3YXJtYS1yZWdpc3RyYXIiLCJqdGkiOiJzaGEyNTY6OTg5NGZhNDc0ZjU0MzViN2EyMWE3NzY0Nzk3NjM2MmQ2MjE5ZTEwNjk4ZTI2YTM0OTlkNGFmNzVlMGY1NDg0NSIsIm5iZiI6MTg5MzQ1NjAwMSwic3ViIjoiaG9zdC1hX3Byb2plY3RfcjgifQ.10tNNk25zy0RpM6V5VHMFdMOfzSO9yXL6jjusBYvo0N_PfSIuYftaP9n73sDFKjt8p_gsbJeo7CIXntez8pmDw",
+          "header": {
+            "alg": "EdDSA",
+            "typ": "JWT"
+          },
+          "signature": "10tNNk25zy0RpM6V5VHMFdMOfzSO9yXL6jjusBYvo0N_PfSIuYftaP9n73sDFKjt8p_gsbJeo7CIXntez8pmDw"
+        }
+      },
+      "monotonic_now": 1,
+      "now": 1893456001
+    },
+    {
+      "bytes_base64": "eyJib2R5Ijp7ImF1ZCI6ImV4YW1wbGUub3JnIiwiZXhwIjoiMjAzMC0wMS0wMVQwMDowMjowMFoiLCJpYXQiOiIyMDMwLTAxLTAxVDAwOjAwOjAwWiIsImtleSI6ImVkMjU1MTk6MTFxWUFZS3hDcmZWU183VHlXUUhPZzdoY3ZQYXBpTWxyd0lhYVBjSFVSbyIsIm5hbWUiOiJob3N0LWFfcHJvamVjdF9yOSIsIm5vbmNlIjoiQ2dzTURRNFBFQkVTRXhRVkZoY1lHUSIsInR5cGUiOiJyZWdpc3RyYXRpb24vMSJ9LCJpZCI6InNoYTI1NjpjNWFkM2MyYzY2NzI5ZGNmMzNiYWUyZDkxN2E0ZTY0NGYxYjAyODFmZGZkNjM2ZjI4NDhmMTM3NjdkYjQwY2VmIiwic2lnIjoiV2VQcEN4NkM5MlpnMkJhWE0yMnNuN3BfZzBVLWllNTdpOW5IWk9HaXppYUw3NmRMNERHcWhqcHEyNlRhVHdnbmptZkdhWFFrY1ZEN1ZBaWNEb3NNQUEifQ",
+      "event": "request",
+      "expected": {
+        "code": "accept",
+        "jwt": {
+          "claims": {
+            "aud": [
+              "example.org"
+            ],
+            "exp": 1893456121,
+            "iat": 1893456001,
+            "iss": "swarma-registrar",
+            "jti": "sha256:c5ad3c2c66729dcf33bae2d917a4e644f1b0281fdfd636f2848f13767db40cef",
+            "nbf": 1893456001,
+            "sub": "host-a_project_r9"
+          },
+          "compact": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiZXhhbXBsZS5vcmciXSwiZXhwIjoxODkzNDU2MTIxLCJpYXQiOjE4OTM0NTYwMDEsImlzcyI6InN3YXJtYS1yZWdpc3RyYXIiLCJqdGkiOiJzaGEyNTY6YzVhZDNjMmM2NjcyOWRjZjMzYmFlMmQ5MTdhNGU2NDRmMWIwMjgxZmRmZDYzNmYyODQ4ZjEzNzY3ZGI0MGNlZiIsIm5iZiI6MTg5MzQ1NjAwMSwic3ViIjoiaG9zdC1hX3Byb2plY3RfcjkifQ.az9LGwNphpdpuQdtzpAZwn7OYYC43UkxaIqWc1-k-hTaMieDePxtg23msbXPb9MCm0dIXR-FqoARLimI8pyuDQ",
+          "header": {
+            "alg": "EdDSA",
+            "typ": "JWT"
+          },
+          "signature": "az9LGwNphpdpuQdtzpAZwn7OYYC43UkxaIqWc1-k-hTaMieDePxtg23msbXPb9MCm0dIXR-FqoARLimI8pyuDQ"
+        }
+      },
+      "monotonic_now": 1,
+      "now": 1893456001
+    }
+  ],
   "claim": "Key limiter: 11th distinct-name attempt for key within 60 seconds",
   "domain": "registration/1",
   "expected": {
     "code": "rate_limited",
     "state": {
       "audit_outcomes": [
+        "issued",
+        "issued",
+        "issued",
+        "issued",
+        "issued",
+        "issued",
+        "issued",
+        "issued",
+        "issued",
+        "issued",
         "rate_limited"
       ],
       "audit_ready": true,
@@ -69,7 +360,58 @@
           "name": "host-a_project_r9"
         }
       ],
-      "nonce_cache": [],
+      "nonce_cache": [
+        {
+          "expires": 1893456150,
+          "key": "ed25519:11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+          "nonce": "AQIDBAUGBwgJCgsMDQ4PEA"
+        },
+        {
+          "expires": 1893456150,
+          "key": "ed25519:11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+          "nonce": "AgMEBQYHCAkKCwwNDg8QEQ"
+        },
+        {
+          "expires": 1893456150,
+          "key": "ed25519:11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+          "nonce": "AwQFBgcICQoLDA0ODxAREg"
+        },
+        {
+          "expires": 1893456150,
+          "key": "ed25519:11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+          "nonce": "BAUGBwgJCgsMDQ4PEBESEw"
+        },
+        {
+          "expires": 1893456150,
+          "key": "ed25519:11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+          "nonce": "BQYHCAkKCwwNDg8QERITFA"
+        },
+        {
+          "expires": 1893456150,
+          "key": "ed25519:11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+          "nonce": "BgcICQoLDA0ODxAREhMUFQ"
+        },
+        {
+          "expires": 1893456150,
+          "key": "ed25519:11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+          "nonce": "BwgJCgsMDQ4PEBESExQVFg"
+        },
+        {
+          "expires": 1893456150,
+          "key": "ed25519:11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+          "nonce": "CAkKCwwNDg8QERITFBUWFw"
+        },
+        {
+          "expires": 1893456150,
+          "key": "ed25519:11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+          "nonce": "CQoLDA0ODxAREhMUFRYXGA"
+        },
+        {
+          "expires": 1893456150,
+          "key": "ed25519:11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+          "nonce": "CgsMDQ4PEBESExQVFhcYGQ"
+        }
+      ],
       "registry_ready": true,
       "scheduled_revocation_applied": false,
       "signer_ready": true,
@@ -93,58 +435,7 @@
       "path": "/v1/registration"
     },
     "key_capacity": 10,
-    "limiter_events": [
-      {
-        "at": 1,
-        "key": "ed25519:11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
-        "name": "host-a_project_r0"
-      },
-      {
-        "at": 1,
-        "key": "ed25519:11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
-        "name": "host-a_project_r1"
-      },
-      {
-        "at": 1,
-        "key": "ed25519:11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
-        "name": "host-a_project_r2"
-      },
-      {
-        "at": 1,
-        "key": "ed25519:11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
-        "name": "host-a_project_r3"
-      },
-      {
-        "at": 1,
-        "key": "ed25519:11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
-        "name": "host-a_project_r4"
-      },
-      {
-        "at": 1,
-        "key": "ed25519:11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
-        "name": "host-a_project_r5"
-      },
-      {
-        "at": 1,
-        "key": "ed25519:11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
-        "name": "host-a_project_r6"
-      },
-      {
-        "at": 1,
-        "key": "ed25519:11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
-        "name": "host-a_project_r7"
-      },
-      {
-        "at": 1,
-        "key": "ed25519:11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
-        "name": "host-a_project_r8"
-      },
-      {
-        "at": 1,
-        "key": "ed25519:11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
-        "name": "host-a_project_r9"
-      }
-    ],
+    "limiter_events": [],
     "monotonic_now": 60,
     "name_capacity": 3,
     "nonce_cache": [],

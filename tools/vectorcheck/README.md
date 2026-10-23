@@ -30,6 +30,11 @@ bytes were constructed independently of the checker. No operational key is used.
 | `test_signed_registration_structured_union` | A signed structured request name with a leading-hyphen host accepts; exceeding the configured-audience mxid byte cap refuses as `name_invalid` without reservation. The registry UID map uses `legacy.dev` to isolate the request-name guard. |
 | `test_planned_media_token_boundaries` | PR1/PR30 accept; R136/R137 refuse internal token spaces without reservation or debit. |
 | `test_planned_media_ruling` | PR31–PR33 accept unquoted charset tokens and the permitted OWS boundaries; R138/R139 refuse quoted values and whitespace around `=` without reservation or debit. |
+| `test_reachable_accounting_traces` | Nine nonce/budget rows execute legitimate signed prefixes from empty accounting and retain their outcomes. |
+| `test_reachable_prefix_required` | Removing R83's prior issuance cannot be replaced by hidden nonce state. |
+| `test_reachable_trace_clock_required` | PR13 needs explicit per-request clocks to reach the exact 60-second prune boundary. |
+| `test_reachable_trace_clock_regression` | A backward monotonic trace is rejected; valid forward traces still pass. |
+| `test_reachable_release_boundary` | R111 releases at second 61; the same attempt at monotonic second 60 remains limited. |
 | `test_media_ows_boundaries` | SP/HTAB around `;`, the whole value or both accept; whitespace on either side of `=` refuses with unchanged authority/accounting and no JWT. |
 | `test_media_unquoted_charset` | Unquoted charset tokens accept in either case; quoted lowercase and mixed-case values refuse with unchanged authority/accounting and no JWT. |
 | `test_media_parameter_tokens` | The valid unquoted control accepts; spaces inside the charset parameter name or value refuse. |

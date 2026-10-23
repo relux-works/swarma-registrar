@@ -1,12 +1,42 @@
 {
   "after": [],
-  "before": [],
+  "before": [
+    {
+      "bytes_base64": "eyJib2R5Ijp7ImF1ZCI6ImV4YW1wbGUub3JnIiwiZXhwIjoiMjAzMC0wMS0wMVQwMDowMjowMFoiLCJpYXQiOiIyMDMwLTAxLTAxVDAwOjAwOjAwWiIsImtleSI6ImVkMjU1MTk6MTFxWUFZS3hDcmZWU183VHlXUUhPZzdoY3ZQYXBpTWxyd0lhYVBjSFVSbyIsIm5hbWUiOiJob3N0LWFfcHJvamVjdF9kZXYiLCJub25jZSI6IkFRSURCQVVHQndnSkNnc01EUTRQRUEiLCJ0eXBlIjoicmVnaXN0cmF0aW9uLzEifSwiaWQiOiJzaGEyNTY6ZDM3MGEwNjhjOTUyZTE2Zjc1ZWFmNTNiMzVjNmIwOGJiM2Y2OTFjZjQxNWJiZGQ4MDZlOTFkMjA1MjYyY2U4ZiIsInNpZyI6IlJ6TXVsYm9YUzBuQ3J5Vmtudi1FMDBrOTlsTDU0X1FtNUNKS1BLbDZNLVoxVDI0NjlOMkRBUVJJVDNTSF93LXpoT2x5M1lMQUk2V2lvR01UYTdIUER3In0",
+      "event": "request",
+      "expected": {
+        "code": "accept",
+        "jwt": {
+          "claims": {
+            "aud": [
+              "example.org"
+            ],
+            "exp": 1893456121,
+            "iat": 1893456001,
+            "iss": "swarma-registrar",
+            "jti": "sha256:d370a068c952e16f75eaf53b35c6b08bb3f691cf415bbdd806e91d205262ce8f",
+            "nbf": 1893456001,
+            "sub": "host-a_project_dev"
+          },
+          "compact": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiZXhhbXBsZS5vcmciXSwiZXhwIjoxODkzNDU2MTIxLCJpYXQiOjE4OTM0NTYwMDEsImlzcyI6InN3YXJtYS1yZWdpc3RyYXIiLCJqdGkiOiJzaGEyNTY6ZDM3MGEwNjhjOTUyZTE2Zjc1ZWFmNTNiMzVjNmIwOGJiM2Y2OTFjZjQxNWJiZGQ4MDZlOTFkMjA1MjYyY2U4ZiIsIm5iZiI6MTg5MzQ1NjAwMSwic3ViIjoiaG9zdC1hX3Byb2plY3RfZGV2In0.CmZAd_d0xtGQsDbrrCrbFuNNymmqfhfbjTE6xKBd4afah6Ok6_EIvmfebHFQBL3awyUVMRM3OeFTYARS2zDcCw",
+          "header": {
+            "alg": "EdDSA",
+            "typ": "JWT"
+          },
+          "signature": "CmZAd_d0xtGQsDbrrCrbFuNNymmqfhfbjTE6xKBd4afah6Ok6_EIvmfebHFQBL3awyUVMRM3OeFTYARS2zDcCw"
+        }
+      },
+      "monotonic_now": 1,
+      "now": 1893456001
+    }
+  ],
   "claim": "Lowered positive rate capacity: Configured key/name capacities both 1; second fresh attempt in 60-second window",
   "domain": "registration/1",
   "expected": {
     "code": "rate_limited",
     "state": {
       "audit_outcomes": [
+        "issued",
         "rate_limited"
       ],
       "audit_ready": true,
@@ -24,7 +54,13 @@
           "name": "host-a_project_dev"
         }
       ],
-      "nonce_cache": [],
+      "nonce_cache": [
+        {
+          "expires": 1893456150,
+          "key": "ed25519:11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+          "nonce": "AQIDBAUGBwgJCgsMDQ4PEA"
+        }
+      ],
       "registry_ready": true,
       "scheduled_revocation_applied": false,
       "signer_ready": true,
@@ -48,13 +84,7 @@
       "path": "/v1/registration"
     },
     "key_capacity": 1,
-    "limiter_events": [
-      {
-        "at": 1,
-        "key": "ed25519:11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
-        "name": "host-a_project_dev"
-      }
-    ],
+    "limiter_events": [],
     "monotonic_now": 60,
     "name_capacity": 1,
     "nonce_cache": [],

@@ -361,6 +361,8 @@ class Admission:
         self.signer=fixture['signer_available']
         self.generation=fixture['signing_generation']
         self.last_admission=None
+        self.last_monotonic=0
+        self.retry_after=None
         self.revocation=False
 
     def transition(self,item):
@@ -373,13 +375,14 @@ class Admission:
             if item['startup_verified'] and self.last_admission is not None:
                 require(self.last_admission<=item['actual_start_millis']//1000,'synchronized-start ordering premise')
             self.cache=[];self.events=[]
+            self.last_monotonic=0
             self.healthy=item['startup_verified'];self.fenced=not self.healthy
             self.barrier=item['actual_start_millis']//1000+31
         elif event=='signer':
             self.signer=item['available']
         else:
             require(event=='request','unknown fixture transition')
-            code,jwt=self.request(b64(item['bytes_base64']),item['now'])
+            code,jwt=self.request(b64(item['bytes_base64']),item['now'],monotonic_now=item.get('monotonic_now'))
             compare_outcome(item['expected'],code,jwt)
 
     def refuse(self,code):
@@ -388,8 +391,12 @@ class Admission:
             return code,None
         return 'audit_unavailable',None
 
-    def request(self,raw,now,main=False):
+    def request(self,raw,now,main=False,monotonic_now=None):
         f=self.f;http=f['http']
+        monotonic=f['monotonic_now'] if monotonic_now is None else monotonic_now
+        require(type(monotonic) is int and monotonic>=self.last_monotonic,'trace monotonic time must not regress')
+        self.last_monotonic=monotonic
+        self.retry_after=None
         if not self.healthy:
             self.fenced=True
         if http['path']!='/v1/registration':return self.refuse('endpoint_not_found')
@@ -418,11 +425,16 @@ class Admission:
         if iat>now+30:return self.refuse('request_not_yet_valid')
         if now>=exp+30:return self.refuse('request_expired')
         require(1<=f['key_capacity']<=10 and 1<=f['name_capacity']<=3,'fixture capacities')
-        self.events=[e for e in self.events if e['at']>f['monotonic_now']-60]
+        self.events=[e for e in self.events if e['at']>monotonic-60]
         key_events=sum(e['key']==body['key'] for e in self.events)
         name_events=sum(e['name']==body['name'] for e in self.events)
-        if key_events>=f['key_capacity'] or name_events>=f['name_capacity']:return self.refuse('rate_limited')
-        self.events.append({'at':f['monotonic_now'],'key':body['key'],'name':body['name']})
+        if key_events>=f['key_capacity'] or name_events>=f['name_capacity']:
+            releases=[]
+            if key_events>=f['key_capacity']:releases.append(next(e['at'] for e in self.events if e['key']==body['key'])+60)
+            if name_events>=f['name_capacity']:releases.append(next(e['at'] for e in self.events if e['name']==body['name'])+60)
+            self.retry_after=max(releases)-monotonic
+            return self.refuse('rate_limited')
+        self.events.append({'at':monotonic,'key':body['key'],'name':body['name']})
         if any(e['key']==body['key'] and b64(e['nonce'])==b64(body['nonce']) for e in self.cache):return self.refuse('nonce_replayed')
         self.cache.append({'key':body['key'],'nonce':body['nonce'],'expires':exp+30})
         if main and f.get('final_revoked'):
@@ -666,6 +678,8 @@ def verify(vector,seeds):
     for item in vector['before']:model.transition(item)
     code,jwt=model.request(raw,f['now'],main=True)
     compare_outcome(expected,code,jwt)
+    if 'retry_after' in expected:
+        require(expected['retry_after']==model.retry_after,'Retry-After disagreement')
     for item in vector['after']:model.transition(item)
     require(expected['state']==model.state(),'admission final-state disagreement')
     if 'audit_line_base64' in expected:

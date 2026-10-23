@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -30,9 +31,10 @@ import (
 )
 
 type admissionExpected struct {
-	Code  string
-	JWT   *struct{ Compact string }
-	State struct {
+	Code       string
+	RetryAfter *int64 `json:"retry_after"`
+	JWT        *struct{ Compact string }
+	State      struct {
 		NonceCache                 []admissionNonce `json:"nonce_cache"`
 		LimiterEvents              []admissionEvent `json:"limiter_events"`
 		AuditOutcomes              []string         `json:"audit_outcomes"`
@@ -117,6 +119,7 @@ type admissionVector struct {
 }
 type admissionTransition struct {
 	Event              string
+	MonotonicNow       *int64 `json:"monotonic_now"`
 	Now                int64
 	Healthy, Available bool
 	ActualStartMillis  int64  `json:"actual_start_millis"`
@@ -210,21 +213,9 @@ func TestAdmissionVectorConformance(t *testing.T) {
 	t.Logf("ADMISSION COUNTS registration/1: pass=%d fail=%d pending=%d", total.pass, total.fail, total.pending)
 }
 
-// These literal states cannot be produced through the request API: reservation
-// follows both debits; pruning retains or inserts a nonce; restart clears both.
-// R105 instead has a declared generating prefix, executed below without writes
-// to private state. Unknown nonempty states fail rather than becoming pending.
-var admissionPendingReasons = map[string]string{
-	"R83":  "retained nonce with zero limiter events; reservation requires both budget debits and restart clears both",
-	"R84":  "retained nonce with zero limiter events; reservation requires both budget debits and restart clears both",
-	"PR18": "retained nonce with zero limiter events; reservation requires both budget debits and restart clears both",
-	"R86":  "limiter events without a nonce; reservation retains or inserts a pair, clock advance alone does not sweep, restart clears both",
-	"R87":  "limiter events without a nonce; reservation retains or inserts a pair, clock advance alone does not sweep, restart clears both",
-	"R111": "limiter events without a nonce; reservation retains or inserts a pair, clock advance alone does not sweep, restart clears both",
-	"R129": "limiter events without a nonce; reservation retains or inserts a pair, clock advance alone does not sweep, restart clears both",
-	"PR13": "limiter events without a nonce; reservation retains or inserts a pair, clock advance alone does not sweep, restart clears both",
-	"PR14": "limiter events without a nonce; reservation retains or inserts a pair, clock advance alone does not sweep, restart clears both",
-}
+// Every current row is executable. Preserve the classification hook for future
+// rows; undeclared nonempty accounting is still rejected by establishAccounting.
+var admissionPendingReasons = map[string]string{}
 
 func admissionPending(v admissionVector) string {
 	return admissionPendingReasons[v.Row]
@@ -520,6 +511,14 @@ func (r *admissionRun) transition(t *testing.T, s admissionTransition) {
 	t.Helper()
 	switch s.Event {
 	case "request":
+		monotonic := r.v.Fixture.MonotonicNow
+		if s.MonotonicNow != nil {
+			monotonic = *s.MonotonicNow
+		}
+		if monotonic < 0 {
+			t.Fatal("negative trace monotonic time")
+		}
+		r.clock.reading.Monotonic = time.Duration(monotonic) * time.Second
 		r.request(t, s.Bytes, s.Now, s.Expected, false)
 	case "clock":
 		if s.Now < r.clock.reading.UTC {
@@ -577,6 +576,9 @@ func (r *admissionRun) disagree(t *testing.T, what string, got, want any) {
 func (r *admissionRun) request(t *testing.T, encoded string, now int64, want admissionExpected, main bool) {
 	t.Helper()
 	f := r.v.Fixture
+	if main {
+		r.clock.reading.Monotonic = time.Duration(f.MonotonicNow) * time.Second
+	}
 	r.clock.reading.UTC = now
 	raw := decodeExpected(t, encoded)
 	initial := r.snapshot
@@ -623,6 +625,9 @@ func (r *admissionRun) request(t *testing.T, encoded string, now int64, want adm
 		r.lastAdmission = &at
 	}
 	r.disagree(t, "HTTP status", response.Code, admissionStatus(want.Code))
+	if want.RetryAfter != nil {
+		r.disagree(t, "Retry-After", response.Header().Get("Retry-After"), strconv.FormatInt(*want.RetryAfter, 10))
+	}
 	var expectedBody []byte
 	if want.Code == "accept" {
 		if want.JWT == nil {

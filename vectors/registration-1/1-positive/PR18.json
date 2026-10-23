@@ -1,6 +1,35 @@
 {
   "after": [],
-  "before": [],
+  "before": [
+    {
+      "bytes_base64": "eyJib2R5Ijp7ImF1ZCI6ImV4YW1wbGUub3JnIiwiZXhwIjoiMjAzMC0wMS0wMVQwMDowMzowMFoiLCJpYXQiOiIyMDMwLTAxLTAxVDAwOjAxOjAwWiIsImtleSI6ImVkMjU1MTk6MTFxWUFZS3hDcmZWU183VHlXUUhPZzdoY3ZQYXBpTWxyd0lhYVBjSFVSbyIsIm5hbWUiOiJob3N0LWFfcHJvamVjdF9kZXYiLCJub25jZSI6IkFBRUNBd1FGQmdjSUNRb0xEQTBPRHciLCJ0eXBlIjoicmVnaXN0cmF0aW9uLzEifSwiaWQiOiJzaGEyNTY6ODQ5ZGY3OTdlNjUxMzk2NWIxYzg2NjM1NmM3YTlkYjdlODNmNWZlYzExZjE0NzViM2YyNmU0MGE0NDEyMzFjMyIsInNpZyI6IlRiWElNUEJLN05zbGxnYktEUG9ianBoWHR5RlNfenhrenBaQWNyeHlkaTNlbU5Nd1NtcURMTXctdnZJVE8wX0V0Ri1iM3ZHVW9hd1ozb2N3UGRRV0RBIn0",
+      "event": "request",
+      "expected": {
+        "code": "accept",
+        "jwt": {
+          "claims": {
+            "aud": [
+              "example.org"
+            ],
+            "exp": 1893456180,
+            "iat": 1893456060,
+            "iss": "swarma-registrar",
+            "jti": "sha256:849df797e6513965b1c866356c7a9db7e83f5fec11f1475b3f26e40a441231c3",
+            "nbf": 1893456060,
+            "sub": "host-a_project_dev"
+          },
+          "compact": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiZXhhbXBsZS5vcmciXSwiZXhwIjoxODkzNDU2MTgwLCJpYXQiOjE4OTM0NTYwNjAsImlzcyI6InN3YXJtYS1yZWdpc3RyYXIiLCJqdGkiOiJzaGEyNTY6ODQ5ZGY3OTdlNjUxMzk2NWIxYzg2NjM1NmM3YTlkYjdlODNmNWZlYzExZjE0NzViM2YyNmU0MGE0NDEyMzFjMyIsIm5iZiI6MTg5MzQ1NjA2MCwic3ViIjoiaG9zdC1hX3Byb2plY3RfZGV2In0.HhLAmetLdCMedCLQYJvOwukoIwrIiu3_b_NbU9-ICrXnz7Acjch_K1i8QdMvXlBP6U_xGXN84w5TH1ICO-v4CA",
+          "header": {
+            "alg": "EdDSA",
+            "typ": "JWT"
+          },
+          "signature": "HhLAmetLdCMedCLQYJvOwukoIwrIiu3_b_NbU9-ICrXnz7Acjch_K1i8QdMvXlBP6U_xGXN84w5TH1ICO-v4CA"
+        }
+      },
+      "monotonic_now": 60,
+      "now": 1893456060
+    }
+  ],
   "claim": "Same nonce on another enrolled key: None",
   "domain": "registration/1",
   "expected": {
@@ -26,6 +55,7 @@
     },
     "state": {
       "audit_outcomes": [
+        "issued",
         "issued"
       ],
       "audit_ready": true,
@@ -39,13 +69,18 @@
       "limiter_events": [
         {
           "at": 60,
+          "key": "ed25519:11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+          "name": "host-a_project_dev"
+        },
+        {
+          "at": 60,
           "key": "p256:A2D-1LolWp0xyWHrdMY1bWjASbiSO2H6bOZpYi5g8p-2",
           "name": "host-a_project_dev"
         }
       ],
       "nonce_cache": [
         {
-          "expires": 1893456150,
+          "expires": 1893456210,
           "key": "ed25519:11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
           "nonce": "AAECAwQFBgcICQoLDA0ODw"
         },
@@ -81,13 +116,7 @@
     "limiter_events": [],
     "monotonic_now": 60,
     "name_capacity": 3,
-    "nonce_cache": [
-      {
-        "expires": 1893456150,
-        "key": "ed25519:11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
-        "nonce": "AAECAwQFBgcICQoLDA0ODw"
-      }
-    ],
+    "nonce_cache": [],
     "now": 1893456060,
     "registry": {
       "approved": true,

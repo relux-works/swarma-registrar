@@ -320,6 +320,20 @@ func requestStep(env M, now int64, code string) M {
 	}
 	return m
 }
+
+// Timed request traces reach accounting only through legitimate signed attempts.
+func timedRequestStep(env M, now, monotonic int64, code string) M {
+	step := requestStep(env, now, code)
+	step["monotonic_now"] = monotonic
+	return step
+}
+func prefixBody(body M, value byte) M {
+	prior := clone(body)
+	prior["iat"] = ts(0)
+	prior["exp"] = ts(120)
+	prior["nonce"] = nonce(value)
+	return prior
+}
 func clockStep(now int64, healthy bool) M {
 	return M{"event": "clock", "now": epoch + now, "healthy": healthy}
 }
@@ -466,14 +480,21 @@ func registrationCase(r row) M {
 	case "R82":
 		f["now"] = epoch + 210
 	case "R83", "R84":
-		cache(str(body["key"]))
+		prior := clone(body)
+		before = append(before, timedRequestStep(envelope(prior, host), 60, 60, "accept"))
 		if r.ID == "R84" {
 			body["name"] = "host-a_project_other"
 		}
 	case "R86":
-		events(10, false)
+		for i := 0; i < 10; i++ {
+			prior := prefixBody(body, byte(i+1))
+			prior["name"] = fmt.Sprintf("host-a_project_r%d", i)
+			before = append(before, timedRequestStep(envelope(prior, host), 1, 1, "accept"))
+		}
 	case "R87":
-		events(3, true)
+		for i := 1; i <= 3; i++ {
+			before = append(before, timedRequestStep(envelope(prefixBody(body, byte(i)), host), 1, 1, "accept"))
+		}
 	case "R88":
 		one := clone(body)
 		one["nonce"] = nonce(1)
@@ -522,7 +543,10 @@ func registrationCase(r row) M {
 		f["now"] = epoch + 59
 		setWindow(60, 240)
 	case "R111":
-		events(3, true)
+		for i := 1; i <= 3; i++ {
+			before = append(before, timedRequestStep(envelope(prefixBody(body, byte(i)), host), 1, 1, "accept"))
+		}
+		after = append(after, timedRequestStep(envelope(body, host), 61, 61, "accept"))
 	case "R112":
 		body["unexpected"] = "synthetic-token-marker"
 	case "R114":
@@ -597,7 +621,7 @@ func registrationCase(r row) M {
 	case "R129":
 		f["key_capacity"] = 1
 		f["name_capacity"] = 1
-		events(1, true)
+		before = append(before, timedRequestStep(envelope(prefixBody(body, 1), host), 1, 1, "accept"))
 	case "R133":
 		f["actual_start_millis"] = epoch * 1000
 		f["start_barrier"] = epoch + 31
@@ -649,12 +673,22 @@ func registrationCase(r row) M {
 	case "PR11":
 		f["now"] = epoch + 209
 	case "PR13":
-		events(9, false)
-		f["limiter_events"] = append(f["limiter_events"].([]any), M{"at": 0, "key": body["key"], "name": "host-a_project_old"})
+		oldest := prefixBody(body, 1)
+		oldest["name"] = "host-a_project_old"
+		before = append(before, timedRequestStep(envelope(oldest, host), 0, 0, "accept"))
+		for i := 0; i < 9; i++ {
+			prior := prefixBody(body, byte(i+2))
+			prior["name"] = fmt.Sprintf("host-a_project_r%d", i)
+			before = append(before, timedRequestStep(envelope(prior, host), 1, 1, "accept"))
+		}
 	case "PR14":
-		events(2, true)
+		for i := 1; i <= 2; i++ {
+			before = append(before, timedRequestStep(envelope(prefixBody(body, byte(i)), host), 1, 1, "accept"))
+		}
 	case "PR18":
-		cache(edpub(host))
+		prior := clone(body)
+		prior["key"] = edpub(host)
+		before = append(before, timedRequestStep(envelope(prior, host), 60, 60, "accept"))
 	case "PR19":
 		body["name"] = "host-a_project_dev-q1"
 	case "PR25":
@@ -777,7 +811,11 @@ func registrationCase(r row) M {
 		raw = append([]byte(" \n"), raw...)
 		raw = bytes.ReplaceAll(raw, []byte(`"host-a_project_dev"`), []byte(`"\u0068ost-a_project_dev"`))
 	}
-	return M{"row": r.ID, "domain": r.Domain, "claim": r.Rule + ": " + r.Boundary, "positive_control": r.Control, "mode": "admission", "input": M{"bytes_base64": enc(raw)}, "fixture": f, "before": before, "after": after, "expected": M{"code": r.Code}}
+	expected := M{"code": r.Code}
+	if r.ID == "R111" {
+		expected["retry_after"] = 1
+	}
+	return M{"row": r.ID, "domain": r.Domain, "claim": r.Rule + ": " + r.Boundary, "positive_control": r.Control, "mode": "admission", "input": M{"bytes_base64": enc(raw)}, "fixture": f, "before": before, "after": after, "expected": expected}
 }
 
 // Each malformed fixture pins one concrete witness; no parser result is guessed.
@@ -1299,7 +1337,7 @@ func finish(v M) {
 	barrier := num(f["start_barrier"])
 	signer := f["signer_available"] == true
 	generation := f["signing_generation"]
-	apply := func(raw []byte, c string, now int64, main bool) {
+	apply := func(raw []byte, c string, now, monotonic int64, main bool) {
 		late := main && (f["final_revoked"] == true || f["post_audit_revoked"] == true || f["final_now"] != nil || f["post_audit_generation"] != nil)
 		charged := c == "accept" || c == "nonce_replayed" || c == "service_unavailable" || late || (c == "audit_unavailable" && str(v["row"]) != "R106")
 		if charged {
@@ -1307,12 +1345,12 @@ func finish(v M) {
 			b := mapv(e["body"])
 			filtered := []any{}
 			for _, event := range events {
-				if num(mapv(event)["at"]) > num(f["monotonic_now"])-60 {
+				if num(mapv(event)["at"]) > monotonic-60 {
 					filtered = append(filtered, event)
 				}
 			}
 			events = filtered
-			events = append(events, M{"at": f["monotonic_now"], "key": b["key"], "name": b["name"]})
+			events = append(events, M{"at": monotonic, "key": b["key"], "name": b["name"]})
 			if c != "nonce_replayed" {
 				cache = append(cache, M{"key": b["key"], "nonce": b["nonce"], "expires": parseTime(str(b["exp"])) + 30})
 			}
@@ -1335,7 +1373,11 @@ func finish(v M) {
 	transition := func(item M) {
 		switch item["event"] {
 		case "request":
-			apply(dec(str(item["bytes_base64"])), str(mapv(item["expected"])["code"]), num(item["now"]), false)
+			monotonic := num(f["monotonic_now"])
+			if value, ok := item["monotonic_now"]; ok {
+				monotonic = num(value)
+			}
+			apply(dec(str(item["bytes_base64"])), str(mapv(item["expected"])["code"]), num(item["now"]), monotonic, false)
 		case "restart":
 			cache = []any{}
 			events = []any{}
@@ -1354,7 +1396,7 @@ func finish(v M) {
 	for _, item := range v["before"].([]any) {
 		transition(mapv(item))
 	}
-	apply(dec(str(mapv(v["input"])["bytes_base64"])), code, num(f["now"]), true)
+	apply(dec(str(mapv(v["input"])["bytes_base64"])), code, num(f["now"]), num(f["monotonic_now"]), true)
 	if code == "accept" {
 		env := parse(dec(str(mapv(v["input"])["bytes_base64"])))
 		expected["jwt"] = jwt(env, num(f["now"]))
