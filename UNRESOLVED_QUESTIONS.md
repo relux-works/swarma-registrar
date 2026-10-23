@@ -20,7 +20,7 @@ contracts have been checked.
 
 Remaining dependencies:
 
-- Service activation: production clock health/startup-ordering evidence and an authenticated durable off-host audit sink still need implementations and qualification. The binary supplies neither; it stays clock-fenced and never releases a JWT without remote acknowledgement. Interactive registry reconciliation alone cannot qualify them.
+- Service activation: the shared Platform time policy provider, the §7 two-check/4-second startup ordering and an authenticated durable off-host audit sink still need integration and qualification. The binary supplies neither production evidence source; it stays clock-fenced and never releases a JWT without remote acknowledgement. Interactive registry reconciliation alone cannot qualify them.
 - HS2 / HS4: the chosen reviewed change to the operated homeserver must provide access-token expiry without refresh-token issuance and refuse JWT login for deactivated accounts. Deployment remains blocked until that change is qualified. Specification, vectors and service code continue meanwhile; §11's lock/containment and logout steps remain required.
 
 These are implementation and qualification dependencies, not unresolved choices
@@ -67,3 +67,21 @@ Appendix C.3 records the accepted directions and remaining activation work:
 Implementation and activation wait until WC1–WC5 are closed and qualification
 evidence is supplied. This does not reopen specification acceptance. No automatic
 downgrade, empty-stream bootstrap or joint-rollback detection is claimed.
+
+## Platform time policy publication and qualification
+
+The credential-broker project owns **Platform time policy**, intended for
+`docs/time-policy.md`, and one provider behind an evidence-source interface for
+all three services. The document is not published yet: its exact reviewed link
+is an open item, not an invented URL. Production provider integration and
+qualification of both startup checks, the fixed 4-second monotonic hold and
+lifetime fences remain required; this specification slice implements none.
+
+Section 7 and Appendix C.4 propose the common protected 1.5-second error cap,
+one-second hold margin, fixed-start interpretation and stricter registrar
+backward-step fence for content review. Keymaker clients must align their retry
+budget to 4+61=65 seconds plus evidence/scheduling/transport margin and acquire
+fresh proofs/nonces. B.3 plans startup qualification separately from the
+unchanged legacy byte fixtures. Option A infers NTS from configuration;
+authenticated per-source evidence remains option B work, not a claimed result.
+These time-policy option labels are separate from witness reconciliation modes.

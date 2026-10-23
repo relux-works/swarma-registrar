@@ -27,7 +27,7 @@ transitional; the reusable core is key proof → enrollment → carrier credenti
 | --- | --- |
 | `spec/registrar.md` | Draft normative formats, HTTP API, registry rules, source findings and vector plan. |
 | `UNRESOLVED_QUESTIONS.md` | Remaining activation dependencies, proposed external-witness choices and settled media-type decisions. |
-| `vectors/` | 310 committed negative-first registration/enrollment fixtures and public test keys; all 310 Appendix B byte-vector rows are instantiated. The separate §B.2 witness lifecycle plans have no fixtures. |
+| `vectors/` | 310 committed negative-first registration/enrollment fixtures and public test keys; all 310 Appendix B byte-vector rows are instantiated. The separate §B.2 witness and §B.3 time-provider/startup lifecycle plans have no fixtures. |
 | `internal/` | Go byte formats, strict signatures, registration/enrollment validation and in-memory registry snapshots. |
 | `internal/adapters/` | Offline pinned Git, durable local state/audit, file signer, clock evidence boundary and strict startup configuration. |
 | `cmd/registrar/` | HTTPS registrar binary with interactive, process-scoped rollback reconciliation. |
@@ -54,6 +54,12 @@ The offline enrollment-publisher signature and protected common pins, stock
 The Keymaker specification is bound to landed main head
 `f5bbba2281c224c2c120cc422644cc8a1fda1bf8`; its cited helper, peer-UID and enrollment
 contracts have been checked (KM1). See specification §1, §4.3, §10 and Appendix C.
+
+The [time-policy target](spec/registrar.md#7-time-replay-concurrency-and-limits-normative)
+requires the shared platform provider, a 4-second monotonic hold and two startup
+checks before fixing the replay barrier. Its provider/startup lifecycle plans
+remain uninstantiated; the existing binary does not yet implement this target
+and remains fenced without production clock evidence.
 
 ## Library packages
 

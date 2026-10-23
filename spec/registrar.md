@@ -635,7 +635,7 @@ MUST NOT attempt later checks merely to select a different refusal.
 | 12 | Name grammar and configured-audience mxid limit pass. | `name_invalid` | 400 |
 | 13 | The key's host permits the name (§5). | `name_not_permitted` | 403 |
 | 14 | Audience equals the configured server name. | `audience_mismatch` | 403 |
-| 15 | Startup clock health is verified, current clock is healthy, no process-lifetime clock fence has tripped, and `iat >= start_barrier = floor(process-start UTC) + 31` (§7). | `clock_skew` | 400 |
+| 15 | Both startup provider checks and the 4-second monotonic hold passed before fixing process start; current provider evidence is healthy, unexpired and within delta_cap; no process-lifetime clock fence has tripped; `iat >= start_barrier = floor(fixed process-start UTC) + 31` (§7). | `clock_skew` | 400 |
 | 16 | Request `iat <= now + 30`. | `request_not_yet_valid` | 403 |
 | 17 | `now < request.exp + 30`. | `request_expired` | 403 |
 | 18 | Both per-key and per-name budgets have capacity (§7). | `rate_limited` | 429 |
@@ -686,60 +686,114 @@ loading any such candidate leaves admission unavailable as §4.4 requires.
 
 ## 7. Time, replay, concurrency and limits (normative)
 
-The registrar MUST run as one replica. Scaling requires a shared, atomic nonce
-store and a new qualified design. Store all times at integer-second precision
-for comparison. Let `now = floor(current UTC Unix time)` for one check pass.
-Set `start_barrier = floor(actual process-start UTC time) + 31`: the 30-second
-maximum accepted future skew plus one strict-boundary second. Requests with
+The registrar MUST run as one replica. The old instance MUST stop admitting
+before a replacement process is launched. Two concurrently admitting instances
+are outside the restart-ordering premise; scaling requires a shared atomic
+nonce store and a separately qualified design. Admission timestamps use integer
+seconds: `now = floor(current UTC Unix time)` for one check pass. Clock evidence,
+error bounds and monotonic holds MUST retain their required subsecond precision.
+
+The only production clock evidence source MUST be the shared provider for the
+**Platform time policy**, owned by the credential-broker project and intended
+for `docs/time-policy.md` there (publication/link pending; Appendix C.4).
+All three services use that provider through an evidence-source interface;
+this specification does not define a second provider or a chrony parser.
+Version 0 uses the policy's option A, requiring no root-granted per-source data.
+A local healthy flag, wall timestamp or ordinary synchronization status alone
+MUST NOT substitute for provider evidence. Test-injected health is not production
+evidence. The policy requires:
+
+- Every configured chrony source is marked `nts`; the selected tracking source
+  matches an `nts` line by name or address. Otherwise evidence is unavailable.
+- Tracking leap status is `Normal`, and the last synchronization is no older
+  than 1024 seconds (equality permitted).
+- Offset magnitude is at most 0.5 seconds, and root distance is at most 1 second
+  (both equalities permitted).
+- Authority expires at sample time plus 5 minutes (300 seconds); at expiry it
+  is no longer valid. Current health alone does not extend an expired sample.
+- The provider reports healthy/unavailable and a nonnegative error bound
+  `delta_sample = abs(offset) + root_distance`, without signed cancellation.
+- A backward UTC step relative to monotonic within one boot exceeding 1 second
+  raises the shared incident and hold. The registrar is stricter, as below.
+
+The registrar MAY use stricter health thresholds. For version 0, the common
+protected bound is `delta_cap = 0.5 + 1 = 1.5 seconds`. Configuration MUST NOT
+raise it above the platform policy bound; such configuration MUST refuse startup.
+Every admission, including the previous process's last admission, MUST require
+current healthy, unexpired provider evidence with `0 <= delta_sample <= delta_cap`.
+This common cap bounds both lifetimes; a new process's smaller sample does not
+prove the previous process had that smaller error. The ordering proof below
+assumes the provider's bound holds; the option-A evidence limitation remains.
+
+Each process MUST pass its own startup provider check before starting a monotonic
+hold of at least `H = 2 * delta_cap + 1 second = 4 seconds`. The one-second margin
+is additional to the two clock-error bounds. A smaller `delta_sample` MUST NOT
+shorten H. Wall-clock progress MUST NOT substitute for elapsed monotonic time.
+No admission is allowed during the hold. After the hold, at the instant chosen
+to fix process start, the startup check MUST pass again with healthy, unexpired
+authority and `delta_sample <= delta_cap`. Otherwise the process stays fenced.
+Only after that successful check is process start fixed. In every barrier rule,
+**process start means this fixed UTC instant after the hold**, not launch time
+or the first provider sample. Set
+`start_barrier = floor(fixed process-start UTC time) + 31`: the 30-second maximum
+accepted future skew plus one strict-boundary second. Requests with
 `iat < start_barrier` MUST be refused as `clock_skew`, without skew allowance.
-The barrier is fixed for that process; waiting MUST NOT lower or replace it.
+The barrier is immutable for that process; waiting MUST NOT lower or replace it.
 
-Every admission MUST occur only under verified synchronized UTC. Before serving,
-each process MUST pass its own startup clock-health check establishing that its
-barrier was derived under healthy synchronized UTC, with every earlier
-admission time no later than this process's synchronized start time. Current
-synchronization alone does not validate a start timestamp recorded during a
-regression. If this startup premise cannot be established, the process MUST
-remain clock-fenced, fail closed, and issue no JWT.
+To see the ordering premise, let a be the true time of the earlier last admission,
+l the later process launch, and f its fixed instant. Single-instance exclusion
+gives `a < l`, and the monotonic hold gives `f >= l + 2*delta_cap + 1`.
+The earlier UTC reading is at most `a + delta_cap`; the fixed reading is at
+least `f - delta_cap`. Thus the earlier reading is less than the fixed reading
+minus one second. In particular, `old_now <= floor(fixed process-start UTC)`.
+An earlier admissible proof had `iat <= old_now + 30`, hence
+`iat < floor(fixed process-start UTC) + 31 = start_barrier`.
+An empty nonce cache or later waiting cannot make that proof admissible again.
+This depends on both lifetimes enforcing the common bound and on exclusive
+serving; current health alone cannot establish a past unhealthy start.
 
-Under this premise, every earlier admission had
-`old_now <= floor(new_process_start)`, so its proof necessarily had
-`iat <= floor(new_process_start) + 30 < start_barrier`. Thus no proof admissible
-by an earlier instance can become admissible in the new instance, even after
-its nonce cache is lost and even after waiting. This argument depends on the
-startup check and permanent process clock fence below; it does not establish
-trustworthy UTC from timestamps alone.
+Availability cost: after a successful initial check and an exactly 4-second
+hold, with synchronized client/registrar clocks a fresh proof passes the barrier
+only after more than 30 and at most 31 further seconds from the fixed instant:
+`4 + (30, 31] = (34, 35] seconds`. A client clock 30 seconds behind can need
+`4 + 31 + 30 = 65 seconds`; this replaces the former 61-second horizon.
+A client 30 seconds ahead can first pass at the next whole registrar second
+after the fixed instant, following the 4-second hold. No proof passes during
+that instant's initial partial second: future skew still limits `iat <= now + 30`.
+These are clock/barrier costs with the stated clock differences, prompt passing
+checks and no extra scheduling delay, not a deadline guaranteeing readiness.
+Evidence acquisition, excess hold/scheduling and transport latency add to them;
+unavailable evidence can fence indefinitely.
+Keymaker clients MUST replace the 61-second startup backoff horizon with
+65 seconds plus their evidence/scheduling/transport margin, then obtain a fresh
+proof and nonce. They MUST NOT replay an old proof indefinitely or bypass a
+clock fence. Persistent refusal beyond that budget requires clock/readiness
+diagnosis. A healthy provider does not clear a process-lifetime fence.
 
-Availability cost: with synchronized client and registrar clocks, fresh proofs
-refuse until UTC reaches `start_barrier`, a delay greater than 30 and at most
-31 seconds after actual start. With a client clock 30 seconds behind, the delay
-can be up to 61 seconds; a client 30 seconds ahead can first pass at the next
-whole registrar second. No proof can pass during the initial partial second,
-because the future-skew check still limits `iat` to `now + 30`.
-Clients MUST wait with bounded backoff (at most the 61-second startup horizon
-plus transport margin), then request a new proof and nonce from Keymaker. A
-persistent refusal past that horizon requires clock/readiness diagnosis; clients
-MUST NOT retry an old proof indefinitely. Waiting alone with an old proof or
-with the former next-second-only barrier is not a replay fix.
-
-The admission skew bound is 30 seconds. This allows ordinary synchronized-host
-jitter while bounding the added replay period. Future `iat = now + 30` is
+The admission skew bound remains 30 seconds. Future `iat = now + 30` is
 accepted; `now + 31` is refused. `now = exp + 29` may pass; `now = exp + 30`
-is expired. These are request-proof rules, not homeserver JWT leeway. Hosts,
-registrar and homeserver MUST have monitored clock synchronization. Loss of
-synchronization or a backwards UTC step MUST fence admission (`clock_skew`).
-A process whose barrier was fixed under unhealthy or regressed UTC, or whose
-clock fence has ever tripped, MUST NOT reopen admission in that process.
-Restoring synchronization, operator acknowledgement and waiting do not clear
-this process-lifetime fence or replace its fixed barrier. Recovery requires the
-operator to verify synchronized UTC and then restart the registrar. The new
-process derives its own `floor(actual process-start UTC time) + 31` barrier
-under that verified healthy clock and MUST independently pass the startup
-clock-health check above before admission. If verification cannot establish the
-ordering premise, admission stays fenced; the ordinary startup wait is not a
-recovery timeout. Retained nonce entries MUST NOT be cleared to recover a clock.
-Monotonic clocks measure limiter intervals and watchdogs. Version 0 uses no
-durable replay cache or clock/admission-time high-water mark; the separate
+is expired. These are proof rules, not homeserver JWT leeway. Hosts, registrar
+and homeserver MUST have monitored synchronization. The registrar MUST fence
+admission (`clock_skew`) on any detected backward UTC step relative to monotonic,
+including a step of at most 1 second that does not trigger the shared incident.
+Step detection concerns a UTC discontinuity, not repeated integer-second
+admission readings. Loss of provider health, unavailable evidence, expired
+authority or a reported error above delta_cap MUST also fence admission.
+These are process-lifetime fences, including during startup. Restored health,
+operator acknowledgement and waiting MUST NOT reopen that process or replace
+its fixed barrier. Recovery requires verified provider health and a new process
+that repeats both checks and the complete 4-second hold before fixing its own
+start. No surviving evidence means no admission; an ordinary startup wait is
+not a recovery timeout. Retained nonces MUST NOT be cleared to recover a clock.
+
+Option A establishes the selected source's NTS status from configuration,
+not authenticated per-source NTS data. Misconfiguration or compromised source/
+configuration evidence can invalidate the assumed UTC bound; this is a residual
+risk, not proof of authenticated source operation. Option B requires separately
+qualified root-granted per-source authentication data. Two concurrent instances
+remain outside the proof even with healthy time evidence.
+Monotonic clocks also measure limiter intervals and watchdogs. Version 0 uses
+no durable replay cache or clock/admission-time high-water mark; the separate
 durable registry high-water requirements in §4 remain unchanged.
 
 Nonce identity is the canonical public-key string plus the 16 decoded nonce
@@ -988,7 +1042,7 @@ out affected devices, inspect audit and secure the signer before resuming.
 | Prompt injection asks for its permitted name | UID-scoped Keymaker prevents crossing station UIDs; grants and carrier room policy control actions. Possession proof does not detect malicious requests within permitted authority. |
 | Proof replay/concurrent retries/restart | Atomic consumed nonces, expiry/skew bounds, start barrier and single replica. A captured JWT remains replayable within homeserver validity; `jti` is audit correlation only. |
 | Registry tampering/rollback | Reviewed signed pin, separate publisher pin, whole-snapshot validation, durable history/tombstones and restore fence. A compromised authorized publisher/maintainer or operator is outside this trust claim. |
-| Clock manipulation | Monitored synchronization, conservative start barrier and fail-closed regression fence. A compromised time source can deny admission; this spec does not prove trustworthy time from a timestamp alone. |
+| Clock manipulation | Platform provider evidence, common 1.5-second error cap, 4-second monotonic pre-start hold, fixed barrier and permanent fence on any detected backward step or invalid/expired authority. Option A infers NTS from configuration, not authenticated per-source data; a compromised source can invalidate the error-bound premise. Concurrent instances are outside the proof (§7). |
 | DoS / audit exhaustion | Bounded request/registry/depth, authenticated sliding limits, independent ingress limits and finite audit deadlines. Audit unavailability deliberately denies issuance. |
 | Bearer interception / retained sessions | TLS, no token logging, bounded JWT validity and explicit logout. Access-token expiry is an activation blocker on the pinned source; do not claim a bound before qualification. |
 
@@ -1033,13 +1087,21 @@ body edit unless id/signature invalidity is the defect. A positive enrollment
 control includes a valid offline publisher signature and verified commit pin.
 
 Bare numeric timestamps in restart rows are integer seconds after
-`2030-01-01T00:00:00Z`; a fractional process-start value denotes actual UTC
-before flooring, not a fractional wire timestamp. For these restart traces the
-prior process started at offset 0 (old barrier 31), before the stated first proof.
-Unless a row explicitly injects clock failure, both admissions have healthy
-clocks and otherwise valid proof/enrollment/audit;
-only the explicitly stated restart clears nonce and limiter memory. Later replay
-requests MUST NOT alter the prior proof's bytes, id, signature or nonce.
+`2030-01-01T00:00:00Z`; fractional start values are not wire timestamps.
+The legacy fixture start, barrier and clock-health fields are abstract post-hold
+admission inputs: process start denotes the fixed instant defined in §7.
+These fixtures test barrier, skew and fence rules; they do not execute or qualify
+the provider checks/monotonic hold and are not production startup traces.
+R125 is the explicit example: its restart 0.2 seconds after the last old
+admission is not realizable under the 4-second hold with the common bound;
+it remains a correct isolated test of `iat = barrier - 1` refusal. All 310
+existing rows and their vector bytes remain unchanged. The real startup
+protocol is planned separately in B.3.
+For the legacy restart traces the prior process has injected start offset 0
+(old barrier 31), before the stated first proof. Unless a row explicitly injects
+clock failure, its admission clock-health inputs are healthy and all other
+proof/enrollment/audit inputs valid. Only the stated restart clears nonce and
+limiter memory. Later replay MUST NOT alter proof bytes, id, signature or nonce.
 
 A row with a temporal defect MUST keep both `iat` and current time inside the
 key window unless the window itself is under test. Future/expiry controls MUST
@@ -1551,6 +1613,55 @@ an unrelated setup failure is not a detected violation. Restore of both host
 and witness with no independent surviving head is the explicit §4.5.3 limit,
 not a negative test that can claim detection from equal hashes.
 
+### B.3 Platform-time provider and startup lifecycle (normative plan; no fixtures yet)
+
+These 27 plans are separate from the unchanged 310 byte rows, B.1 integration
+plans and B.2 witness plans. T/PT ids do not add vector files or claim executable
+startup qualification. Negative rows precede their resolving positive controls.
+Use one serving instance, an excluded prior instance, otherwise valid registry,
+proof, signer and audit, and independent true/UTC/monotonic readings. Record
+provider source/config matching, tracking status, sample/expiry, delta_sample,
+protected delta_cap, both check results, hold elapsed, fixed instant/barrier,
+readiness and JWT count. A startup/clock refusal has no JWT or nonce/budget
+reservation; authority is unchanged and any required refusal audit is retained.
+An already tripped process remains fenced after subsequent healthy evidence.
+Source-selection negatives do not claim authenticated per-source NTS observation.
+
+| Id | Claim | Fixture / scheduled action | Expected result / forbidden outcome | Positive control |
+| --- | --- | --- | --- | --- |
+| T1 | Fast-restart ordering regression | Old UTC=1001.0 accepts iat=1031; new initial UTC=1000.3, delta_sample=0.5; exclude old instance, hold 4 monotonic seconds, fix at UTC=1004.3, barrier=1035; replay unchanged proof, including after waiting to UTC=1035 | clock_skew; no JWT, reservation or debit; waiting cannot rehabilitate iat=1031 | PT1 |
+| T2 | `test_startup_hold_shorter_than_twice_delta_cap_fences` | Try to fix start after 2.9 monotonic seconds, less than 2*1.5=3, with healthy checks | Startup unqualified; no fixed serving barrier/readiness or JWT; this named test fails if the shortened hold serves | PT1 |
+| T3 | Full one-second margin | Try to fix start after 3.5 monotonic seconds, above 2*delta_cap but below 4 | Startup unqualified; no admission; the margin cannot be rounded away | PT1 |
+| T4 | New-sample-only delta regression | Old true=1000.70, UTC=1002.20, delta=1.5 accepts iat=1032; new launch true=1000.71, UTC=1000.61, delta=0.1; attempt hold=1.2 and fixed UTC=1001.81, barrier=1032 | Shortened startup cannot qualify; otherwise replay at new UTC=1002 would re-admit iat=1032. Production uses 4 seconds and refuses the old proof | PT3 |
+| T5 | Provider unavailable at start | Initial provider check is unavailable; local UTC/healthy flag appears normal | Process-lifetime clock fence; no start qualification or JWT | PT1 |
+| T6 | Selected source must match NTS config | Selected source matches no configured nts line by name or address, even if another line is nts | Provider unavailable; startup fenced | PT2 |
+| T7 | Every configured source uses NTS | Selected source matches an nts line, but another configured source lacks nts | Provider unavailable; startup fenced | PT2 |
+| T8 | Leap status | Tracking leap is not Normal | Startup clock fence | PT2 |
+| T9 | Synchronization age | Last synchronization age is 1024.001 seconds at a startup check | Startup clock fence | PT2 |
+| T10 | Offset magnitude bound | Offset is +0.5001 or -0.5001 seconds, with other fields healthy | Startup clock fence; signed cancellation cannot admit the negative case | PT2 |
+| T11 | Root distance bound | Root distance is 1.0001 seconds, with other fields healthy | Startup clock fence | PT2 |
+| T12 | Reported error cap | Provider reports delta_sample above 1.5, negative or not a finite error bound, despite a healthy status | Startup fenced; healthy boolean cannot bypass the common bound | PT2 |
+| T13 | Protected policy cap | Configure delta_cap above 1.5 seconds | Startup configuration refused; no serving or JWT | PT1 |
+| T14 | Fixed-instant second check | First check passes and hold completes; at the proposed fixed instant independently inject unavailable health, expired authority or delta_sample above cap | No valid fixed start; process-lifetime fence; no reuse of the first check | PT1 |
+| T15 | Loss of provider health during lifetime | After a passing first check, during the hold or during qualified serving, receive unavailable evidence or delta_sample above cap; then restore healthy evidence | clock_skew; process remains fenced; no later JWT in that process | PT4 |
+| T16 | Authority expiry equality | At startup recheck or admission, sample age reaches exactly 300 seconds without a replacement sample; status still says healthy | Expired authority fences; no stale-sample JWT or extension by healthy status | PT5 |
+| T17 | Registrar stricter than shared step threshold | After healthy start, detect a -0.25-second UTC step relative to monotonic; provider has not raised the shared >1-second incident | Registrar clock_skew and permanent fence; no JWT despite shared health | PT6 |
+| T18 | No in-place clock recovery | After T5/T14/T15/T16/T17, restore good evidence, acknowledge and wait, but do not restart | Original process never reopens, resets its barrier or releases a JWT | PT4 |
+| T19 | Wall progress cannot complete hold | Advance UTC by 4 seconds while only 0.5 monotonic seconds elapse; attempt to fix start | Still no qualified start or admission; only monotonic elapsed time counts | PT1 |
+| T20 | Only shared production provider supplies evidence | No provider sample, but a production path substitutes a local healthy flag or unqualified synchronization status | Startup fenced; test fixtures do not authorize a production bypass | PT1 |
+| PT1 | Healthy fixed start and new barrier | Both provider checks healthy/unexpired within cap; hold exactly 4 monotonic seconds; fixed UTC=1004.3, barrier=1035; at now=1035 offer fresh iat=1035 and nonce | Admit otherwise valid proof once; one reservation/debit per budget, one JWT | PR1 |
+| PT2 | Inclusive provider boundaries | At fixed-instant check all sources nts, selected name or address matches; leap Normal, sync age=1024, offset=+0.5 or -0.5, root distance=1, delta_sample=1.5; authority fresh; initial check also passed, full hold completed | Provider gates and startup pass at inclusive bounds; fresh proof at the barrier admits | PT1 |
+| PT3 | Small new sample retains common hold | T4 old process/launch readings; new delta_sample=0.1 but hold=4, fixed UTC=1004.61, barrier=1035; at now=1035 replay old iat=1032 then use fresh iat=1035 and nonce | Old proof clock_skew without reservation/debit; fresh control admits once | PT1 |
+| PT4 | New process recovers, old process stays fenced | After a clock fence, exclude old process; new process independently passes both provider checks, holds 4 seconds and fixes a new barrier | Fresh proof at the new barrier admits only in the new process; old remains fenced | PT1 |
+| PT5 | Authority not yet expired | Fixed-instant recheck and admission at sample age=299.999 seconds, all tracking/error gates healthy, hold completed; refresh before age=300 | Otherwise valid fresh proof admits before expiry | PT1 |
+| PT6 | Normal monotonic progression | Qualified process, healthy fresh provider evidence; UTC advances continuously with monotonic, including repeated floored integer readings | No false backward-step fence; fresh proof at/after barrier admits | PT1 |
+| PT7 | Client backoff includes hold | Healthy fixed start after H=4; client is 30 seconds behind; by fixed instant+61 seconds (initial check+65, ignoring added latency) request new proof and nonce | Fresh proof satisfies barrier/skew; old proof is not rehabilitated; extras require stated margin, not indefinite proof replay | PT1 |
+
+A future lifecycle harness must kill bounded controls that (a) skip/shorten the
+hold at T2/T3, (b) use only the new sample at T4, (c) ignore the second check at
+T14 and (d) ignore subsecond backward steps at T17, while PT controls remain
+green. These are planned requirements, not passing production-test evidence.
+
 ## Appendix C. Decisions, open questions and source-gap choices (informative)
 
 ### C.1 Decisions (informative)
@@ -1613,7 +1724,7 @@ Other source-gap choices made for determinism are listed completely by category:
 | Ordered HTTP checks, empty error details, final authority and signing-generation revalidation | Multi-defect vectors need one result; cancel pending old-key issuance at cutover rather than release an already invalid token. |
 | Snapshot-wide loader phases in bytewise Git-path order; conflict before rollback | Combined-defect snapshots need a single diagnostic independent of filesystem traversal. |
 | Separate authority, accounting, audit and readiness fixture oracles | Rejection forbids unauthorized authority changes while permitting mandatory nonce consumption, limiter debits, audit appends and fences. |
-| Thirty-second proof skew and barrier floor(start)+31; verified synchronized startup and permanent per-process clock fence | Exclude every earlier-admissible future-skew proof after restart, including clock recovery: verify synchronized UTC, then restart and independently validate the new start before serving. A failed-start or ever-fenced process never reopens. Keep the ordinary 30–31 second synchronized startup hold (up to 61 seconds for a client 30 seconds behind) and fresh-proof retry. |
+| Thirty-second proof skew and barrier floor(fixed start)+31; common 1.5-second error cap, 4-second monotonic pre-start hold, two provider checks and permanent process fence | Preserve restart ordering across bounded clock error and clock recovery. Proposed local choices are in C.4; aligned-client cost is 4+31=35 seconds and the 30-seconds-behind horizon is 4+61=65 seconds, plus stated latency margins. A failed-start or ever-fenced process never reopens. |
 | No durable replay cache or clock/admission-time high-water mark in version 0 | Rely on the explicit synchronized-start ordering premise and fail closed when it cannot be established. A durable clock/admission-time high-water or replay store is a later design option requiring separate qualification; the existing durable registry high-water remains required. |
 | Nonce scoped to key, consumed at reservation even after later failure, held until exp+30 | Bound memory and eliminate racing/retry double issuance. |
 | Sliding 60-second budgets: key 10, name 3; lower only to integer capacities at least 1; authenticated-stage charging only | Bound signing load without unauthenticated quota exhaustion or undefined retry delays from zero capacity. |
@@ -1670,3 +1781,28 @@ local file or an audit shipping adapter.
 
 No service code, socket implementation, vector files, live-account tests,
 network-registry API or deployment change is included in this specification slice.
+
+### C.4 Platform-time alignment and proposed local choices (informative)
+
+The 2026-10-23 platform trusted-time ruling uses one shared policy/provider,
+owned by the credential-broker project. The intended document is **Platform time
+policy**, `docs/time-policy.md`; it is not yet published. Its exact reviewed link
+and provider integration/qualification remain activation dependencies, recorded
+in UNRESOLVED_QUESTIONS.md. Section 7 specifies the target; this slice adds no
+provider implementation or deployed clock qualification. Policy option A/B here
+concerns time-source evidence, separately from §4.5 reconciliation option A/C.
+
+| Proposed local choice | Reason / content-review status |
+| --- | --- |
+| Common protected delta_cap=1.5 seconds, enforced at every admission and both startup checks; provider reports delta_sample as offset magnitude plus root distance | Proposed for content review: both lifetimes must obey the same conservative bound. A new-only sample cannot establish the prior admission's error; T4/PT3 retain that counterexample. A cap above the policy bound is refused. |
+| Fixed monotonic hold 2*delta_cap+1=4 seconds; one whole second of additional margin | Proposed for content review: absorb both error bounds and make strict ordering explicit without carrying prior-process time state. Never shorten it from a small new sample. |
+| Fix start only after the hold and successful second provider check | Proposed for content review: preserve the floor(fixed start)+31 barrier while checking freshness/health at its derivation. The old process must stop admitting before launch. |
+| Reject variable hold delta_cap+delta_sample+1 | Rejected alternative: 2.6 seconds at sample=0.1, up to 4 at sample=1.5, versus fixed 4; it adds sample/hold/recheck coupling with no extra safety. New-sample-only 2*delta_sample+1 is unsafe, not an optimization. |
+| Any detected backward UTC step fences the registrar for its process lifetime | Proposed for content review: stricter than the shared >1-second incident/hold; health loss and authority expiry have the same permanent fence. |
+| Client horizon 4+61=65 seconds plus evidence/scheduling/transport margin | Proposed for content review: replace the former 61-second startup budget; Keymaker clients obtain a new proof/nonce and diagnose persistent refusal rather than replay indefinitely. |
+| Preserve 310 legacy byte fixtures as abstract post-hold admission inputs | Explicitly approved fixture boundary: R125 is not a realizable new-start trace. B.3 alone plans real provider/hold lifecycle qualification. No vector bytes or row text change. |
+
+Option A still infers selected-source NTS status from configuration. Authenticated
+per-source evidence needs option B's separately qualified root-granted data.
+Neither the local choices nor the provider's healthy verdict prove a compromised
+source's UTC bound or qualify two concurrently serving instances.
