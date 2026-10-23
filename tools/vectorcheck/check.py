@@ -740,12 +740,20 @@ def clock_fixture_rows(vectors):
 
 
 def verify_time_declaration(spec,vectors,legacy_rows):
+    # Discover the reserved namespace before filtering location or canonical syntax.
+    # Also count malformed names, case/separator variants and multiple hits on a line.
+    candidates=list(re.finditer(r'abstract[-_\s]+post[-_\s]+hold[-_\s]+rows?'
+                                r'|abstract[-_]post[-_]hold',spec,re.I))
+    require(len(candidates)==1,'abstract post-hold declaration must occur exactly once globally')
     appendix=re.search(r'^## Appendix A\.[^\n]*\n(.*?)(?=^## Appendix B\.)',spec,re.M|re.S)
     require(appendix is not None,'missing Appendix A abstract post-hold declaration')
-    markers=[line for line in appendix[1].splitlines()
-             if line.startswith('<!-- abstract-post-hold-rows-v1:')]
-    require(len(markers)==1,'abstract post-hold declaration must occur exactly once')
-    match=re.fullmatch(r'<!-- abstract-post-hold-rows-v1: (.+) -->',markers[0])
+    candidate=candidates[0]
+    require(appendix.start(1)<=candidate.start() and candidate.end()<=appendix.end(1),
+            'abstract post-hold declaration must be inside Appendix A')
+    start=spec.rfind('\n',0,candidate.start())+1
+    end=spec.find('\n',candidate.end())
+    line=spec[start:end if end!=-1 else len(spec)]
+    match=re.fullmatch(r'<!-- abstract-post-hold-rows-v1: (.+) -->',line)
     require(match is not None,'malformed abstract post-hold declaration')
     try:
         declared=json.loads(match[1])

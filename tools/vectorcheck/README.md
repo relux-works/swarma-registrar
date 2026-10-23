@@ -8,7 +8,11 @@ python3 -B -m unittest discover -s tools/vectorcheck -p 'test_*.py' -v
 ```
 
 The checker reads the single `abstract-post-hold-rows-v1` JSON-array marker in
-Appendix A and requires exact set equality with the vector rows carrying
+Appendix A. It discovers reserved-marker candidates across the whole spec before
+checking location or syntax: exactly one candidate is allowed, it must be in
+Appendix A, and its complete line and JSON must use the canonical syntax.
+Discovery counts indented, inline and malformed candidates, including those
+outside Appendix A. It then requires exact set equality with rows carrying
 `actual_start_millis`, `start_barrier`, `startup_verified`, `clock_healthy` or
 `clock_fenced`. It checks field presence, including false/default values, in
 `fixture`, `before` and `after`; scheduled `clock` events carrying `healthy` also
@@ -27,8 +31,11 @@ rows; they do not need to interpret this documentation inventory declaration.
 `test_time_declaration.py` supplies paired rejection/valid-control regressions
 for both inventory mismatch directions, malformed declarations, missing hold
 rows, field-presence derivation, row ordering and control resolution. These tests
-read the real specification and vectors and mutate copies in memory. Run logs
-and any CLI control plants belong in an external scratch directory, outside the
+read the real specification and vectors and mutate copies in memory. Named CLI
+regressions also check outside/malformed/indented competitors, same-line markers,
+single-candidate location/syntax and existing missing/duplicate controls, each
+paired with the clean CLI. CLI tests use temporary directories; `TMPDIR` selects
+their scratch root. Run logs and any CLI control plants belong in an external scratch directory, outside the
 tracked vector inventory; the checker writes no output artifacts.
 
 The twenty static JSON fixtures under `fixtures/` exercise `check.verify`, including

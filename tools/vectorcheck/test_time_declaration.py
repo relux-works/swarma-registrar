@@ -2,6 +2,9 @@
 import copy
 import json
 from pathlib import Path
+import subprocess
+import sys
+import tempfile
 import unittest
 
 import check
@@ -11,6 +14,7 @@ class TimeDeclarationRegressions(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         root = Path(__file__).resolve().parents[2]
+        cls.root = root
         cls.spec = (root / 'spec/registrar.md').read_text()
         cls.vectors = [check.parse(path.read_bytes())
                        for path in sorted((root / 'vectors').glob('*/*/*.json'))]
@@ -123,6 +127,87 @@ class TimeDeclarationRegressions(unittest.TestCase):
                 with self.assertRaisesRegex(check.Rejected, message):
                     self.verify(spec=spec)
         self.verify()
+
+    def assert_cli(self, spec, code, message):
+        with tempfile.TemporaryDirectory(prefix='checker-') as scratch:
+            root = Path(scratch)
+            (root / 'spec').mkdir()
+            (root / 'spec/registrar.md').write_text(spec)
+            result = subprocess.run(
+                [sys.executable, '-B', str(Path(check.__file__).resolve()),
+                 '--vectors', str(self.root / 'vectors')],
+                cwd=root, capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, code, result.stdout + result.stderr)
+        self.assertIn(message, result.stderr if code else result.stdout)
+        if code:
+            self.assertNotIn('Traceback', result.stderr)
+
+    def marker_line(self):
+        return next(line for line in self.spec.splitlines()
+                    if line.startswith('<!-- abstract-post-hold-rows-v1: '))
+
+    # Global discovery must reject a second declaration outside A; the clean CLI accepts.
+    def test_cli_duplicate_marker_outside_appendix_a(self):
+        self.assert_cli(self.spec + '\n' + self.marker_line() + '\n', 1,
+                        'abstract post-hold declaration must occur exactly once globally')
+        self.assert_cli(self.spec, 0, 'PASS: 310 declared abstract post-hold rows')
+
+    # Malformed extra names/JSON/comment syntax must be counted before validating shape.
+    def test_cli_malformed_extra_marker(self):
+        for extra in ('<!-- abstract-post-hold-rows-v1: [ -->',
+                      '<!-- abstract-post-hold-rows-v2: [] -->',
+                      '<!-- abstract-post-hold-row-v1: [] -->',
+                      '<!-- abstract-post-hold: [] -->',
+                      '<!-- ABSTRACT-POST-HOLD-ROWS-V1: [] -->',
+                      '<!-- abstract_post_hold_rows_v1: [] -->',
+                      '<!-- abstract post hold rows v1: [] -->',
+                      'prefix abstract-post-hold-rows-v1 []'):
+            with self.subTest(extra=extra):
+                self.assert_cli(self.spec + '\n' + extra + '\n', 1,
+                                'abstract post-hold declaration must occur exactly once globally')
+        self.assert_cli(self.spec, 0, 'PASS: 310 declared abstract post-hold rows')
+
+    # Indentation cannot hide a competing in-A marker, including Markdown code indentation.
+    def test_cli_indented_duplicate_marker(self):
+        line = self.marker_line()
+        for indentation in (' ', '\t', '    '):
+            with self.subTest(indentation=repr(indentation)):
+                self.assert_cli(self.spec.replace(line, line + '\n' + indentation + line), 1,
+                                'abstract post-hold declaration must occur exactly once globally')
+        self.assert_cli(self.spec, 0, 'PASS: 310 declared abstract post-hold rows')
+
+    # Count occurrences, including multiple markers on one line; do not count matching lines.
+    def test_cli_multiple_markers_on_one_line(self):
+        line = self.marker_line()
+        self.assert_cli(self.spec.replace(line, line + ' ' + line), 1,
+                        'abstract post-hold declaration must occur exactly once globally')
+        self.assert_cli(self.spec, 0, 'PASS: 310 declared abstract post-hold rows')
+
+    # A single candidate must be inside A and have the canonical line and valid JSON.
+    def test_cli_single_marker_location_and_syntax(self):
+        line = self.marker_line()
+        without = self.spec.replace(line + '\n', '')
+        for spec in (without + '\n' + line + '\n', line + '\n' + without):
+            with self.subTest(location='outside A'):
+                self.assert_cli(spec, 1, 'abstract post-hold declaration must be inside Appendix A')
+        for replacement in (' ' + line, 'prefix ' + line, line + ' suffix',
+                            line.replace('rows-v1:', 'rows-v2:'),
+                            line.replace('<!-- ', '<!--\n')):
+            with self.subTest(replacement=replacement[:60]):
+                self.assert_cli(self.spec.replace(line, replacement), 1,
+                                'malformed abstract post-hold declaration')
+        self.assert_cli(self.spec.replace(line, '<!-- abstract-post-hold-rows-v1: [ -->'),
+                        1, 'malformed abstract post-hold declaration JSON')
+        self.assert_cli(self.spec, 0, 'PASS: 310 declared abstract post-hold rows')
+
+    # Existing missing/in-A duplicate controls still fail through the CLI; clean stays green.
+    def test_cli_missing_and_duplicate_marker_controls(self):
+        line = self.marker_line()
+        for spec in (self.spec.replace(line, ''), self.spec.replace(line, line + '\n' + line)):
+            with self.subTest(count='zero or two'):
+                self.assert_cli(spec, 1,
+                                'abstract post-hold declaration must occur exactly once globally')
+        self.assert_cli(self.spec, 0, 'PASS: 310 declared abstract post-hold rows')
 
 
 if __name__ == '__main__':
