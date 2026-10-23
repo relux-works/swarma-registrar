@@ -1,0 +1,7 @@
+{
+  "enrollment_publisher": "4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb",
+  "host_ed25519": "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
+  "host_p256": "c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721",
+  "registrar_jwt": "c5aa8df43f9f837bedb7442f31dcb7b166d38535076f094b85ce3a2e0b4458f7",
+  "test_only": true
+}

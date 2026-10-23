@@ -1,0 +1,147 @@
+{
+  "derivations": [
+    {
+      "label": "current",
+      "public_key": "ed25519:Lu1w4PWhpm9-CNOBrELjTIrUKePeWS3oDy1cmxroRX4",
+      "seed_hex": "d74fefa444b3c29e6c6b8f493f9533fc745c8dab0c578ba62a3830374c577382"
+    },
+    {
+      "label": "host-b",
+      "public_key": "ed25519:NWZqSgb3nydVTei2bwsI1G8woQgiiZmHGG8lS30qzXc",
+      "seed_hex": "e04e2f8354b5a5e91a7ebc864ab1ae271bf09da4e51e378b7d504c61c4d0a6ef"
+    },
+    {
+      "label": "key-0",
+      "public_key": "ed25519:F5Cj-F8pNXOOjlt4ixH_seLmOav9lBcOxACMSDn07BY",
+      "seed_hex": "075943ce68599035aaaa7872ca101e1962f121269dbfd28f19bb39a5b578cf38"
+    },
+    {
+      "label": "key-1",
+      "public_key": "ed25519:i3GTTCM5bzyPpUHsJ0WuJmKxAhbVglCGmPyvMWK-Zz4",
+      "seed_hex": "3aa6b9c9499925af84c564895c922acefccdcb48e21e1c71d3f121cfb1512e5e"
+    },
+    {
+      "label": "key-10",
+      "public_key": "ed25519:ZFDK1qbOCF_paH3CeqxNamEPkNtYd0QoURp5ccf9V5M",
+      "seed_hex": "6a6599214074c2c8c75abb881adee1050ad743d0994b92e48e852c16263bf879"
+    },
+    {
+      "label": "key-11",
+      "public_key": "ed25519:gdVT2Og9yMW0QIWlgThb0KUYZ-83Uel-t-7FvMpns7Y",
+      "seed_hex": "38a18d3f6d9ff57878b195d71b83d2b29a500aea9b4312389b86d8f6b81fbb39"
+    },
+    {
+      "label": "key-12",
+      "public_key": "ed25519:QfTC5O2Vsf-aPZPLdTzzdtGP6sJul4ybFoQSNoXXBPg",
+      "seed_hex": "76601d51d42c1e62319ab8cd0d753957d0e0d23370bc9a451807922d7acaccea"
+    },
+    {
+      "label": "key-13",
+      "public_key": "ed25519:NxaiUjtLejzRS4PEXrqyDN8Zx1u9e9P8P1fPvRJdpF8",
+      "seed_hex": "58755cc35d86001a92b8312d0737d73978679b21fe2f90415c0e15e8f5427146"
+    },
+    {
+      "label": "key-14",
+      "public_key": "ed25519:UvAnlZEhz4zv3aa1QWS6G9D4jv7unJld6OUqZhgjzgg",
+      "seed_hex": "d922be54fbefa4c201269f0494c7324bdefeff43a62f7c73c0474c5fc4fa49fd"
+    },
+    {
+      "label": "key-15",
+      "public_key": "ed25519:aVHhXGghw-hdu2Ld3xx1Qp6SvSE-UWWpu1t4Giv-InM",
+      "seed_hex": "aafc17638821125a62831ff1f506e6e6c233d415d2a3a3ed09e50875c961645c"
+    },
+    {
+      "label": "key-16",
+      "public_key": "ed25519:2IYmmkqqZNgLvqwL69XZ_2XLkilAKNtX4wclnvArITU",
+      "seed_hex": "66182e350e4322f2cdb642196fc451a42072818cd8c8bc5180b6c7e37549674b"
+    },
+    {
+      "label": "key-2",
+      "public_key": "ed25519:3M7B5_VmumfYrZvY4V-5BGrNa8y9oVlRCZumy8DXFlg",
+      "seed_hex": "e1913843bf723a1578cbf7ecbd8172636f8dcbe6b86bf2f783bdaf0f6a0b83f8"
+    },
+    {
+      "label": "key-3",
+      "public_key": "ed25519:KOy5oaoD-yp-ThGlcjFxZLVy-QfOwNhhJEEWwwXly30",
+      "seed_hex": "a01b71f1b75cea4817e7a575cffe8aa69a4618d3c977e65f3d2c8502e80edfdf"
+    },
+    {
+      "label": "key-4",
+      "public_key": "ed25519:OUmt8Qti0CnUVCNr7Yzz2QFBPk_VO4i3O5e2VfToYiQ",
+      "seed_hex": "b3e334edab7e5e787922614642a674ae59d8d37c875496e5f205227b2ffeda55"
+    },
+    {
+      "label": "key-5",
+      "public_key": "ed25519:UO_hOXjGeOAju8derbSBQfcp0ZjX4WVuz6hAO8yvkRw",
+      "seed_hex": "622e849e59f143fc253e8a986a36ea8a4954521e5f9f87c06779a6e573cbccb6"
+    },
+    {
+      "label": "key-6",
+      "public_key": "ed25519:2_ER4pXCplOrzbUM2QI4CykA7LYOsARNuI3PGz4ZDWI",
+      "seed_hex": "89bdde7544cc3d1eb1a7086d9fd29d4b919e7ffc13cb6ccedac773d169fe3fac"
+    },
+    {
+      "label": "key-7",
+      "public_key": "ed25519:SGVxztoTkyFdnp6HXmrHlmWSZ9ZAH50lNUOZp1yYkDU",
+      "seed_hex": "5664662ec40b6b6b01f2658cd3f691bb57cf566357a0b556b104ca8241344d02"
+    },
+    {
+      "label": "key-8",
+      "public_key": "ed25519:tAuZpFRl5HM1wOAu-wUbW1ni34Ngir7qtiCsEX9p5Mk",
+      "seed_hex": "d6dcf8123e121a9795a5177517317fdf7e7e1e4357c1bdbf3b1bf2a88090232a"
+    },
+    {
+      "label": "key-9",
+      "public_key": "ed25519:G-DiRWLzGDuzfmRdfKSljMU3KJRnd1MLyy7OEyx1MvA",
+      "seed_hex": "b264db2def31712b6649a2cd001b25a71ff3736ddfb12b012968e88eed54907a"
+    },
+    {
+      "label": "publisher-rotation",
+      "public_key": "ed25519:NPPBYwgbFyKGhc1vDjgVVYQfcG2C7oQcabddo_m_lxI",
+      "seed_hex": "e18003936d42fa85311baa180b8ff33ef131b995902528bc441ca6e274955301"
+    },
+    {
+      "label": "short-host",
+      "public_key": "ed25519:DJtfUInW84HizuUlPoAfDM5W70cxECLWPWhDELX8tuk",
+      "seed_hex": "cf9f1ca866b73f60ba5167c83e56ceb17576b4cea7a70864d52a6499ed740c1c"
+    },
+    {
+      "label": "unapproved-publisher",
+      "public_key": "ed25519:bftlQ8tlMYJMfzlUogFtqZZ8RuWu1JRVSrXekeJTP_4",
+      "seed_hex": "40742ab14915216a477f03ab93dc40bdf68bb5cbb9df81d91211e73fcba887ea"
+    },
+    {
+      "label": "unenrolled",
+      "public_key": "ed25519:8l0BFZHJFHgxbtiLBe-R6pzu4TQj1BQ-LNQjN4Z70To",
+      "seed_hex": "e3b1eac72e8ddcc51f0164c7a8ebf36f9aa8fb36ffe026486297b6f8ddbfc4ec"
+    },
+    {
+      "label": "weak-point-nonce-1",
+      "public_key": "ed25519:1U4iiw-z1jx6xoCddD6SWGvtsMIugJhsQP8HLoy7Yv0",
+      "seed_hex": "3084aa6120b602d3f62650db512d1875fcd7f03e9af15440df587dd353ffa564"
+    },
+    {
+      "label": "weak-point-nonce-2",
+      "public_key": "ed25519:V7ghrarzSvOrmXB0S-OM2LyTu6WIQEy5qalPJRL-wSU",
+      "seed_hex": "77f75ea56ddd49e81be823a0583153d1768661d32fafc9ee9c6b8b60a8004637"
+    },
+    {
+      "label": "weak-point-nonce-3",
+      "public_key": "ed25519:C74KZXJzqCuywz_gN9p8qf98K5-vp4TBy620Due37Oo",
+      "seed_hex": "71b9adc9e5e6a86b3a37653bd459931a52bc57c30856d6f0c08ab811ea331cf0"
+    },
+    {
+      "label": "weak-point-nonce-4",
+      "public_key": "ed25519:qneQsdl_wQH_mtts7i6mChRTA6gd77cSoj29FA7A5to",
+      "seed_hex": "a51a458fe8d7b10761605d58bdf5cabb126d989698b4a0c319cbced3be8915cb"
+    }
+  ],
+  "derived_from": "host_ed25519",
+  "primary_public_keys": {
+    "enrollment_publisher": "ed25519:PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw",
+    "host_ed25519": "ed25519:11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+    "host_p256": "p256:A2D-1LolWp0xyWHrdMY1bWjASbiSO2H6bOZpYi5g8p-2",
+    "registrar_jwt": "ed25519:_FHNjmIYoaONpH7QAjDwWAgW7RO6MwOsXeuRFUiQgCU"
+  },
+  "test_only": true
+}

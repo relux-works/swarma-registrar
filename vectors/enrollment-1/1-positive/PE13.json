@@ -1,0 +1,91 @@
+{
+  "claim": "Same-host historical legacy name: One active host removes then re-adds its legacy.dev at higher sequences, all retained",
+  "domain": "enrollment/1",
+  "expected": {
+    "code": "accept",
+    "state": {
+      "admission_ready": true,
+      "audit_outcomes": [],
+      "authority": {
+        "record_ids": [
+          "sha256:11948f448b303d3c9aa726f4009d0c5724a8dab6f52777febefb1f95f620bebd",
+          "sha256:4be2e5517e92c52ac66d5ea002b3b21a979a591da90628f5167cb67dffec89fc",
+          "sha256:8d88e13d64bd722c835d25f91449ac7ef75425a4f9454d4176d4d84d28e14d47"
+        ],
+        "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "authority_installed": true,
+      "limiter_events": [],
+      "nonce_cache": [],
+      "prior_authority_preserved": false
+    }
+  },
+  "fixture": {
+    "actual_start_millis": 1893455969000,
+    "audience": "example.org",
+    "audit": {
+      "local_available": true,
+      "remote_ack": true
+    },
+    "clock_fenced": false,
+    "clock_healthy": true,
+    "http": {
+      "content_encoding": "identity",
+      "content_type": "application/json",
+      "method": "POST",
+      "path": "/v1/registration"
+    },
+    "key_capacity": 10,
+    "limiter_events": [],
+    "monotonic_now": 60,
+    "name_capacity": 3,
+    "nonce_cache": [],
+    "now": 1893456060,
+    "registry": {
+      "approved": true,
+      "available": true,
+      "commit_signature_valid": true,
+      "descendant": true,
+      "files": [
+        {
+          "bytes_base64": "eyJib2R5Ijp7Imhvc3QiOiJob3N0LWEiLCJrZXlzIjpbeyJrZXkiOiJlZDI1NTE5OjExcVlBWUt4Q3JmVlNfN1R5V1FIT2c3aGN2UGFwaU1scndJYWFQY0hVUm8iLCJub3RfYWZ0ZXIiOiIyMDMxLTAxLTAxVDAwOjAwOjAwWiIsIm5vdF9iZWZvcmUiOiIyMDMwLTAxLTAxVDAwOjAwOjAwWiJ9XSwibmFtZXMiOnsiZXhwbGljaXQiOlsibGVnYWN5LmRldiJdLCJwcmVmaXgiOiJob3N0LWFfIn0sInNlcSI6MSwic3RhdGUiOiJhY3RpdmUiLCJ0eXBlIjoiZW5yb2xsbWVudC8xIiwidWlkX21hcCI6W3sibmFtZXMiOlsiaG9zdC1hX3Byb2plY3RfZGV2Il0sInVpZCI6MTAwMX1dfSwiaWQiOiJzaGEyNTY6OGQ4OGUxM2Q2NGJkNzIyYzgzNWQyNWY5MTQ0OWFjN2VmNzU0MjVhNGY5NDU0ZDQxNzZkNGQ4NGQyOGUxNGQ0NyIsInNpZyI6IjZWWTR3OW1HWnZHUlVSUk52M2x6VTVZT0xETVNJQjRYR2JhQktsRk1XQ0VzVDBWOG0xX01DSGhwZkJlTlc5YmJGVmYtRXREcFF1amp5WmJxZzNjSUF3In0",
+          "kind": "regular",
+          "path": "enrollments/00.json",
+          "repeat": 1
+        },
+        {
+          "bytes_base64": "eyJib2R5Ijp7Imhvc3QiOiJob3N0LWEiLCJrZXlzIjpbeyJrZXkiOiJlZDI1NTE5OjExcVlBWUt4Q3JmVlNfN1R5V1FIT2c3aGN2UGFwaU1scndJYWFQY0hVUm8iLCJub3RfYWZ0ZXIiOiIyMDMxLTAxLTAxVDAwOjAwOjAwWiIsIm5vdF9iZWZvcmUiOiIyMDMwLTAxLTAxVDAwOjAwOjAwWiJ9XSwibmFtZXMiOnsiZXhwbGljaXQiOltdLCJwcmVmaXgiOiJob3N0LWFfIn0sInNlcSI6Miwic3RhdGUiOiJhY3RpdmUiLCJ0eXBlIjoiZW5yb2xsbWVudC8xIiwidWlkX21hcCI6W3sibmFtZXMiOlsiaG9zdC1hX3Byb2plY3RfZGV2Il0sInVpZCI6MTAwMX1dfSwiaWQiOiJzaGEyNTY6MTE5NDhmNDQ4YjMwM2QzYzlhYTcyNmY0MDA5ZDBjNTcyNGE4ZGFiNmY1Mjc3N2ZlYmVmYjFmOTVmNjIwYmViZCIsInNpZyI6IkxaTUxqak84aGZpWlliX21XY2xBcFZleWN0M3JLYkMyWU8tZHI0a2ZxRV95UFk4S2VWMURNQ0FxRHFlSzlJeEZzbWtHU09XSG5vajVkWm95c21JOUR3In0",
+          "kind": "regular",
+          "path": "enrollments/01.json",
+          "repeat": 1
+        },
+        {
+          "bytes_base64": "eyJib2R5Ijp7Imhvc3QiOiJob3N0LWEiLCJrZXlzIjpbeyJrZXkiOiJlZDI1NTE5OjExcVlBWUt4Q3JmVlNfN1R5V1FIT2c3aGN2UGFwaU1scndJYWFQY0hVUm8iLCJub3RfYWZ0ZXIiOiIyMDMxLTAxLTAxVDAwOjAwOjAwWiIsIm5vdF9iZWZvcmUiOiIyMDMwLTAxLTAxVDAwOjAwOjAwWiJ9XSwibmFtZXMiOnsiZXhwbGljaXQiOlsibGVnYWN5LmRldiJdLCJwcmVmaXgiOiJob3N0LWFfIn0sInNlcSI6Mywic3RhdGUiOiJhY3RpdmUiLCJ0eXBlIjoiZW5yb2xsbWVudC8xIiwidWlkX21hcCI6W3sibmFtZXMiOlsiaG9zdC1hX3Byb2plY3RfZGV2Il0sInVpZCI6MTAwMX1dfSwiaWQiOiJzaGEyNTY6NGJlMmU1NTE3ZTkyYzUyYWM2NmQ1ZWEwMDJiM2IyMWE5NzlhNTkxZGE5MDYyOGY1MTY3Y2I2N2RmZmVjODlmYyIsInNpZyI6IlJPM3ZBb0RmU0Vmd3pKRmhVWDNuS2JoZHoxb0Nvdml4blV0ckVtc1gxWDJHS05pRllDeTNhZUFKVGhLZGxlTndua1RvMndSV2tOanJxV2pYOEdzOEJnIn0",
+          "kind": "regular",
+          "path": "enrollments/02.json",
+          "repeat": 1
+        }
+      ],
+      "persist_available": true,
+      "pin_is_exact": true,
+      "previous_files": [],
+      "publisher_key": "ed25519:PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw",
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "rollback_state_available": true,
+      "station_hosts": [
+        "host-a",
+        "host-b"
+      ]
+    },
+    "signer_available": true,
+    "signing_generation": "A",
+    "start_barrier": 1893456000,
+    "startup_verified": true
+  },
+  "input": {
+    "bytes_base64": "eyJib2R5Ijp7Imhvc3QiOiJob3N0LWEiLCJrZXlzIjpbeyJrZXkiOiJlZDI1NTE5OjExcVlBWUt4Q3JmVlNfN1R5V1FIT2c3aGN2UGFwaU1scndJYWFQY0hVUm8iLCJub3RfYWZ0ZXIiOiIyMDMxLTAxLTAxVDAwOjAwOjAwWiIsIm5vdF9iZWZvcmUiOiIyMDMwLTAxLTAxVDAwOjAwOjAwWiJ9XSwibmFtZXMiOnsiZXhwbGljaXQiOlsibGVnYWN5LmRldiJdLCJwcmVmaXgiOiJob3N0LWFfIn0sInNlcSI6MSwic3RhdGUiOiJhY3RpdmUiLCJ0eXBlIjoiZW5yb2xsbWVudC8xIiwidWlkX21hcCI6W3sibmFtZXMiOlsiaG9zdC1hX3Byb2plY3RfZGV2Il0sInVpZCI6MTAwMX1dfSwiaWQiOiJzaGEyNTY6OGQ4OGUxM2Q2NGJkNzIyYzgzNWQyNWY5MTQ0OWFjN2VmNzU0MjVhNGY5NDU0ZDQxNzZkNGQ4NGQyOGUxNGQ0NyIsInNpZyI6IjZWWTR3OW1HWnZHUlVSUk52M2x6VTVZT0xETVNJQjRYR2JhQktsRk1XQ0VzVDBWOG0xX01DSGhwZkJlTlc5YmJGVmYtRXREcFF1amp5WmJxZzNjSUF3In0"
+  },
+  "mode": "registry",
+  "positive_control": "PE1",
+  "row": "PE13"
+}

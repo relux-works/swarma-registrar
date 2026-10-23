@@ -1,0 +1,75 @@
+{
+  "claim": "Unknown body member: Extra body member",
+  "domain": "enrollment/1",
+  "expected": {
+    "code": "enrollment_malformed",
+    "state": {
+      "admission_ready": false,
+      "audit_outcomes": [],
+      "authority": {
+        "record_ids": [],
+        "revision": null
+      },
+      "authority_installed": false,
+      "limiter_events": [],
+      "nonce_cache": [],
+      "prior_authority_preserved": true
+    }
+  },
+  "fixture": {
+    "actual_start_millis": 1893455969000,
+    "audience": "example.org",
+    "audit": {
+      "local_available": true,
+      "remote_ack": true
+    },
+    "clock_fenced": false,
+    "clock_healthy": true,
+    "http": {
+      "content_encoding": "identity",
+      "content_type": "application/json",
+      "method": "POST",
+      "path": "/v1/registration"
+    },
+    "key_capacity": 10,
+    "limiter_events": [],
+    "monotonic_now": 60,
+    "name_capacity": 3,
+    "nonce_cache": [],
+    "now": 1893456060,
+    "registry": {
+      "approved": true,
+      "available": true,
+      "commit_signature_valid": true,
+      "descendant": true,
+      "files": [
+        {
+          "bytes_base64": "eyJib2R5Ijp7ImV4dHJhIjp0cnVlLCJob3N0IjoiaG9zdC1hIiwia2V5cyI6W3sia2V5IjoiZWQyNTUxOToxMXFZQVlLeENyZlZTXzdUeVdRSE9nN2hjdlBhcGlNbHJ3SWFhUGNIVVJvIiwibm90X2FmdGVyIjoiMjAzMS0wMS0wMVQwMDowMDowMFoiLCJub3RfYmVmb3JlIjoiMjAzMC0wMS0wMVQwMDowMDowMFoifV0sIm5hbWVzIjp7ImV4cGxpY2l0IjpbImxlZ2FjeS5kZXYiXSwicHJlZml4IjoiaG9zdC1hXyJ9LCJzZXEiOjEsInN0YXRlIjoiYWN0aXZlIiwidHlwZSI6ImVucm9sbG1lbnQvMSIsInVpZF9tYXAiOlt7Im5hbWVzIjpbImhvc3QtYV9wcm9qZWN0X2RldiJdLCJ1aWQiOjEwMDF9XX0sImlkIjoic2hhMjU2OjYxMzg4M2RmZTVmODVlZTYxNWYxZTA1NWVkNThhYjY2YWJhZjMyM2FhMWY4OWI2YjI3M2ViOGUxMWFjNGFiN2IiLCJzaWciOiJURFpmWi0weS1CQWdYMnNpLTBaWjB5UkdrVnlWRGVBQk5TYVZ0b0FtSkZMVVJ4ZmhyVjNnano5M193YWduTFh5QmJtNjZ1Q2tHMFpTMDRpMFVod1ZBQSJ9",
+          "kind": "regular",
+          "path": "enrollments/a.json",
+          "repeat": 1
+        }
+      ],
+      "persist_available": true,
+      "pin_is_exact": true,
+      "previous_files": [],
+      "publisher_key": "ed25519:PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw",
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "rollback_state_available": true,
+      "station_hosts": [
+        "host-a",
+        "host-b"
+      ]
+    },
+    "signer_available": true,
+    "signing_generation": "A",
+    "start_barrier": 1893456000,
+    "startup_verified": true
+  },
+  "input": {
+    "bytes_base64": "eyJib2R5Ijp7ImV4dHJhIjp0cnVlLCJob3N0IjoiaG9zdC1hIiwia2V5cyI6W3sia2V5IjoiZWQyNTUxOToxMXFZQVlLeENyZlZTXzdUeVdRSE9nN2hjdlBhcGlNbHJ3SWFhUGNIVVJvIiwibm90X2FmdGVyIjoiMjAzMS0wMS0wMVQwMDowMDowMFoiLCJub3RfYmVmb3JlIjoiMjAzMC0wMS0wMVQwMDowMDowMFoifV0sIm5hbWVzIjp7ImV4cGxpY2l0IjpbImxlZ2FjeS5kZXYiXSwicHJlZml4IjoiaG9zdC1hXyJ9LCJzZXEiOjEsInN0YXRlIjoiYWN0aXZlIiwidHlwZSI6ImVucm9sbG1lbnQvMSIsInVpZF9tYXAiOlt7Im5hbWVzIjpbImhvc3QtYV9wcm9qZWN0X2RldiJdLCJ1aWQiOjEwMDF9XX0sImlkIjoic2hhMjU2OjYxMzg4M2RmZTVmODVlZTYxNWYxZTA1NWVkNThhYjY2YWJhZjMyM2FhMWY4OWI2YjI3M2ViOGUxMWFjNGFiN2IiLCJzaWciOiJURFpmWi0weS1CQWdYMnNpLTBaWjB5UkdrVnlWRGVBQk5TYVZ0b0FtSkZMVVJ4ZmhyVjNnano5M193YWduTFh5QmJtNjZ1Q2tHMFpTMDRpMFVod1ZBQSJ9"
+  },
+  "mode": "registry",
+  "positive_control": "PE1",
+  "row": "E12"
+}

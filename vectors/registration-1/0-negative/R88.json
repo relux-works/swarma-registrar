@@ -1,0 +1,178 @@
+{
+  "after": [],
+  "before": [
+    {
+      "bytes_base64": "eyJib2R5Ijp7ImF1ZCI6ImV4YW1wbGUub3JnIiwiZXhwIjoiMjAzMC0wMS0wMVQwMDowMzowMFoiLCJpYXQiOiIyMDMwLTAxLTAxVDAwOjAxOjAwWiIsImtleSI6ImVkMjU1MTk6MTFxWUFZS3hDcmZWU183VHlXUUhPZzdoY3ZQYXBpTWxyd0lhYVBjSFVSbyIsIm5hbWUiOiJob3N0LWFfcHJvamVjdF9kZXYiLCJub25jZSI6IkFRSURCQVVHQndnSkNnc01EUTRQRUEiLCJ0eXBlIjoicmVnaXN0cmF0aW9uLzEifSwiaWQiOiJzaGEyNTY6NTUxOWQzYzRlNGQwZTBhMDZjYWY2OTExOWQwYzBhNjNhNWQzZTNiODM0NjUyZTI0NjhlODZhOTYxNDc3NmQ4YyIsInNpZyI6ImVkMmp1VVZ4b3lseENJNm4xSUJsT3ZfejVOeExaLXZyUWM0cFZpV1dCY3ZjaWM3RmxjQ2ZpS281dUNqR1pOSVpmSHQ1dzh0OFJPaXg4RTlralNmUURBIn0",
+      "event": "request",
+      "expected": {
+        "code": "accept",
+        "jwt": {
+          "claims": {
+            "aud": [
+              "example.org"
+            ],
+            "exp": 1893456180,
+            "iat": 1893456060,
+            "iss": "swarma-registrar",
+            "jti": "sha256:5519d3c4e4d0e0a06caf69119d0c0a63a5d3e3b834652e2468e86a9614776d8c",
+            "nbf": 1893456060,
+            "sub": "host-a_project_dev"
+          },
+          "compact": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiZXhhbXBsZS5vcmciXSwiZXhwIjoxODkzNDU2MTgwLCJpYXQiOjE4OTM0NTYwNjAsImlzcyI6InN3YXJtYS1yZWdpc3RyYXIiLCJqdGkiOiJzaGEyNTY6NTUxOWQzYzRlNGQwZTBhMDZjYWY2OTExOWQwYzBhNjNhNWQzZTNiODM0NjUyZTI0NjhlODZhOTYxNDc3NmQ4YyIsIm5iZiI6MTg5MzQ1NjA2MCwic3ViIjoiaG9zdC1hX3Byb2plY3RfZGV2In0.S4iUChjnRPdBoEMdFATxJ51xRuBTLtSDRaxwP2y4feJ5csdloudq5y6VwrfH0eR2h3Zc5MmO7jIwu6iGZgNeDg",
+          "header": {
+            "alg": "EdDSA",
+            "typ": "JWT"
+          },
+          "signature": "S4iUChjnRPdBoEMdFATxJ51xRuBTLtSDRaxwP2y4feJ5csdloudq5y6VwrfH0eR2h3Zc5MmO7jIwu6iGZgNeDg"
+        }
+      },
+      "now": 1893456060
+    },
+    {
+      "bytes_base64": "eyJib2R5Ijp7ImF1ZCI6ImV4YW1wbGUub3JnIiwiZXhwIjoiMjAzMC0wMS0wMVQwMDowMzowMFoiLCJpYXQiOiIyMDMwLTAxLTAxVDAwOjAxOjAwWiIsImtleSI6ImVkMjU1MTk6MTFxWUFZS3hDcmZWU183VHlXUUhPZzdoY3ZQYXBpTWxyd0lhYVBjSFVSbyIsIm5hbWUiOiJob3N0LWFfcHJvamVjdF9kZXYiLCJub25jZSI6IkFnTUVCUVlIQ0FrS0N3d05EZzhRRVEiLCJ0eXBlIjoicmVnaXN0cmF0aW9uLzEifSwiaWQiOiJzaGEyNTY6ZjhjMzc2Yzk4Y2NlNWE2NGNiODIzYWUzMGYxNjQ4YWE5OTk3Mzc4MDQ3OThjYmU5NjViZGFhZDBlZTk4ODUxMCIsInNpZyI6IkxUSUZnZHJYUzNodVZkdlZ3NzRiQWxsSjdjT0pfWkx3MnBNbUVVaUxaaWxPeTZ0T3hWTmhRbWtMLVUxTl9JaDJnLXJiZEhFUWwwNEpnRm01em1UTEJnIn0",
+      "event": "request",
+      "expected": {
+        "code": "accept",
+        "jwt": {
+          "claims": {
+            "aud": [
+              "example.org"
+            ],
+            "exp": 1893456180,
+            "iat": 1893456060,
+            "iss": "swarma-registrar",
+            "jti": "sha256:f8c376c98cce5a64cb823ae30f1648aa999737804798cbe965bdaad0ee988510",
+            "nbf": 1893456060,
+            "sub": "host-a_project_dev"
+          },
+          "compact": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiZXhhbXBsZS5vcmciXSwiZXhwIjoxODkzNDU2MTgwLCJpYXQiOjE4OTM0NTYwNjAsImlzcyI6InN3YXJtYS1yZWdpc3RyYXIiLCJqdGkiOiJzaGEyNTY6ZjhjMzc2Yzk4Y2NlNWE2NGNiODIzYWUzMGYxNjQ4YWE5OTk3Mzc4MDQ3OThjYmU5NjViZGFhZDBlZTk4ODUxMCIsIm5iZiI6MTg5MzQ1NjA2MCwic3ViIjoiaG9zdC1hX3Byb2plY3RfZGV2In0.7dvaL5Pt2GYyEuXY0rAyiAhukKbJ8pdgI4JMlUWV7M6FD4dMD7_yMrSpsAqHYgATvU8Zx6tRFX-WVzzUWLaBBQ",
+          "header": {
+            "alg": "EdDSA",
+            "typ": "JWT"
+          },
+          "signature": "7dvaL5Pt2GYyEuXY0rAyiAhukKbJ8pdgI4JMlUWV7M6FD4dMD7_yMrSpsAqHYgATvU8Zx6tRFX-WVzzUWLaBBQ"
+        }
+      },
+      "now": 1893456060
+    },
+    {
+      "bytes_base64": "eyJib2R5Ijp7ImF1ZCI6ImV4YW1wbGUub3JnIiwiZXhwIjoiMjAzMC0wMS0wMVQwMDowMzowMFoiLCJpYXQiOiIyMDMwLTAxLTAxVDAwOjAxOjAwWiIsImtleSI6ImVkMjU1MTk6MTFxWUFZS3hDcmZWU183VHlXUUhPZzdoY3ZQYXBpTWxyd0lhYVBjSFVSbyIsIm5hbWUiOiJob3N0LWFfcHJvamVjdF9kZXYiLCJub25jZSI6IkFRSURCQVVHQndnSkNnc01EUTRQRUEiLCJ0eXBlIjoicmVnaXN0cmF0aW9uLzEifSwiaWQiOiJzaGEyNTY6NTUxOWQzYzRlNGQwZTBhMDZjYWY2OTExOWQwYzBhNjNhNWQzZTNiODM0NjUyZTI0NjhlODZhOTYxNDc3NmQ4YyIsInNpZyI6ImVkMmp1VVZ4b3lseENJNm4xSUJsT3ZfejVOeExaLXZyUWM0cFZpV1dCY3ZjaWM3RmxjQ2ZpS281dUNqR1pOSVpmSHQ1dzh0OFJPaXg4RTlralNmUURBIn0",
+      "event": "request",
+      "expected": {
+        "code": "nonce_replayed"
+      },
+      "now": 1893456060
+    }
+  ],
+  "claim": "Failed attempt counts: Two accepted seed attempts, replay debits third event, following fresh attempt exceeds name budget (Appendix A)",
+  "domain": "registration/1",
+  "expected": {
+    "code": "rate_limited",
+    "state": {
+      "audit_outcomes": [
+        "issued",
+        "issued",
+        "nonce_replayed",
+        "rate_limited"
+      ],
+      "audit_ready": true,
+      "authority": {
+        "record_ids": [
+          "sha256:8d88e13d64bd722c835d25f91449ac7ef75425a4f9454d4176d4d84d28e14d47"
+        ],
+        "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "clock_fenced": false,
+      "limiter_events": [
+        {
+          "at": 60,
+          "key": "ed25519:11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+          "name": "host-a_project_dev"
+        },
+        {
+          "at": 60,
+          "key": "ed25519:11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+          "name": "host-a_project_dev"
+        },
+        {
+          "at": 60,
+          "key": "ed25519:11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+          "name": "host-a_project_dev"
+        }
+      ],
+      "nonce_cache": [
+        {
+          "expires": 1893456210,
+          "key": "ed25519:11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+          "nonce": "AQIDBAUGBwgJCgsMDQ4PEA"
+        },
+        {
+          "expires": 1893456210,
+          "key": "ed25519:11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+          "nonce": "AgMEBQYHCAkKCwwNDg8QEQ"
+        }
+      ],
+      "registry_ready": true,
+      "scheduled_revocation_applied": false,
+      "signer_ready": true,
+      "signing_generation": "A",
+      "start_barrier": 1893456000
+    }
+  },
+  "fixture": {
+    "actual_start_millis": 1893455969000,
+    "audience": "example.org",
+    "audit": {
+      "local_available": true,
+      "remote_ack": true
+    },
+    "clock_fenced": false,
+    "clock_healthy": true,
+    "http": {
+      "content_encoding": "identity",
+      "content_type": "application/json",
+      "method": "POST",
+      "path": "/v1/registration"
+    },
+    "key_capacity": 10,
+    "limiter_events": [],
+    "monotonic_now": 60,
+    "name_capacity": 3,
+    "nonce_cache": [],
+    "now": 1893456060,
+    "registry": {
+      "approved": true,
+      "available": true,
+      "commit_signature_valid": true,
+      "descendant": true,
+      "files": [
+        {
+          "bytes_base64": "eyJib2R5Ijp7Imhvc3QiOiJob3N0LWEiLCJrZXlzIjpbeyJrZXkiOiJlZDI1NTE5OjExcVlBWUt4Q3JmVlNfN1R5V1FIT2c3aGN2UGFwaU1scndJYWFQY0hVUm8iLCJub3RfYWZ0ZXIiOiIyMDMxLTAxLTAxVDAwOjAwOjAwWiIsIm5vdF9iZWZvcmUiOiIyMDMwLTAxLTAxVDAwOjAwOjAwWiJ9XSwibmFtZXMiOnsiZXhwbGljaXQiOlsibGVnYWN5LmRldiJdLCJwcmVmaXgiOiJob3N0LWFfIn0sInNlcSI6MSwic3RhdGUiOiJhY3RpdmUiLCJ0eXBlIjoiZW5yb2xsbWVudC8xIiwidWlkX21hcCI6W3sibmFtZXMiOlsiaG9zdC1hX3Byb2plY3RfZGV2Il0sInVpZCI6MTAwMX1dfSwiaWQiOiJzaGEyNTY6OGQ4OGUxM2Q2NGJkNzIyYzgzNWQyNWY5MTQ0OWFjN2VmNzU0MjVhNGY5NDU0ZDQxNzZkNGQ4NGQyOGUxNGQ0NyIsInNpZyI6IjZWWTR3OW1HWnZHUlVSUk52M2x6VTVZT0xETVNJQjRYR2JhQktsRk1XQ0VzVDBWOG0xX01DSGhwZkJlTlc5YmJGVmYtRXREcFF1amp5WmJxZzNjSUF3In0",
+          "kind": "regular",
+          "path": "enrollments/a.json",
+          "repeat": 1
+        }
+      ],
+      "persist_available": true,
+      "pin_is_exact": true,
+      "previous_files": [],
+      "publisher_key": "ed25519:PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw",
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "rollback_state_available": true,
+      "station_hosts": [
+        "host-a",
+        "host-b"
+      ]
+    },
+    "signer_available": true,
+    "signing_generation": "A",
+    "start_barrier": 1893456000,
+    "startup_verified": true
+  },
+  "input": {
+    "bytes_base64": "eyJib2R5Ijp7ImF1ZCI6ImV4YW1wbGUub3JnIiwiZXhwIjoiMjAzMC0wMS0wMVQwMDowMzowMFoiLCJpYXQiOiIyMDMwLTAxLTAxVDAwOjAxOjAwWiIsImtleSI6ImVkMjU1MTk6MTFxWUFZS3hDcmZWU183VHlXUUhPZzdoY3ZQYXBpTWxyd0lhYVBjSFVSbyIsIm5hbWUiOiJob3N0LWFfcHJvamVjdF9kZXYiLCJub25jZSI6IkF3UUZCZ2NJQ1FvTERBME9EeEFSRWciLCJ0eXBlIjoicmVnaXN0cmF0aW9uLzEifSwiaWQiOiJzaGEyNTY6ODk0YjA4M2RlYWI2ODQ3ZjE2ZWY0NTA5ODVkZGFkOGY5MDBhMjdhODI5NTE4NGEzYmM0MDk0YWU1MTg5NjAyZCIsInNpZyI6Ijc0Q1NZckZVWHY3RXhzdHRxVkFhTURXMnpPX3BVczBnXzM4eDItNGVCUWdSRmc5MGtrajhXWnZUR2EtLUNQNDFHM3FRNmJTQ0F1elFHclJIZEQ3dkR3In0"
+  },
+  "mode": "admission",
+  "positive_control": "PR14",
+  "row": "R88"
+}

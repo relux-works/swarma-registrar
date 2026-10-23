@@ -1,0 +1,85 @@
+{
+  "after": [],
+  "before": [],
+  "claim": "Audience exactness: Audience is an HTTPS URL",
+  "domain": "registration/1",
+  "expected": {
+    "code": "audience_mismatch",
+    "state": {
+      "audit_outcomes": [
+        "audience_mismatch"
+      ],
+      "audit_ready": true,
+      "authority": {
+        "record_ids": [
+          "sha256:8d88e13d64bd722c835d25f91449ac7ef75425a4f9454d4176d4d84d28e14d47"
+        ],
+        "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "clock_fenced": false,
+      "limiter_events": [],
+      "nonce_cache": [],
+      "registry_ready": true,
+      "scheduled_revocation_applied": false,
+      "signer_ready": true,
+      "signing_generation": "A",
+      "start_barrier": 1893456000
+    }
+  },
+  "fixture": {
+    "actual_start_millis": 1893455969000,
+    "audience": "example.org",
+    "audit": {
+      "local_available": true,
+      "remote_ack": true
+    },
+    "clock_fenced": false,
+    "clock_healthy": true,
+    "http": {
+      "content_encoding": "identity",
+      "content_type": "application/json",
+      "method": "POST",
+      "path": "/v1/registration"
+    },
+    "key_capacity": 10,
+    "limiter_events": [],
+    "monotonic_now": 60,
+    "name_capacity": 3,
+    "nonce_cache": [],
+    "now": 1893456060,
+    "registry": {
+      "approved": true,
+      "available": true,
+      "commit_signature_valid": true,
+      "descendant": true,
+      "files": [
+        {
+          "bytes_base64": "eyJib2R5Ijp7Imhvc3QiOiJob3N0LWEiLCJrZXlzIjpbeyJrZXkiOiJlZDI1NTE5OjExcVlBWUt4Q3JmVlNfN1R5V1FIT2c3aGN2UGFwaU1scndJYWFQY0hVUm8iLCJub3RfYWZ0ZXIiOiIyMDMxLTAxLTAxVDAwOjAwOjAwWiIsIm5vdF9iZWZvcmUiOiIyMDMwLTAxLTAxVDAwOjAwOjAwWiJ9XSwibmFtZXMiOnsiZXhwbGljaXQiOlsibGVnYWN5LmRldiJdLCJwcmVmaXgiOiJob3N0LWFfIn0sInNlcSI6MSwic3RhdGUiOiJhY3RpdmUiLCJ0eXBlIjoiZW5yb2xsbWVudC8xIiwidWlkX21hcCI6W3sibmFtZXMiOlsiaG9zdC1hX3Byb2plY3RfZGV2Il0sInVpZCI6MTAwMX1dfSwiaWQiOiJzaGEyNTY6OGQ4OGUxM2Q2NGJkNzIyYzgzNWQyNWY5MTQ0OWFjN2VmNzU0MjVhNGY5NDU0ZDQxNzZkNGQ4NGQyOGUxNGQ0NyIsInNpZyI6IjZWWTR3OW1HWnZHUlVSUk52M2x6VTVZT0xETVNJQjRYR2JhQktsRk1XQ0VzVDBWOG0xX01DSGhwZkJlTlc5YmJGVmYtRXREcFF1amp5WmJxZzNjSUF3In0",
+          "kind": "regular",
+          "path": "enrollments/a.json",
+          "repeat": 1
+        }
+      ],
+      "persist_available": true,
+      "pin_is_exact": true,
+      "previous_files": [],
+      "publisher_key": "ed25519:PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw",
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "rollback_state_available": true,
+      "station_hosts": [
+        "host-a",
+        "host-b"
+      ]
+    },
+    "signer_available": true,
+    "signing_generation": "A",
+    "start_barrier": 1893456000,
+    "startup_verified": true
+  },
+  "input": {
+    "bytes_base64": "eyJib2R5Ijp7ImF1ZCI6Imh0dHBzOi8vZXhhbXBsZS5vcmciLCJleHAiOiIyMDMwLTAxLTAxVDAwOjAzOjAwWiIsImlhdCI6IjIwMzAtMDEtMDFUMDA6MDE6MDBaIiwia2V5IjoiZWQyNTUxOToxMXFZQVlLeENyZlZTXzdUeVdRSE9nN2hjdlBhcGlNbHJ3SWFhUGNIVVJvIiwibmFtZSI6Imhvc3QtYV9wcm9qZWN0X2RldiIsIm5vbmNlIjoiQUFFQ0F3UUZCZ2NJQ1FvTERBME9EdyIsInR5cGUiOiJyZWdpc3RyYXRpb24vMSJ9LCJpZCI6InNoYTI1NjpjMGYwZDkxZDlhNDdjYmI4MWQ1ZjQ3ZWYzOWM5OTBlZjM0ZjUwMjk1ODg4M2I3YTZmMjk4NGM5YjExNzY4NTQxIiwic2lnIjoiUXBTN2xPNjBUTVVQSF9fdjFjeVVKQVN2T0ZVaFJvdmw4cHNyUV9CRV9EM09yTHNuSDZjYnAxSUI5MUtsbm92X21FUmx4Tk5lOW9DY3F3VzJ6YlVZQVEifQ"
+  },
+  "mode": "admission",
+  "positive_control": "PR1",
+  "row": "R77"
+}

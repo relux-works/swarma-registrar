@@ -27,7 +27,7 @@ transitional; the reusable core is key proof → enrollment → carrier credenti
 | --- | --- |
 | `spec/registrar.md` | Draft normative formats, HTTP API, registry rules, source findings and vector plan. |
 | `UNRESOLVED_QUESTIONS.md` | Remaining homeserver and Keymaker activation dependencies. |
-| `vectors/` (planned) | Canonical and negative registration/enrollment vectors. |
+| `vectors/` | Committed negative-first registration/enrollment fixtures and public test keys. |
 | `internal/` | Go byte formats, strict signatures, registration/enrollment validation and in-memory registry snapshots. |
 | `cmd/registrar` (planned) | Registrar service binary in Go. |
 
@@ -35,8 +35,10 @@ transitional; the reusable core is key proof → enrollment → carrier credenti
 
 Service (in progress): the Go core implements CCJ-1, signed envelopes, strict
 key/signature checks, stateless registration/enrollment validation and in-memory
-registry snapshots. No service endpoint or vector implementation exists yet. Source inspection of tuwunel
-v1.9.3 found that `access_token_ttl` alone cannot provide
+registry snapshots. The repository also contains 293 offline format vectors,
+with a Go generator and an independent Python checker. No service endpoint
+exists yet. These fixtures do not qualify a running service or homeserver.
+Source inspection of tuwunel v1.9.3 found that `access_token_ttl` alone cannot provide
 access-token expiry without refresh-token issuance, and JWT login does not
 refuse deactivated accounts. A reviewed change to the operated homeserver must
 provide both requirements; deployment stays blocked until that change is
@@ -79,6 +81,8 @@ automatically.
 | Tool | Purpose | Exact entry point | Output |
 | --- | --- | --- | --- |
 | Go 1.26 | Test the module, examples and public API inventories; run static validation. | `go test ./...`; `go vet ./...` | Terminal diagnostics and Go build cache; no generated repository files. |
+| Go (standard library) | Regenerate vectors or check exact committed bytes and file set. | `GOMAXPROCS=2 go run ./tools/vectorgen`; `GOMAXPROCS=2 go run ./tools/vectorgen -check` | `vectors/registration-1/`, `vectors/enrollment-1/`, `vectors/keys/seeds.json`, `vectors/keys/public-keys.json`; check mode writes nothing. |
+| Python 3 with cryptography | Independently check CCJ-1, cryptography, ordered outcomes, JWT bytes and state. | `python3 tools/vectorcheck/check.py` (dependencies: `python3 -m pip install -r tools/vectorcheck/requirements.txt`) | Terminal verdicts; writes nothing. |
 | Git | Inspect scope and check documentation whitespace. | `git diff --check`; `git diff --stat`; `git diff -- spec/registrar.md README.md UNRESOLVED_QUESTIONS.md` | Terminal diagnostics and diff; no generated repository files. |
 | curl | Retrieve the pinned public validator source for inspection. | `mkdir -p .temp/spec-source-review` then `curl --fail --location https://raw.githubusercontent.com/Keats/jsonwebtoken/900010fb1be550ec2cfa8c32038eb154f9ef56d7/src/validation.rs --output .temp/spec-source-review/validation.rs` | Source in the created task-scoped scratch directory. |
 | Python 3 | Count the planned vector rows in the draft. | `python3 -c 'from pathlib import Path; s=Path("spec/registrar.md").read_text().split("## Appendix B.")[1].split("### B.1")[0]; print(sum(line.startswith("\u007c ") for line in s.splitlines())-2)'` | Terminal count only. |
@@ -96,4 +100,12 @@ snapshot. Admission state, HTTP, JWT issuance and audit remain outside this
 implementation. Registration parsing verifies schema, id and signature in that
 order. Name syntax and audience checks are separate methods
 so admission can run enrollment checks first, as required by specification §6.1.
-Future service and vector tooling must document their entry points here.
+Future service tooling must document its entry points here.
+
+Run both vector checks from the repository root. The generator uses only Go's
+standard library; the checker uses the pinned Python dependency. See the
+[fixture contract](vectors/README.md) for inputs, state oracles and limits, and
+[public test material](vectors/keys/README.md) for seed provenance. Control plants
+belong in an isolated scratch copy, passed with generator `-out <copy> -check`
+and checker `--vectors <copy>`; they must never alter committed fixtures.
+There is no registrar service endpoint or live integration target yet.
