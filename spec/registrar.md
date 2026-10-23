@@ -332,11 +332,166 @@ trust explicitly; high-water loss is not first use.
 Restored or missing rollback evidence MUST fence admission until the operator
 reconciles it with trustworthy surviving evidence outside the restored failure
 domain. A local sequence file cannot prove its own freshness after rollback.
-The same rule applies at Keymaker. On any invalid/missing/unreadable registry,
+The same rule applies at Keymaker. Section 4.5 defines an external-witness
+alternative, with this operator reconciliation rule as fallback.
+On any invalid/missing/unreadable registry,
 unverifiable pin or failed reload, both services MUST stop new signing/issuance;
 they MUST NOT continue using a possibly superseded snapshot. HTTP admission
 returns `503 registry_unavailable`, with the loader diagnostic in restricted
 operator logs. There is no network registry API in this version.
+
+### 4.5 External high-water witness (option C; normative draft)
+
+Option C replaces interactive reconciliation on every start (option A).
+This proposal requires independent review and content review before
+implementation. Registry validation, protected pins and the single-replica
+rule remain required. A witness stores evidence, not enrollment authority.
+
+#### 4.5.1 State digest and witness record
+
+The digest MUST cover the complete retained §4.4 high-water. Its preimage MUST
+be a CCJ-1 object with exactly `v` (integer 1) and `high_water` (object).
+The latter MUST contain exactly these members:
+
+| Member | Required value |
+| --- | --- |
+| `Revision` | The accepted full lowercase Git commit id. |
+| `Hosts` | Object keyed by exact host label. Each value has exactly `Seq`, `ID`, `Revoked` and `History`: highest positive safe-integer sequence, its body id, boolean tombstone flag, and complete sequence-to-body-id object. History keys are shortest positive decimal sequence strings; aliases such as `01` are forbidden. |
+| `KeyOwners` | Complete retained canonical-public-key-string to host-label object, including historical ownership. |
+| `NameOwners` | Complete retained explicit-name to host-label object, including removed claims. |
+
+Maps MUST be objects, including empty maps; null or omitted maps are invalid.
+History MUST include the highest `(Seq, ID)`. All §4.4 history, ownership and
+tombstone invariants still apply. The digest MUST be `sha256:` followed by
+lowercase SHA-256 hex of the complete canonical preimage bytes, without LF.
+Filesystem metadata and witness receipts MUST NOT enter the preimage. These
+are the current version-1 local-state field names; no adapter changes are
+included in this proposal.
+
+The witness MUST be outside the consumer's restore/failure domain. Protected
+configuration MUST bind its authenticated identity and a stable stream to the
+registry lineage and authorized consumer or consumer group. A restart or
+restore MUST NOT select a new empty stream. A binding change requires option A
+reconciliation; it MUST NOT erase retained history or tombstones.
+
+A witness record MUST be one CCJ-1 object followed by LF, with exactly `v`
+(integer 1), `stream` (a configured ASCII string matching
+`[a-z0-9][a-z0-9._-]{0,127}`), `seq` (integer 1 through
+9007199254740991), `revision`, `digest`, and `prev_hash`. Revision and digest
+MUST identify the exact committed state above. `prev_hash` MUST be lowercase
+SHA-256 hex of the previous complete witness line including LF, or 64 zeroes
+at the first record. Sequence MUST increase by exactly one within the stream;
+exhaustion MUST fence, not wrap or reset. Witness sequence is separate from
+host `seq` and §9 admission-audit sequence.
+
+The witness MUST durably append before acknowledging. Its authenticated
+acknowledgement MUST bind stream, sequence, revision, complete state digest and
+SHA-256 of the exact complete record including LF. A prefix match, generic
+success or receipt for another record MUST NOT acknowledge this commit.
+Append MUST atomically compare the expected previous stream head. Conflicting
+appends MUST fail closed. An exact retry MAY return the same receipt without a
+second append; a different record at the same sequence MUST be rejected.
+Acknowledged records MUST NOT be truncated, replaced or renumbered.
+
+#### 4.5.2 Commit, start and fallback
+
+The consumer MUST serialize registry replacement with new signing/issuance.
+After all §4.4 validation passes, it MUST perform atomic `Store.Commit` first.
+After every successful commit, including unchanged state, it MUST record that
+state at the witness before using the new authority. Until exact acknowledgement,
+the state is **locally committed, witness pending**. Admission MUST remain
+fenced. Neither the old nor the new snapshot may authorize signing/issuance.
+Witness failure MUST NOT cause a compensating local rollback.
+
+Timeout, lost/wrong acknowledgement or witness unavailability leaves that
+pending state and yields `registry_unavailable`. The new local high-water is
+retained, not reported as unchanged. A later exact acknowledgement or fresh
+latest-head read confirming that exact record MAY resolve an uncertain append.
+Before publishing authority, the consumer MUST revalidate local committed bytes
+and the current approved pin. A newer/different witness head MUST fence.
+If `Store.Commit` itself fails, durability is indeterminate: no witness append
+or authority publication is permitted until option A reconciliation.
+Validation failures still leave high-water unchanged as §4.4 requires.
+
+On every start, option C MUST obtain a fresh authenticated read of the latest
+acknowledged record in the configured stream. The witness MUST answer from its
+authoritative serialized head, not a stale replica, historical-record lookup or
+client cache. The reply MUST bind a fresh unpredictable challenge from this
+lookup. An old authenticated receipt alone is insufficient. Reads and appends
+MUST share one consistent stream order. Every witness operation MUST have a
+finite deadline, default five seconds; timeout MUST fence.
+
+The consumer MUST validate local state, the witness record, stream binding,
+sequence/chain continuity and fresh reply. It MUST recompute the local digest
+and compare both digest and revision with the latest record. Equality permits
+reconciliation only; all §4.4 pin, history and snapshot checks still MUST pass.
+This read MUST NOT append a new record or change local high-water. The consumer
+with a known pending commit MUST resolve its exact intended record, not an
+older record with an equal state digest. An indeterminate commit outcome or
+pending-record identity requires option A reconciliation. The consumer
+MUST reject a head below any trustworthy previously observed sequence, or a
+different record at the same sequence. An advancing head requires append-only
+continuity evidence from the prior head. A restored local sequence floor cannot
+prove freshness; the witness's nonrollback/latest-head guarantee MUST survive
+that restoration independently.
+
+Unequal digest/revision, missing or invalid local state, an absent record,
+unreachable/unauthenticated/stale witness, backwards sequence or broken chain
+MUST leave the consumer fenced. A valid old record signature is not proof that
+it is latest. An empty stream MUST NOT imply first use.
+
+Option A applies when option C is not configured or any prerequisite above
+cannot be established. On every start and after indeterminate persistence, the
+operator MUST reconcile the exact local digest and retained history against
+trustworthy surviving evidence outside the restored failure domain. Missing
+state still requires explicit bootstrap or recovery authorization under §4.4.
+Confirmation of the local file alone MUST NOT count as reconciliation.
+While option C remains selected, operator confirmation MUST NOT bypass a pending
+witness acknowledgement or overwrite a newer witness head. The operator MAY
+explicitly select option A after evidence-based reconciliation; outage MUST NOT
+silently downgrade the mode. Returning to option C requires an independently
+reconciled stream binding and acknowledged current state. Repair of a rolled-
+back witness requires surviving independent evidence, not acceptance of its
+stale head. Without that evidence, both modes remain fenced.
+
+#### 4.5.3 Audit reuse, consumers and threat bounds
+
+The registrar MUST reuse §9's authenticated off-host delivery channel and
+durable exact-byte acknowledgement boundary for witness records. Witness lines
+MUST occupy a separately typed and sequenced stream. They MUST NOT add fields
+to §9's closed event schema or pretend to be `issued`/`refused` events. A §9
+sink qualifies only if it also supplies the compare-head append and fresh
+latest-head operations above. Ordinary audit shipping alone does not qualify.
+Witness records MUST NOT contain private keys, tokens or enrollment bodies.
+Local commit and witness append are separate durability steps, not a distributed
+atomic transaction. Failure between them has the pending state above.
+
+A second registry consumer, including Keymaker, MUST apply the same commit,
+freshness and fallback rule before using authority. It MUST use either a shared
+witness stream with serialized updates or its own independent stream with the
+same guarantees. A registrar receipt MUST NOT prove another consumer's state
+without an exact local digest/revision comparison against a fresh latest head.
+On observing a newer shared head, a lagging consumer MUST fence. This defines
+no helper operations, refusal names or Keymaker internals.
+
+There MUST be one active writer/serving instance per consumer. The deployment
+MUST exclude an older instance for its entire authority-use lifetime before
+replacement begins. Uncertainty MUST fence the replacement. Compare-head append
+only arbitrates witness writes; it does not revoke an old instance's ability to
+sign. Consumers sharing a stream additionally MUST serialize updates and
+reconcile their own state before use. This is not a multi-replica design.
+
+| Threat | Protection and limit |
+| --- | --- |
+| Restore local state and replay a stale witness view | A fresh authoritative latest-head reply exposes the mismatch at an honest witness. Restored receipts or sequence floors cannot establish freshness. A compromised host that bypasses checks, changes protected bindings or controls the authenticated witness view is outside this claim. |
+| Witness outage or partition | No automatic reconciliation or new authority release; explicit evidence-based option A recovery remains available. Availability is deliberately sacrificed. |
+| Replay an old acknowledgement | Exact stream/sequence/record binding, compare-head append and challenge-bound latest reads prevent its use as proof of a newer commit or current startup state. Authentication alone does not prove latestness. |
+| Roll back or equivocate at the witness | Observed regression, same-sequence change or broken continuity fences. An undetectably restored or malicious witness and host with no independent surviving head can agree on stale state; matching hashes alone cannot reveal that rollback. |
+| Split brain | Single-instance exclusion and serialized compare-head writes are required. A witness is not a distributed signing lock; two active serving instances have no split-brain safety claim. |
+
+Witness transport/authentication, independent retention and instance exclusion
+need content-review choices and qualification in Appendix C.3. Until those
+requirements are supplied, option C MUST NOT be activated.
 
 ## 5. Names and audiences (normative)
 
@@ -906,9 +1061,10 @@ Canonicalization-only rows test the CCJ-1 codec independently of the body
 schema; their success is `accept (codec)`. All other accepts mean admission,
 registry installation or the specified emission assertion, not just parsing.
 
-The plan contains **310 rows**: registration/1 has 138 negative and 33 positive
+The two-domain byte-vector plan contains **310 rows**: registration/1 has 138 negative and 33 positive
 rows; enrollment/1 has 114 negative and 25 positive rows, including the ten
 codec controls. These are planned rows, not a count of implemented fixtures.
+Section B.2 adds separate witness-lifecycle plans, not byte-vector files.
 
 For the leading-hyphen rows below, enroll the station host `-node` with prefix
 `-node_`, an active valid key, and explicit list `["legacy.dev"]`; rebuild the
@@ -1279,6 +1435,65 @@ fails on a bounded deliberate bypass (for example a nonce-check bypass producing
 a second JWT). A crash or an unrelated setup failure is not that control.
 These are planned gates, not passing implementation evidence.
 
+### B.2 External-witness lifecycle (normative plan; no fixtures yet)
+
+These 33 additional rows plan §4.5 state transitions. W/PW identifiers are
+separate from the 310 byte-vector rows above; no witness fixture or executable
+conformance is claimed. Each case starts with a valid signed registry and
+protected configuration. Unless changed below, local state L and latest durable
+witness state L have equal digest/revision at sequence n, with trusted continuity
+and fresh authenticated replies. Only one consumer instance may serve.
+
+Each future fixture MUST distinguish local durable high-water, usable authority,
+witness head/receipt and readiness. Admission accounting MUST remain unchanged;
+these are loader/startup operations, not admission requests. Record/ack traces
+MUST be exact. W rows MUST assert the intended fence and lack of new signing/
+issuance, not merely an error. Commit-success/witness-failure rows retain the
+new local state and pending fence, unlike validation refusals in Appendix A.
+No witness operation may weaken history, ownership, tombstones or protected pins.
+
+| Id | Rule | Defect / boundary | Expected result | Positive control |
+| --- | --- | --- | --- | --- |
+| W1 | Startup equality | Restore local L while the fresh latest witness records newer M | registry_unavailable; local L unchanged; no reconciliation | PW1 |
+| W2 | Unwitnessed local advance | Local M, fresh witness still L | registry_unavailable; M retained, fenced | PW1 |
+| W3 | Missing local evidence | Witness L survives but local high-water is missing | registry_unavailable; no implicit bootstrap or state reconstruction from a digest | PW1 |
+| W4 | Missing witness evidence | Valid local L but stream has no record | registry_unavailable; no implicit first use | PW1 |
+| W5 | Witness unavailable at start | Read is unreachable or exceeds its finite deadline | registry_unavailable; no automatic reconciliation | PW1 |
+| W6 | Replayed stale view | Replay L's authentic old receipt/reply against a new lookup challenge while authoritative head is M | registry_unavailable; stale reply is not latest evidence | PW1 |
+| W7 | Protected binding | Reply/receipt belongs to another stream or unauthenticated witness | registry_unavailable; no stream replacement or reconciliation | PW1 |
+| W8 | Exact acknowledgement | Commit M succeeds; receipt changes the final digest/hash byte or revision | registry_unavailable; M durable, authority fenced; no compensating rollback | PW2 |
+| W9 | Lost acknowledgement | Commit M succeeds; append result/ack is unknown and no fresh latest-head confirmation is obtainable | registry_unavailable; M durable and witness result unknown, fenced | PW3 |
+| W10 | Witness rollback | Fresh head sequence n-1 is below independently surviving trusted n | registry_unavailable; backwards head is not adopted | PW4 |
+| W11 | Witness equivocation | Fresh record differs at the trusted sequence n, even if its state digest matches | registry_unavailable; same-sequence replacement is not adopted | PW4 |
+| W12 | Continuity | Fresh head advances but its chain cannot extend trusted n | registry_unavailable; no reset/truncation of the accepted chain | PW4 |
+| W13 | Release ordering | Store.Commit(M) succeeds; attempt authority use before witness acknowledgement | registry_unavailable; neither old L nor pending M may authorize signing | PW2 |
+| W14 | Local commit error | Store.Commit reports failure, including ambiguous durability | registry_unavailable; no witness append or snapshot use; option A required | PW5 |
+| W15 | Old receipt at new commit | Commit M succeeds; replay the acknowledged record for L at sequence n | registry_unavailable; M remains witness pending | PW2 |
+| W16 | Concurrent append | Two proposals compare the same previous witness head; one is already committed | Losing different proposal is refused; no duplicate sequence or losing authority release | PW6 |
+| W17 | Split-brain prerequisite | A replacement cannot establish exclusion of an older serving instance | Replacement fenced before commit/use; a witness CAS alone is insufficient | PW6 |
+| W18 | False option A evidence | Operator confirms a restored local digest using only the same restored local file/receipt | No reconciliation in either mode; no signing/issuance | PW7 |
+| W19 | Complete-state digest | Keep revision/current sequence fixed but change retained history, revoked flag, historical key owner or removed-name owner | Digest changes for each isolated mutation; old receipt cannot reconcile the changed state | PW2 |
+| W20 | Every successful commit | Commit identical L again but omit the new witness record | Local L retained; authority remains pending; old receipt does not acknowledge this commit | PW8 |
+| W21 | Explicit fallback | Witness becomes unreachable; automatically change to option A without operator reconciliation | registry_unavailable; no automatic downgrade | PW7 |
+| W22 | Final local binding | After exact receipt for M, local committed bytes or approved pin change before publication | registry_unavailable; receipt cannot authorize the different state/pin | PW2 |
+| W23 | Sequence exhaustion | Last witness sequence is 9007199254740991; another commit needs a record | Fence; never wrap, reset or switch to an empty stream | PW4 |
+| W24 | Invalid digest preimage | Omit a map, substitute null, add an unknown field or use history-key alias 01 | No accepted digest/reconciliation; existing authority and witness head unchanged | PW1 |
+| W25 | Pending restart identity | Restart with a known pending unchanged-state commit; fresh head shows only the preceding equal-digest record | No automatic resolution of the pending commit; exact intended record or option A reconciliation required | PW3 |
+| PW1 | Fresh equal startup | Valid local L; fresh challenge-bound latest head records L with correct stream/continuity | Reconciled; no local mutation or witness append; ordinary registry validation still required | PE6 |
+| PW2 | Witnessed replacement | Valid descendant M; local commit succeeds; exact durable witness record n+1 is acknowledged; final bytes/pin match | M becomes usable only after acknowledgement; local and witnessed M retained | PE6 |
+| PW3 | Lost-receipt recovery | Witness durably appended M but ack was lost; a fresh latest-head read confirms the exact M record | Resolve pending and use M after final validation; no second append | PW2 |
+| PW4 | Monotonic advance | Trusted n; fresh n+1 record extends it exactly and matches local state | Reconciled; preserve trusted continuity; no sequence reset | PW1 |
+| PW5 | Commit-error recovery | Quiesce after ambiguous commit; operator reconciles actual durable state against independent surviving evidence and selects option A | Reconciled only after explicit option A recovery; no automatic witness append on the failed commit | PW7 |
+| PW6 | Serialized ownership | Prior instance excluded; sole consumer commits the next expected witness head | One append and acknowledgement; only the reconciled instance serves | PW2 |
+| PW7 | Manual fallback | Witness unavailable; operator verifies exact local digest/history against independent surviving evidence and explicitly selects option A | Option A reconciliation permits otherwise valid authority; every later start still needs reconciliation | PE6 |
+| PW8 | Unchanged successful commit | Commit identical L again; append and acknowledge the next witness record with the same state digest | Exactly one new sequence; authority usable after its acknowledgement; exact retry does not append twice | PW2 |
+
+Future instrument controls MUST include admitting W13 before acknowledgement
+and accepting W6's stale reply. Each control MUST fail its named assertion;
+an unrelated setup failure is not a detected violation. Restore of both host
+and witness with no independent surviving head is the explicit §4.5.3 limit,
+not a negative test that can claim detection from equal hashes.
+
 ## Appendix C. Decisions, open questions and source-gap choices (informative)
 
 ### C.1 Decisions (informative)
@@ -1305,6 +1520,7 @@ reviewed homeserver change and its qualification. They do not block
 specification, vector or service-code work
 and do not permit an unsupported service activation. E1 is settled in C.1 and
 §4.3; it is not an open question.
+Option C has additional proposed activation prerequisites in C.3.
 
 | Item | Decision | Status |
 | --- | --- | --- |
@@ -1347,6 +1563,38 @@ Other source-gap choices made for determinism are listed completely by category:
 | JWT iat is issuance time; no kid; PKCS#8 private / SPKI public PEM | Separate proof freshness from fixed token lifetime and match one-key homeserver verification. |
 | Local durable audit plus off-host acknowledgement before release; 5-second deadline | Off-host audit cannot be claimed from best-effort buffering, and sink stalls must be bounded. |
 | Typed runtime/audit/registry errors and loader-only diagnostics | CIP lists admission refusals but leaves infrastructure and enrollment validation failures unnamed. |
+
+### C.3 External-witness proposal and open choices (informative)
+
+Content review on 2026-10-23 requested option C as the next specification slice.
+Section 4.5 is a proposal for independent and content review, not an approved
+implementation or activation. Option A remains the fallback. The source
+contracts (§4.4, §9 and the current local adapters) do not supply a production
+witness, fresh-head protocol or instance-exclusion mechanism.
+
+| Proposed choice | Reason |
+| --- | --- |
+| Digest the complete version-1 canonical high-water, including ownership/history, with SHA-256 and no LF | Reuse current local-state bytes; a revision or current-sequence-only hash would omit irreversible evidence. |
+| Separate typed witness stream over the §9 channel; LF-inclusive record hash and exact receipt | Reuse authenticated off-host durability without changing the closed admission-audit schema or mixing sequence spaces. |
+| Stable protected stream binding; positive safe-integer sequence, hash continuity and compare-head append | Prevent empty-stream resets, accidental consumer collisions and conflicting records at one position. |
+| Stream id limited to 128 ASCII identifier bytes; sequences bounded by CCJ-1 safe integers; exhaustion fences | Bound record parsing, avoid identifier normalization and forbid counter wrap. |
+| Local commit, then witness, then authority use; explicit pending state | The two durable stores have no atomic transaction; a lost acknowledgement cannot justify rollback or continued old authority. |
+| Fresh challenge-bound authoritative latest read, not cached receipt equality | A valid old receipt and rolled-back local file can agree while both are stale. |
+| Five-second default per witness operation; fence on failure, explicit option A recovery | Bound startup/reload waiting while preserving the existing failure-closed rule. |
+| Reuse registry_unavailable for witness fences, preserving restricted loader diagnostics | Registry authority is unavailable; this introduces no HTTP or helper refusal code. |
+| Preserve single-instance serving; shared or independent streams for consumers | Witness compare-head serialization does not fence an already signing process; no helper-internal design is imported. |
+| B.2 lifecycle plans have separate W/PW ids | Do not imply new byte-vector fixtures or executable conformance in this specification-only slice. |
+
+The following choices remain open; none may be silently supplied by a local
+file or an audit shipping adapter. Recommendations are not adopted mechanisms.
+
+| Item | Open choice | Recommendation / activation evidence needed |
+| --- | --- | --- |
+| WC1 | Production witness, independent storage/backup domain and rollback/equivocation detection | Use an independently administered append-only service with durable head continuity and a separately retained trusted checkpoint. Qualify restore of each side separately and joint loss; an undetectable joint rollback remains outside the claim. |
+| WC2 | Transport, authentication, fresh-head request/reply framing and stable stream provisioning | Extend the authenticated audit transport with typed append/read operations, protected peer pins and challenge-bound linearizable latest-head replies. Specify exact wire types, nonce strength, credentials/rotation, record limits and continuity proofs before implementation. A signed historical record alone is insufficient. |
+| WC3 | Cross-consumer shared stream versus independent streams and synchronized registry rollout | Prefer independent consumer-bound streams on the same external service, with common registry/pin policy. If one stream is shared, define serialized writer ownership and fence lagging readers; qualify both consumers without defining helper internals here. |
+| WC4 | Serving-instance exclusion and takeover evidence | Retain one active instance per consumer; require operator-confirmed old-instance shutdown/isolation before replacement. Qualify that exclusion persists throughout authority use. Any future distributed lease must fence signing as well as writes and needs its own design. |
+| WC5 | Option A runbook, first stream bootstrap, witness repair/migration, mode changes and durable pending-commit identity | Require an explicit operator action bound to exact digest, revision, surviving evidence and chosen mode; preserve every tombstone/history claim. Establish the first witnessed head only from independently approved state, never an empty-file heuristic. Define authorization, durable pending/recovery records and loss-of-evidence procedure before activation. |
 
 No service code, socket implementation, vector files, live-account tests,
 network-registry API or deployment change is included in this draft.

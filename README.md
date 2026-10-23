@@ -26,8 +26,8 @@ transitional; the reusable core is key proof → enrollment → carrier credenti
 | Path | Purpose |
 | --- | --- |
 | `spec/registrar.md` | Draft normative formats, HTTP API, registry rules, source findings and vector plan. |
-| `UNRESOLVED_QUESTIONS.md` | Remaining activation dependencies and settled media-type decisions. |
-| `vectors/` | 310 committed negative-first registration/enrollment fixtures and public test keys; all 310 Appendix B rows are instantiated. |
+| `UNRESOLVED_QUESTIONS.md` | Remaining activation dependencies, proposed external-witness choices and settled media-type decisions. |
+| `vectors/` | 310 committed negative-first registration/enrollment fixtures and public test keys; all 310 Appendix B byte-vector rows are instantiated. The separate §B.2 witness lifecycle plans have no fixtures. |
 | `internal/` | Go byte formats, strict signatures, registration/enrollment validation and in-memory registry snapshots. |
 | `internal/adapters/` | Offline pinned Git, durable local state/audit, file signer, clock evidence boundary and strict startup configuration. |
 | `cmd/registrar/` | HTTPS registrar binary with interactive, process-scoped rollback reconciliation. |

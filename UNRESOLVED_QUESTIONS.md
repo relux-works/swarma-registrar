@@ -35,3 +35,43 @@ whitespace inside tokens or around `=`, and requires an unquoted charset value.
 Quoted charset values of any case yield `unsupported_media_type`; this is a
 deliberate narrowing of RFC 9110's quoted parameter syntax. These choices are
 no longer open. HTTP implementation alignment is a separate pending change.
+
+## External high-water witness proposal
+
+The 2026-10-23 content-review ruling requested option C: record every accepted
+high-water digest outside the host's failure domain and compare local state
+with the fresh latest witnessed state on start. Specification §4.5 and Appendix
+B.2 are a proposal for independent review and content review before any code.
+They do not claim implemented or qualified witness support. Option A remains
+explicit operator reconciliation on every start or after indeterminate
+persistence; a local file or cached acknowledgement alone is insufficient.
+
+Open choices and recommendations are tracked in Appendix C.3:
+
+- **WC1 — Witness and independent retention:** recommend an independently
+  administered append-only service and separately retained trusted checkpoint.
+  Qualify rollback/restore boundaries; matching stale host and witness views
+  cannot establish freshness without independent surviving evidence.
+- **WC2 — Authenticated fresh-head protocol:** recommend extending the §9 audit
+  channel with typed witness append/read operations, protected peer pins and
+  challenge-bound linearizable latest-head replies. Exact framing, nonce
+  strength, credentials/rotation, record limits and continuity proofs remain
+  open. Ordinary shipping or signed historical records do not suffice.
+- **WC3 — Second consumer:** recommend separate consumer-bound streams on the
+  same external service with common registry/pin policy. Shared streams need
+  serialized ownership and lagging-reader fences. Keymaker internals remain
+  owned by its separate specification.
+- **WC4 — Instance takeover:** recommend explicit exclusion of the old serving
+  instance before replacement and throughout authority use. A witness write CAS
+  does not prevent an old process from signing. Any distributed lease needs a
+  separately reviewed signing-fence design.
+- **WC5 — Reconciliation and recovery runbook:** recommend operator actions
+  bound to the exact digest/revision and independent surviving evidence for
+  bootstrap, manual fallback, witness repair/migration and mode changes. Define
+  authorization, durable pending-commit/recovery records and the
+  no-surviving-evidence procedure. A known pending commit needs its exact record;
+  an older equal-digest record cannot resolve it after restart.
+
+Option C activation is blocked until these choices and their qualification
+evidence are supplied. This does not block specification review. No automatic
+downgrade, empty-stream bootstrap or joint-rollback detection is claimed.
