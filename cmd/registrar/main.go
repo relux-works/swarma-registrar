@@ -26,8 +26,19 @@ import (
 
 type runtime struct {
 	handler http.Handler
+	drain   func(context.Context) error
 	close   func() error
 }
+
+var errShutdown = errors.New("shutdown unavailable")
+
+func diagnostic(err error) string {
+	if errors.Is(err, errShutdown) {
+		return "registrar: shutdown failed"
+	}
+	return "registrar: startup or serving failed"
+}
+
 type dependencies struct {
 	loadConfig func(string) (adapters.Config, error)
 	open       func(context.Context, adapters.Config, time.Time, bool, terminalOpener, io.Writer) (*runtime, error)
@@ -41,7 +52,7 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 	if err := run(ctx, os.Args[1:], os.Stdout, os.Stderr, start, dependencies{loadConfig: adapters.LoadConfig, open: openProduction, terminal: openTerminal}); err != nil {
-		fmt.Fprintln(os.Stderr, "registrar: startup or serving failed")
+		fmt.Fprintln(os.Stderr, diagnostic(err))
 		os.Exit(1)
 	}
 }
@@ -74,9 +85,20 @@ func run(ctx context.Context, args []string, out, _ io.Writer, start time.Time, 
 	if err != nil {
 		return errors.New("service unavailable")
 	}
+	handlersJoined := true // No handler exists on the early startup-failure paths.
 	defer func() {
+		if !handlersJoined || r.drain == nil {
+			result = errShutdown
+			return
+		}
+		drain, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := r.drain(drain); err != nil {
+			result = errShutdown
+			return
+		}
 		if err := r.close(); err != nil {
-			result = errors.New("shutdown unavailable")
+			result = errShutdown
 		}
 	}()
 	if ctx.Err() != nil {
@@ -90,22 +112,26 @@ func run(ctx context.Context, args []string, out, _ io.Writer, start time.Time, 
 	if d.listening != nil {
 		d.listening(listener.Addr())
 	}
-	server := &http.Server{Handler: r.handler, TLSConfig: tlsConfig, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16384}
+	gate := newRequestGate(r.handler)
+	handlersJoined = false
+	server := &http.Server{Handler: gate, TLSConfig: tlsConfig, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16384}
 	// net/http's default TLS/server diagnostics can contain paths or request text;
 	// retain static process diagnostics only.
 	server.ErrorLog = log.New(io.Discard, "", 0)
 	stopped := make(chan struct{})
-	shutdownDone := make(chan struct{})
+	shutdownDone := make(chan error, 1)
 	go func() {
-		defer close(shutdownDone)
 		select {
 		case <-ctx.Done():
 			shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			if server.Shutdown(shutdown) != nil {
+			err := server.Shutdown(shutdown)
+			if err != nil {
 				_ = server.Close()
 			}
+			shutdownDone <- err
 		case <-stopped:
+			shutdownDone <- nil
 		}
 	}()
 	if *plain {
@@ -114,8 +140,21 @@ func run(ctx context.Context, args []string, out, _ io.Writer, start time.Time, 
 		err = server.ServeTLS(listener, "", "")
 	}
 	close(stopped)
-	<-shutdownDone
+	shutdownErr := <-shutdownDone
 	_ = server.Close()
+	// Join handlers even after a failed HTTP grace period, then let the deferred
+	// admission drain join detached cleanup before the sink can be closed.
+	join, cancelJoin := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelJoin()
+	if gate.drain(join) != nil {
+		// A live handler could still enqueue admission work. Keep its sink open;
+		// main reports failure and process exit reclaims resources.
+		return errShutdown
+	}
+	handlersJoined = true
+	if shutdownErr != nil {
+		return errShutdown
+	}
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}
@@ -150,7 +189,7 @@ func (a auditBridge) Probe(ctx context.Context, h admission.AuditHead) error {
 	return a.Audit.Probe(ctx, adapters.Head{Sequence: h.Sequence, Hash: h.Hash})
 }
 
-func wire(c adapters.Config, snapshot *registry.Snapshot, clock admission.Clock, startup admission.Startup, signer admission.Signer, audit admission.Audit, head admission.AuditHead) (http.Handler, error) {
+func wire(c adapters.Config, snapshot *registry.Snapshot, clock admission.Clock, startup admission.Startup, signer admission.Signer, audit admission.Audit, head admission.AuditHead) (*serviceHandler, error) {
 	var instance [16]byte
 	if _, err := rand.Read(instance[:]); err != nil {
 		return nil, errors.New("instance unavailable")
@@ -163,7 +202,7 @@ func wire(c adapters.Config, snapshot *registry.Snapshot, clock admission.Clock,
 	if err != nil {
 		return nil, errors.New("HTTP unavailable")
 	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	httpHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/readyz" && r.Method == http.MethodGet {
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("Cache-Control", "no-store")
@@ -176,7 +215,8 @@ func wire(c adapters.Config, snapshot *registry.Snapshot, clock admission.Clock,
 			return
 		}
 		handler.ServeHTTP(w, r)
-	}), nil
+	})
+	return &serviceHandler{Handler: httpHandler, drain: core.Drain}, nil
 }
 
 func openProduction(ctx context.Context, c adapters.Config, start time.Time, confirm bool, terminal terminalOpener, out io.Writer) (*runtime, error) {
@@ -211,5 +251,5 @@ func openProduction(ctx context.Context, c adapters.Config, start time.Time, con
 	if err != nil {
 		return fail(err)
 	}
-	return &runtime{handler: handler, close: audit.Close}, nil
+	return &runtime{handler: handler, drain: handler.Drain, close: audit.Close}, nil
 }

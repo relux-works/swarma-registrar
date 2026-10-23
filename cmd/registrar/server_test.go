@@ -62,7 +62,7 @@ func testDependencies(t *testing.T, f *fixtureData, noClock, noRemote bool) depe
 				_ = audit.Close()
 				return nil, err
 			}
-			return &runtime{handler: handler, close: audit.Close}, nil
+			return &runtime{handler: handler, drain: handler.Drain, close: audit.Close}, nil
 		},
 	}
 }

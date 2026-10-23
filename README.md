@@ -101,7 +101,13 @@ JWT signer and durable local audit chain. `GET /readyz` returns 503 until a
 verified registry snapshot is installed and the admission clock/signer/audit
 fences allow readiness. `POST /v1/registration` retains the specified ordered
 refusals. SIGINT/SIGTERM shuts down the listener and drains requests for up to
-five seconds. HTTP header/body/write/idle deadlines are 5/10/10/30 seconds, with
+five seconds. It then joins accepted HTTP handlers and admission work, including
+bounded local refusal appends that outlive their HTTP responses, before closing
+the audit sink. Handler and admission joins each have a ten-second observation
+bound; those joins do not extend the existing request/cleanup budgets. A failed
+HTTP grace period, join timeout or failed detached refusal is a failed shutdown
+(non-zero exit with a static diagnostic). On a failed join the sink is left open
+until failed process exit, rather than closed under pending work. HTTP header/body/write/idle deadlines are 5/10/10/30 seconds, with
 a 16 KiB header limit. These limits do not qualify blocked local kernel I/O.
 
 Plain HTTP requires the explicit `--loopback-test-http` flag **and** a literal

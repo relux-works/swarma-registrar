@@ -27,6 +27,7 @@ type signing struct {
 // Admitter owns one process's authority, accounting, clock fence and audit chain.
 // New instances model real verified restarts, never a way to clear live fences.
 type Admitter struct {
+	life                     lifecycle
 	mu                       sync.Mutex
 	clock                    Clock
 	audience                 string
@@ -106,6 +107,9 @@ func (a *Admitter) Cutover(s Signer) {
 }
 func (a *Admitter) ResumeSigning() { a.mu.Lock(); defer a.mu.Unlock(); a.signing.paused = false }
 func (a *Admitter) Ready() bool {
+	if a.life.stopped() {
+		return false
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.observe()
@@ -243,6 +247,10 @@ func (a *Admitter) final(p *registration.Body, m *metadata, generation uint64) (
 // final serialized rows 8–17/generation check. All later failures retain charges
 // and nonce consumption. Sign/ack never run under the admission state mutex.
 func (a *Admitter) Admit(parent context.Context, request Request) (string, error) {
+	if !a.life.begin() {
+		return "", deny(refusal.ServiceUnavailable)
+	}
+	defer a.life.finish(false)
 	ctx, cancel := a.bounded(parent)
 	defer cancel()
 	if request.Proof == nil || request.Proof.Key == nil || len(request.Proof.Nonce) != 16 {
@@ -314,6 +322,10 @@ func (a *Admitter) Admit(parent context.Context, request Request) (string, error
 // deliberately null because this entrypoint accepts no verified identity data.
 // The code must be one of the fixed protocol codes, never request/exception text.
 func (a *Admitter) Refuse(parent context.Context, code refusal.Code, observedBytes uint64) error {
+	if !a.life.begin() {
+		return deny(refusal.ServiceUnavailable)
+	}
+	defer a.life.finish(false)
 	ctx, cancel := a.bounded(parent)
 	defer cancel()
 	if status(code) == 0 {
@@ -325,6 +337,10 @@ func (a *Admitter) Refuse(parent context.Context, code refusal.Code, observedByt
 // RecoverAudit reopens only the local recording fence after a bounded sink probe
 // confirms its exact durable chain tip. It never clears a clock fence or cache.
 func (a *Admitter) RecoverAudit(parent context.Context) error {
+	if !a.life.begin() {
+		return deny(refusal.ServiceUnavailable)
+	}
+	defer a.life.finish(false)
 	ctx, cancel := a.bounded(parent)
 	defer cancel()
 	if err := a.acquireAudit(ctx); err != nil {

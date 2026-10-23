@@ -78,9 +78,11 @@ func (a *Admitter) refuse(ctx context.Context, failure *Error, m metadata) error
 			// Fence before returning; a separate bounded spool attempt must not
 			// extend the response deadline or implicitly reopen admission.
 			cleanup, cancel := a.bounded(context.Background())
+			a.life.child()
 			go func() {
 				defer cancel()
-				_, _ = a.appendLocal(cleanup, m, "refused", deny(refusal.AuditUnavailable), 0)
+				_, err := a.appendLocal(cleanup, m, "refused", deny(refusal.AuditUnavailable), 0)
+				a.life.finish(err != nil || cleanup.Err() != nil)
 			}()
 		}
 		return deny(refusal.AuditUnavailable)
