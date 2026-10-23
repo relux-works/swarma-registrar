@@ -292,6 +292,38 @@ func (a *Audit) Append(ctx context.Context, line []byte) error {
 	a.bad = false
 	return nil
 }
+
+// checkCustody serializes with local writers but never spans a remote call.
+// Re-read the complete durable chain, not only cached metadata or file size;
+// deduplicated acknowledgements must satisfy the same local custody premise.
+// An observed custody failure latches until explicit exact-head Probe recovery.
+func (a *Audit) checkCustody(ctx context.Context) (int64, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed || a.bad || ctx.Err() != nil {
+		return 0, failure(auditUnavailable)
+	}
+	head, size, err := a.scan(ctx)
+	if err != nil || head != a.head || size != a.size {
+		a.bad = true
+		return 0, failure(auditUnavailable)
+	}
+	if err = a.file.Sync(); err != nil {
+		a.bad = true
+		return 0, failure(auditUnavailable)
+	}
+	// The pathname or permissions may have changed while file I/O ran.
+	visible, err := a.identity()
+	if err != nil || visible != size {
+		a.bad = true
+		return 0, failure(auditUnavailable)
+	}
+	if ctx.Err() != nil {
+		return 0, failure(auditUnavailable)
+	}
+	return size, nil
+}
+
 func (a *Audit) Acknowledge(ctx context.Context, line []byte) error {
 	if a.remote == nil || ctx.Err() != nil {
 		return failure(auditUnavailable)
@@ -307,12 +339,9 @@ func (a *Audit) Acknowledge(ctx context.Context, line []byte) error {
 		return err
 	}
 	seq := target["seq"].(int64)
-	a.mu.Lock()
-	end := a.size
-	unusable := a.closed || a.bad
-	a.mu.Unlock()
-	if unusable {
-		return failure(auditUnavailable)
+	end, err := a.checkCustody(ctx)
+	if err != nil {
+		return err
 	}
 	cursor := a.acked
 	offset := a.ackOffset
@@ -341,6 +370,9 @@ func (a *Audit) Acknowledge(ctx context.Context, line []byte) error {
 			if err != nil || ack != sha256.Sum256(local) {
 				return failure(auditUnavailable)
 			}
+			if _, err = a.checkCustody(ctx); err != nil {
+				return err
+			}
 		}
 		offset += int64(len(local))
 		cursor = Head{obj["seq"].(int64), lineHash(local)}
@@ -349,10 +381,8 @@ func (a *Audit) Acknowledge(ctx context.Context, line []byte) error {
 			a.ackOffset = offset
 		}
 	}
-	if ctx.Err() != nil {
-		return failure(auditUnavailable)
-	}
-	return nil
+	_, err = a.checkCustody(ctx)
+	return err
 }
 func (a *Audit) Probe(ctx context.Context, expected Head) error {
 	a.mu.Lock()

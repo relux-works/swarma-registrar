@@ -1,8 +1,9 @@
 # Local service adapters
 
 These adapters implement specification §4.3–4.4, §7 and §9 where local mechanisms
-are decided. They do not provide a service binary. Admission and HTTP wiring is
-deferred until those packages land. Git and FileStore implement the landed
+are decided. They do not provide a service binary. Wiring the landed admission
+and HTTP packages is deferred to service integration. Git and FileStore implement
+the landed
 `registry.Verifier` and `registry.Store`; clock/audit values are neutral named
 types for that later wiring to translate. No unlanded package is imported.
 
@@ -34,7 +35,14 @@ local recording works but Acknowledge returns `audit_unavailable`. A future
 authenticated, append-only durable sink must acknowledge the SHA-256 of the
 exact line including LF, support idempotent replay and honor cancellation.
 Shipping sends retained prerequisites in sequence before the requested line;
-restart replays from the beginning. Probe can recover only the exact cached head,
+restart replays from the beginning. Acknowledge checks the complete durable local
+chain, file identity and permissions under local serialization before shipping,
+after each successful remote call and before success, including deduplication.
+It does not hold the local mutex across remote calls. Observed custody faults
+latch until explicit exact-head recovery; restoring a pathname or mode alone
+cannot reopen acknowledgement. These checks linearize local custody at validation;
+they do not prevent an external writer from changing a file after the check.
+Probe can recover only the exact cached head,
 never truncate, repair, adopt a different tip or establish off-host durability.
 An ambiguous append may require operator reconciliation and a new instance.
 Close requires quiesced callers and waits for an outstanding remote call.
@@ -81,8 +89,18 @@ The specification does not fix these adapter details:
   Cooperating writers retain the stable lock file and do not unlink it.
 - SSH signatures only, using system Git and ssh-keygen resolved at startup.
   The launcher must supply a trusted executable search path. Fixed Git overrides
-  disable replace refs, hooks, fsmonitor, protocols, lazy fetch, prompts and
-  global/system configuration; subprocess diagnostics are discarded.
+  disable replace refs, grafts, shallow boundaries, commit-graph reads, hooks,
+  fsmonitor, lazy fetch, prompts and global/system configuration. Grafts and
+  shallow metadata use fixed `/dev/null` inputs; `core.commitGraph=false` wins
+  over repository configuration. Protocols default to refused; a local explicit
+  protocol allowance cannot trigger lazy fetch because it is disabled separately.
+  Subprocess diagnostics are discarded. Alternate stores may supply objects,
+  but cannot replace signature approval. Tests cover wrong-signer alternates,
+  repository trust/program overrides and a local promisor trap. This is a bounded
+  metadata/configuration sweep, not a general filesystem-compromise proof.
+  See Git's [graph behavior](https://git-scm.com/docs/commit-graph),
+  [graph format](https://git-scm.com/docs/gitformat-commit-graph) and
+  [repository layout](https://git-scm.com/docs/gitrepository-layout).
 - Five-second Git Read/Descends and audit startup deadlines. Per-command output
   limits include 4 MiB for Git tree listings; registry count/aggregate/file limits
   remain those in §4.4. Audit lines are additionally bounded to 16 KiB.

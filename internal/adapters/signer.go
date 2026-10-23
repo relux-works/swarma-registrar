@@ -32,7 +32,7 @@ func LoadSigner(path string) (*Signer, error) {
 	if err != nil || len(raw) > 16384 {
 		return nil, failure(serviceUnavailable)
 	}
-	if !bytes.HasPrefix(bytes.TrimSpace(raw), []byte("-----BEGIN PRIVATE KEY-----")) {
+	if !singlePrivatePEM(raw) {
 		return nil, failure(serviceUnavailable)
 	}
 	block, rest := pem.Decode(raw)
@@ -49,6 +49,17 @@ func LoadSigner(path string) (*Signer, error) {
 	}
 	return &Signer{key: append(ed25519.PrivateKey(nil), private...)}, nil
 }
+
+// Bind pem.Decode to the first complete block: its parser otherwise skips
+// malformed leading blocks and can return a later valid key.
+func singlePrivatePEM(raw []byte) bool {
+	raw = bytes.TrimSpace(raw)
+	return bytes.HasPrefix(raw, []byte("-----BEGIN PRIVATE KEY-----")) &&
+		bytes.HasSuffix(raw, []byte("-----END PRIVATE KEY-----")) &&
+		bytes.Count(raw, []byte("-----BEGIN")) == 1 &&
+		bytes.Count(raw, []byte("-----END")) == 1
+}
+
 func (s *Signer) PublicKey() ed25519.PublicKey {
 	if s == nil || len(s.key) != ed25519.PrivateKeySize {
 		return nil

@@ -23,7 +23,8 @@ func fullRevision(s string) bool { return revisionPattern.MatchString(s) }
 // Git reads only immutable objects from one configured local repository/pin.
 // SSH signatures use a protected allowed-signers file, never repository trust
 // settings or a user keyring. Commands cannot fetch, prompt, invoke a shell,
-// use replace refs, or read global/system Git configuration.
+// use replace refs, grafts, shallow boundaries, commit graphs, or global/system
+// Git configuration as authority.
 type Git struct{ repository, pin, signers, git, ssh string }
 
 func NewGit(repository, pin, allowedSigners string) (*Git, error) {
@@ -59,9 +60,9 @@ func (b *boundedOutput) Write(p []byte) (int, error) {
 	return b.Buffer.Write(p)
 }
 func (g *Git) run(ctx context.Context, limit int, args ...string) ([]byte, error) {
-	fixed := []string{"--no-replace-objects", "-C", g.repository, "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "-c", "protocol.allow=never", "-c", "gpg.format=ssh", "-c", "gpg.ssh.program=" + g.ssh, "-c", "gpg.ssh.allowedSignersFile=" + g.signers, "-c", "gpg.ssh.revocationFile=/dev/null", "-c", "gpg.minTrustLevel=fully"}
+	fixed := []string{"--no-replace-objects", "--shallow-file", "/dev/null", "-C", g.repository, "-c", "core.commitGraph=false", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "-c", "protocol.allow=never", "-c", "gpg.format=ssh", "-c", "gpg.ssh.program=" + g.ssh, "-c", "gpg.ssh.allowedSignersFile=" + g.signers, "-c", "gpg.ssh.revocationFile=/dev/null", "-c", "gpg.minTrustLevel=fully"}
 	cmd := exec.CommandContext(ctx, g.git, append(fixed, args...)...)
-	cmd.Env = []string{"PATH=/usr/bin:/bin", "LANG=C", "LC_ALL=C", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_NO_LAZY_FETCH=1", "GIT_TERMINAL_PROMPT=0"}
+	cmd.Env = []string{"PATH=/usr/bin:/bin", "LANG=C", "LC_ALL=C", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_GRAFT_FILE=/dev/null", "GIT_NO_LAZY_FETCH=1", "GIT_TERMINAL_PROMPT=0"}
 	out := &boundedOutput{limit: limit}
 	cmd.Stdout = out
 	cmd.Stderr = io.Discard
