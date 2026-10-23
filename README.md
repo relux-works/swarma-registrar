@@ -28,12 +28,15 @@ transitional; the reusable core is key proof → enrollment → carrier credenti
 | `spec/registrar.md` | Draft normative formats, HTTP API, registry rules, source findings and vector plan. |
 | `UNRESOLVED_QUESTIONS.md` | Remaining homeserver and Keymaker activation dependencies. |
 | `vectors/` (planned) | Canonical and negative registration/enrollment vectors. |
+| `internal/` | Go byte formats, strict signatures and registration proof validation. |
 | `cmd/registrar` (planned) | Registrar service binary in Go. |
 
 ## Status
 
-Specification only. No service or vector implementation exists yet. Source
-inspection of tuwunel v1.9.3 found that `access_token_ttl` alone cannot provide
+Service (in progress): the Go core implements CCJ-1, signed envelopes, strict
+key/signature checks and stateless registration proof validation. No service
+endpoint or vector implementation exists yet. Source inspection of tuwunel
+v1.9.3 found that `access_token_ttl` alone cannot provide
 access-token expiry without refresh-token issuance, and JWT login does not
 refuse deactivated accounts. A reviewed change to the operated homeserver must
 provide both requirements; deployment stays blocked until that change is
@@ -49,9 +52,14 @@ contracts have been checked (KM1). See specification §1, §4.3, §10 and Append
 
 | Tool | Purpose | Exact entry point | Output |
 | --- | --- | --- | --- |
+| Go 1.26 | Test the core and run static validation. | `go test ./internal/...`; `go vet ./...` | Terminal diagnostics and Go build cache; no generated repository files. |
 | Git | Inspect scope and check documentation whitespace. | `git diff --check`; `git diff --stat`; `git diff -- spec/registrar.md README.md UNRESOLVED_QUESTIONS.md` | Terminal diagnostics and diff; no generated repository files. |
 | curl | Retrieve the pinned public validator source for inspection. | `mkdir -p .temp/spec-source-review` then `curl --fail --location https://raw.githubusercontent.com/Keats/jsonwebtoken/900010fb1be550ec2cfa8c32038eb154f9ef56d7/src/validation.rs --output .temp/spec-source-review/validation.rs` | Source in the created task-scoped scratch directory. |
 | Python 3 | Count the planned vector rows in the draft. | `python3 -c 'from pathlib import Path; s=Path("spec/registrar.md").read_text().split("## Appendix B.")[1].split("### B.1")[0]; print(sum(line.startswith("\u007c ") for line in s.splitlines())-2)'` | Terminal count only. |
 
-There is no build or executable test target in the current documentation scaffold.
-Future services and vector tooling must document their entry points here.
+Core tests derive their own inputs from fixed public test seeds and curve
+parameters. Enrollment loading, admission state, HTTP, JWT issuance and audit
+remain outside this implementation. Registration parsing verifies schema, id and
+signature in that order. Name syntax and audience checks are separate methods
+so admission can run enrollment checks first, as required by specification §6.1.
+Future service and vector tooling must document their entry points here.
