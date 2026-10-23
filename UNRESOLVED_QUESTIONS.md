@@ -25,3 +25,17 @@ Remaining dependencies:
 These are implementation and qualification dependencies, not unresolved choices
 of signer, leeway, token lifetime or homeserver-fix path. This file records no
 passing deployment qualification.
+
+## Media-type whitespace
+
+Section 6 permits case-insensitive media/charset tokens but does not define an
+OWS grammar. Whether to permit optional HTTP whitespace around parameters is
+an open question for content review; no OWS-positive or OWS-negative vector is
+planned here, and no committed vector depends on this proposed clarification.
+
+Proposed wording (not an adopted rule):
+
+> Optional HTTP whitespace (SP / HTAB) is permitted before and after the semicolon separating the charset parameter and around the complete field value. Whitespace MUST NOT split a type, subtype, parameter-name or parameter-value token, or appear around the equals sign.
+
+Example: `application/json \t;\t charset=utf-8`, with `\t` denoting HTAB. Its
+acceptance awaits the content review rather than an assumed HTTP grammar.

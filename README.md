@@ -26,8 +26,8 @@ transitional; the reusable core is key proof → enrollment → carrier credenti
 | Path | Purpose |
 | --- | --- |
 | `spec/registrar.md` | Draft normative formats, HTTP API, registry rules, source findings and vector plan. |
-| `UNRESOLVED_QUESTIONS.md` | Remaining homeserver and Keymaker activation dependencies. |
-| `vectors/` | Committed negative-first registration/enrollment fixtures and public test keys. |
+| `UNRESOLVED_QUESTIONS.md` | Remaining activation dependencies and the open media-type whitespace question. |
+| `vectors/` | 293 committed negative-first registration/enrollment fixtures and public test keys; Appendix B plans 305 rows, with remaining fixture implementation separate. |
 | `internal/` | Go byte formats, strict signatures, registration/enrollment validation and in-memory registry snapshots. |
 | `cmd/registrar` (planned) | Registrar service binary in Go. |
 

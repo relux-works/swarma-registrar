@@ -875,7 +875,7 @@ profile refines the general stage profile; unmentioned state stays unchanged:
 | Rows / reached stage | Authority | Nonce / limiter changes | Audit / readiness |
 | --- | --- | --- | --- |
 | All enrollment rejection rows | Accepted snapshot, pins and high-water stay unchanged. | Neither admission cache nor budgets change. | No admission-audit event; restricted loader diagnostic is permitted; admission fenced. |
-| All enrollment positive controls PE1–PE13 | Install only the exact validated candidate and its durable high-water. | Admission accounting unchanged. | No admission-audit event; readiness healthy. |
+| All enrollment positive controls PE1–PE15 | Install only the exact validated candidate and its durable high-water. | Admission accounting unchanged. | No admission-audit event; readiness healthy. |
 | Registration refusal before row 18, excluding R106 | Unchanged except explicit scheduled operator inputs. | No reservation or debit. | One refusal append/ack with healthy audit; R79/R80 require clock fencing, R94 requires registry fencing. |
 | R86/R87/R105/R111/R129, plus the final attempt in R88 | Unchanged. | Budget-full refusal debits neither and inserts no nonce; R111 checks release time is not extended. | One rate_limited refusal, healthy readiness. |
 | R83/R84, plus R99 retry | Unchanged. | One debit per budget; retained nonce unchanged. | One nonce_replayed refusal; no issued line for this attempt. |
@@ -898,6 +898,25 @@ fixture is not itself a signed object.
 Canonicalization-only rows test the CCJ-1 codec independently of the body
 schema; their success is `accept (codec)`. All other accepts mean admission,
 registry installation or the specified emission assertion, not just parsing.
+
+The plan contains **305 rows**: registration/1 has 136 negative and 30 positive
+rows; enrollment/1 has 114 negative and 25 positive rows, including the ten
+codec controls. These are planned rows, not a count of implemented fixtures.
+
+For the leading-hyphen rows below, enroll the station host `-node` with prefix
+`-node_`, an active valid key, and explicit list `["legacy.dev"]`; rebuild the
+signed request and publisher-signed enrollment after every body change as in
+Appendix A. Registration rows keep the enrollment UID map at
+`[{"uid":1001,"names":["legacy.dev"]}]` so a request-name defect cannot invalidate
+the registry first. Enrollment rows instead put the stated structured candidate
+in that UID map, except where the explicit-list defect is stated.
+
+For PR29, PE15, R134 and E112, configure the audience as four DNS labels:
+63 `a` characters, 63 `b` characters, 63 `c` characters, and 43 `d` characters,
+joined by three dots (235 ASCII bytes); request `aud` matches it exactly.
+`-node_project_role` is 18 bytes, giving a 255-byte mxid; appending `x` gives
+256 bytes. The legacy explicit/UID-map control `legacy.dev` still fits that
+audience. All other prerequisites and healthy audit use Appendix A defaults.
 
 | Id | Domain | Rule | Defect / boundary | Expected result | Positive control |
 | --- | --- | --- | --- | --- | --- |
@@ -1144,6 +1163,13 @@ registry installation or the specified emission assertion, not just parsing.
 | E109 | enrollment/1 | Loader parse-before-reserved phase | a.json has reserved sigs; z.json has duplicate JSON member | enrollment_malformed | PE1 |
 | E110 | enrollment/1 | Conflict-before-rollback precedence | Candidate contains a cross-host duplicate key and lowers an acknowledged host sequence | registry_conflict | PE6 |
 | E111 | enrollment/1 | Legacy-name historical non-transfer | Host removes legacy.dev in a higher sequence; another host claims it while original history remains | registry_conflict | PE13 |
+| R134 | registration/1 | Leading-hyphen structured mxid upper neighbor | PR29 with signed request name `-node_project_rolex`: 256-byte mxid, valid structured grammar and matching long audience | name_invalid; no reservation or debit | PR29 |
+| R135 | registration/1 | Leading-hyphen malformed structured name | PR28 with signed request name `-node_p_`: missing role, also outside legacy grammar; valid matching enrollment unchanged | name_invalid; no reservation or debit | PR28 |
+| R136 | registration/1 | Media type token boundary | Content-Type `app lication/json`; otherwise PR1 | unsupported_media_type; no reservation or debit | PR1 |
+| R137 | registration/1 | Media subtype token boundary | Content-Type `application/j son`; otherwise PR1 | unsupported_media_type; no reservation or debit | PR1 |
+| E112 | enrollment/1 | Leading-hyphen structured UID mxid upper neighbor | PE15 with UID-map name `-node_project_rolex`: 256-byte mxid, valid structured grammar; explicit `legacy.dev` still fits | enrollment_malformed | PE15 |
+| E113 | enrollment/1 | Leading-hyphen explicit entry remains legacy-only | PE14 with additional explicit entry `-node_project_role`; same valid structured UID name, but explicit entry fails legacy grammar | enrollment_malformed | PE14 |
+| E114 | enrollment/1 | Leading-hyphen malformed structured UID name | PE14 with UID-map name `-node_p_`: missing role, also outside legacy grammar | enrollment_malformed | PE14 |
 | PR1 | registration/1 | Ordinary Ed25519 admission and exact seven-member body | None | accept | PR1 |
 | PR2 | registration/1 | Valid compressed P-256 and raw low-S signature | None | accept | PR2 |
 | PR3 | registration/1 | Proof lifetime exactly 120 seconds | None | accept | PR1 |
@@ -1184,6 +1210,11 @@ registry installation or the specified emission assertion, not just parsing.
 | PR26 | registration/1 | Pending token without key cutover | Sign at generation A, audit waits and acknowledges, active generation remains A and unpaused | accept; one JWT released | PR16 |
 | PR27 | registration/1 | Fresh proof at recovered restart barrier | Continue R132 in the new verified-start process, barrier=93, now=93, fresh iat=93, exp=213 and nonce | accept; one debit per budget and one nonce; one JWT | PR1 |
 | PE13 | enrollment/1 | Same-host historical legacy name | One active host removes then re-adds its legacy.dev at higher sequences, all retained | accept; no cross-host ownership change | PE1 |
+| PR28 | registration/1 | Leading-hyphen structured request host | Valid signed request for `-node_project_role`, host `-node`, matching enrollment and default audience | accept | PR1 |
+| PR29 | registration/1 | Leading-hyphen structured request at mxid cap | PR28 with the configured 235-byte audience above; `-node_project_role` makes the mxid exactly 255 bytes | accept | PR28 |
+| PR30 | registration/1 | Permitted case-insensitive charset tokens | PR1 with Content-Type `Application/JSON;Charset=UtF-8`, with no whitespace ambiguity | accept | PR1 |
+| PE14 | enrollment/1 | Leading-hyphen structured UID name | Valid publisher-signed station enrollment for host `-node`, prefix `-node_`, UID-map name `-node_project_role`, default audience | accept | PE1 |
+| PE15 | enrollment/1 | Leading-hyphen structured UID name at mxid cap | PE14 with the configured 235-byte audience above; UID-map name `-node_project_role` makes the mxid exactly 255 bytes | accept | PE14 |
 | PC1 | enrollment/1 | CCJ codec: Object order | Keys include a supplementary scalar and a BMP scalar; sort by scalar, not UTF-16 code unit | accept (codec) | PC1 |
 | PC2 | enrollment/1 | CCJ codec: Whitespace | No insignificant whitespace in canonical output | accept (codec) | PC2 |
 | PC3 | enrollment/1 | CCJ codec: Array order | Distinct array values retain input order | accept (codec) | PC3 |
