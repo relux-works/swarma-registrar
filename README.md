@@ -29,6 +29,7 @@ transitional; the reusable core is key proof → enrollment → carrier credenti
 | `UNRESOLVED_QUESTIONS.md` | Remaining activation dependencies and the open media-type whitespace question. |
 | `vectors/` | 305 committed negative-first registration/enrollment fixtures and public test keys; all 305 Appendix B rows are instantiated. |
 | `internal/` | Go byte formats, strict signatures, registration/enrollment validation and in-memory registry snapshots. |
+| `internal/adapters/` | Offline pinned Git, durable local state/audit, file signer, clock evidence boundary and strict startup configuration. |
 | `cmd/registrar` (planned) | Registrar service binary in Go. |
 
 ## Status
@@ -89,6 +90,7 @@ automatically.
 | --- | --- | --- | --- |
 | Go 1.26 | Test the module, examples and public API inventories; run static validation. | `go test ./...`; `go test ./internal/...`; `go test -race ./internal/admission/...`; `go vet ./...` | Terminal diagnostics and Go build cache; no generated repository files. |
 | Go conformance harness | Compare committed vectors against landed code and report pass/fail/pending counts per domain. | `go test -v ./internal/conformance`; narrow internal validation: `go test ./internal/...` | Terminal diagnostics; `CONFORMANCE_VECTORS` optionally selects a scratch vector copy. |
+| Go 1.26, Git and OpenSSH ssh-keygen | Check local adapters and internal packages; create disposable signed Git fixtures with generated test keys. | `GOMAXPROCS=2 go test ./internal/...`; `GOMAXPROCS=2 go vet ./...`; focused adapter checks: `go test ./internal/adapters` | Terminal verdicts; fixture files in Go's temporary directory (set `TMPDIR` to a scratch directory). No network. |
 | Go (standard library) | Regenerate vectors or check exact committed bytes and file set. | `GOMAXPROCS=2 go run ./tools/vectorgen`; `GOMAXPROCS=2 go run ./tools/vectorgen -check` | `vectors/registration-1/`, `vectors/enrollment-1/`, `vectors/keys/seeds.json`, `vectors/keys/public-keys.json`; check mode writes nothing. |
 | Python 3 with cryptography | Independently check CCJ-1, cryptography, ordered outcomes, JWT bytes and state. | `python3 tools/vectorcheck/check.py` (dependencies: `python3 -m pip install -r tools/vectorcheck/requirements.txt`) | Terminal verdicts; writes nothing. |
 | Python unittest | Check signed HTTP media-token and structured-name regressions against the independent checker. | `python3 -B -m unittest discover -s tools/vectorcheck -p test_regressions.py -v` | Terminal verdicts; fixtures under `tools/vectorcheck/fixtures/` stay separate from the 305 planned vectors. |
@@ -101,8 +103,10 @@ parameters. Enrollment and registry validation use in-memory inputs. The registr
 loader completes all seven snapshot-wide phases before a caller-supplied atomic
 high-water store can publish the result. Commit verification binds the supplied
 entry set to the exact approved signed revision; Git ancestry and durable storage
-also come from caller-supplied interfaces. No live Git, file reader, network or
-process state is implemented. The deployment supplies a validated canonical
+also come from caller-supplied interfaces. The [local adapters](internal/adapters/README.md)
+implement offline pinned Git, durable file state/audit, a protected PKCS8 signer,
+strict startup configuration and system time with explicit health evidence.
+The deployment supplies a validated canonical
 audience, protected pins and externally reconciled rollback evidence. After any
 reload failure, the caller must fence admission rather than reuse an older
 snapshot. The internal admission core runs checks 8–21 with injected clock
@@ -124,7 +128,9 @@ concrete clock, signer, storage and off-host adapters belong to deployment.
 Registration parsing verifies schema, id and signature in that
 order. Name syntax and audience checks are separate methods
 so admission can run enrollment checks first, as required by specification §6.1.
-Future service tooling must document its entry points here.
+There is no runnable service binary yet. Admission/HTTP wiring, a production
+clock evidence source, authenticated off-host audit and operator reconciliation
+remain follow-up work; the adapters cannot establish those deployment facts.
 
 `go test -v ./internal/conformance/...` runs the offline fixture harnesses;
 `go test -v ./internal/conformance/... -run '^TestAdmissionVectorConformance$'`
