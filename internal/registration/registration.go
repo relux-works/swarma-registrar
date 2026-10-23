@@ -136,7 +136,7 @@ func StructuredHost(name string) (string, bool) {
 // CheckName runs row 12 only. Call it after registry/key/window/revocation checks.
 // The configured audience, never the request's audience, determines the byte cap.
 func (b *Body) CheckName(configuredAudience string) error {
-	if !legacy.MatchString(b.Name) || len(b.Name) > 253-len(configuredAudience) {
+	if (!structured.MatchString(b.Name) && !legacy.MatchString(b.Name)) || len(b.Name) > 253-len(configuredAudience) {
 		return refusal.New(refusal.NameInvalid)
 	}
 	return nil

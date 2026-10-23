@@ -257,3 +257,44 @@ func TestP256RegistrationPipeline(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Verified proofs accept either name grammar, including leading-hyphen hosts, while invalid neighbours and the common configured-audience byte cap refuse.
+func TestVerifiedStructuredNameUnion(t *testing.T) {
+	longStructured := strings.Repeat("-", 32) + "_" + strings.Repeat("p", 32) + "_" + strings.Repeat("r", 32) + "-" + strings.Repeat("q", 16)
+	capAudience := strings.Repeat("a", 63) + "." + strings.Repeat("b", 63) + "." + strings.Repeat("c", 10)
+	cases := []struct {
+		label, name, audience string
+		invalid               bool
+	}{
+		{"single hyphen host", "-_project_role", "example.org", false},
+		{"leading hyphen host", "-node_project_role", "example.org", false},
+		{"double hyphen host", "--_p_r", "example.org", false},
+		{"maximum hyphen host", strings.Repeat("-", 32) + "_p_r", "example.org", false},
+		{"ordinary structured", "node_project_role", "example.org", false},
+		{"legacy", "legacy.dev", "example.org", false},
+		{"invalid legacy prefix", "-legacy", "example.org", true},
+		{"missing role", "-_p_", "example.org", true},
+		{"invalid at prefix", "@node_p_r", "example.org", true},
+		{"invalid slash suffix", "node_p_r/", "example.org", true},
+		{"structured mxid exactly 255 bytes", longStructured, capAudience, false},
+		{"structured mxid over 255 bytes", longStructured, capAudience + "c", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.label, func(t *testing.T) {
+			b := fixture()
+			b["name"] = tc.name
+			proof, err := Parse(signed(t, b, envelope.Registration))
+			if err != nil {
+				t.Fatalf("verified parse: %v", err)
+			}
+			err = proof.CheckName(tc.audience)
+			if tc.invalid {
+				if !refusal.Is(err, refusal.NameInvalid) {
+					t.Fatalf("expected name_invalid, got %v", err)
+				}
+			} else if err != nil {
+				t.Fatalf("expected valid name, got %v", err)
+			}
+		})
+	}
+}
