@@ -157,7 +157,7 @@ class TimeDeclarationRegressions(unittest.TestCase):
         for extra in ('<!-- abstract-post-hold-rows-v1: [ -->',
                       '<!-- abstract-post-hold-rows-v2: [] -->',
                       '<!-- abstract-post-hold-row-v1: [] -->',
-                      '<!-- abstract-post-hold: [] -->',
+                      '<!-- abstract-post-hold-row: [] -->',
                       '<!-- ABSTRACT-POST-HOLD-ROWS-V1: [] -->',
                       '<!-- abstract_post_hold_rows_v1: [] -->',
                       '<!-- abstract post hold rows v1: [] -->',
@@ -208,6 +208,83 @@ class TimeDeclarationRegressions(unittest.TestCase):
                 self.assert_cli(spec, 1,
                                 'abstract post-hold declaration must occur exactly once globally')
         self.assert_cli(self.spec, 0, 'PASS: 310 declared abstract post-hold rows')
+
+    # Prose can appear before, inside or after A without declaring a second inventory.
+    def test_cli_ordinary_prose_is_not_a_declaration(self):
+        for text in ('These abstract post-hold rows describe admission inputs.',
+                     'These abstract post hold inputs describe admission fixtures.'):
+            for spec in (text + '\n' + self.spec,
+                         self.spec.replace(self.marker_line(), text + '\n' + self.marker_line()),
+                         self.spec + '\n' + text + '\n'):
+                with self.subTest(text=text, position=spec.index(text)):
+                    self.assert_cli(spec, 0, 'PASS: 310 declared abstract post-hold rows')
+        self.assert_cli(self.spec, 0, 'PASS: 310 declared abstract post-hold rows')
+
+    # Word fragments inside longer identifiers never become reserved identifiers.
+    def test_cli_longer_identifiers_are_not_declarations(self):
+        for name in ('nonabstract-post-holdover', 'abstract-post-holdings'):
+            text = 'The illustrative identifier `' + name + '` has no declaration role.'
+            for spec in (text + '\n' + self.spec,
+                         self.spec.replace(self.marker_line(), text + '\n' + self.marker_line()),
+                         self.spec + '\n' + text + '\n'):
+                with self.subTest(name=name, position=spec.index(text)):
+                    self.assert_cli(spec, 0, 'PASS: 310 declared abstract post-hold rows')
+        self.assert_cli(self.spec, 0, 'PASS: 310 declared abstract post-hold rows')
+
+    # A bounded marker remains a candidate even in a Markdown fenced example.
+    def test_cli_code_block_duplicate_marker(self):
+        spec = self.spec + '\n```text\n' + self.marker_line() + '\n```\n'
+        self.assert_cli(spec, 1,
+                        'abstract post-hold declaration must occur exactly once globally')
+        self.assert_cli(self.spec, 0, 'PASS: 310 declared abstract post-hold rows')
+
+    # Comment context permits fuzzy separators/case and multiline bodies, unlike prose.
+    def test_cli_comment_form_variant(self):
+        for extra in ('<!-- Abstract Post Hold Rows: [...] -->',
+                      '<!--\nAbstract Post Hold Rows:\n[...]\n-->',
+                      '<!-- Abstract__Post--Hold\tRow: [...] -->'):
+            with self.subTest(extra=extra):
+                self.assert_cli(self.spec + '\n' + extra + '\n', 1,
+                                'abstract post-hold declaration must occur exactly once globally')
+        self.assert_cli(self.spec, 0, 'PASS: 310 declared abstract post-hold rows')
+
+    # The explicit grammar admits bounded names/comments, excluding prose and near names.
+    # A canonical header matching both alternatives denotes one candidate, not two.
+    def test_declaration_candidate_grammar(self):
+        yes = ('abstract-post-hold-rows', 'abstract_post_hold_rows_v2',
+               'abstract-post-hold-rows-v10',
+               'ABSTRACT-POST-HOLD-ROWS-V1', '<!-- abstract-post-hold-rows-v1: [] -->',
+               '<!-- Abstract Post Hold Rows: [] -->',
+               '<!-- Abstract Post Hold Row: [] -->',
+               '<!-- Abstract Post Hold Rowboat: [] -->',
+               '<!--\nAbstract Post Hold Rows:\n[]\n-->',
+               )
+        for text in yes:
+            with self.subTest(candidate=text):
+                self.assertEqual(len(check.declaration_candidates(text)), 1)
+        no = ('abstract post-hold rows', 'abstract post hold inputs',
+              'nonabstract-post-holdover', 'abstract-post-holdings',
+              '<!-- abstract-post-hold: [] -->', '<!-- abstract post hold rows',
+              '<!-- example abstract post hold rows: [] -->',
+              '<!-- Abstract\nPost Hold Rows: [] -->')
+        for text in no:
+            with self.subTest(non_candidate=text):
+                self.assertEqual(check.declaration_candidates(text), [])
+        for separator in ('-', '_', ' ', '\t', '--__ \t'):
+            text = '<!-- ' + separator.join(('Abstract', 'Post', 'Hold', 'Rows')) + ': [] -->'
+            with self.subTest(separator=separator):
+                self.assertEqual(len(check.declaration_candidates(text)), 1)
+        identifier = 'abstract-post-hold-rows'
+        for adjacent in ('a', 'Z', '0', '9', '-', '_', 'é', '١'):
+            for text in (adjacent + identifier, identifier + adjacent):
+                with self.subTest(boundary=text):
+                    self.assertEqual(check.declaration_candidates(text), [])
+        for adjacent in (' ', '\n', ':', '<', '>', '.', '/'):
+            for text in (adjacent + identifier, identifier + adjacent):
+                with self.subTest(boundary=text):
+                    self.assertEqual(len(check.declaration_candidates(text)), 1)
+        self.assertEqual(len(check.declaration_candidates(
+            '<!-- ' + identifier + ' ' + identifier + ' -->')), 2)
 
 
 if __name__ == '__main__':

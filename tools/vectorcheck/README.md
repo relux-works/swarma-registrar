@@ -11,8 +11,18 @@ The checker reads the single `abstract-post-hold-rows-v1` JSON-array marker in
 Appendix A. It discovers reserved-marker candidates across the whole spec before
 checking location or syntax: exactly one candidate is allowed, it must be in
 Appendix A, and its complete line and JSON must use the canonical syntax.
-Discovery counts indented, inline and malformed candidates, including those
-outside Appendix A. It then requires exact set equality with rows carrying
+A candidate is either a bounded, case-insensitive identifier formed from
+`abstract`, `post`, `hold`, `rows` joined by `-` or `_`, optionally suffixed with
+`-vN` or `_vN` (decimal N), or an HTML comment whose normalized content starts
+with `abstract post hold row`. Comment normalization removes leading whitespace
+padding, lowercases content and collapses runs of SP, HTAB, `-` and `_` to one
+space; comment bodies may span lines. Identifier boundaries exclude letters,
+digits, `-` and `_` on either side. A comment header satisfying both forms counts
+once; other identifier occurrences still count separately.
+
+Discovery includes indented, inline, malformed and code-block candidates anywhere
+in the spec. Ordinary whitespace-separated prose and substrings inside longer
+identifiers are excluded. It then requires exact set equality with rows carrying
 `actual_start_millis`, `start_barrier`, `startup_verified`, `clock_healthy` or
 `clock_fenced`. It checks field presence, including false/default values, in
 `fixture`, `before` and `after`; scheduled `clock` events carrying `healthy` also
@@ -32,11 +42,12 @@ rows; they do not need to interpret this documentation inventory declaration.
 for both inventory mismatch directions, malformed declarations, missing hold
 rows, field-presence derivation, row ordering and control resolution. These tests
 read the real specification and vectors and mutate copies in memory. Named CLI
-regressions also check outside/malformed/indented competitors, same-line markers,
+regressions also check ordinary prose and longer identifiers as positive controls,
+outside/malformed/indented/code-block competitors, same-line markers,
 single-candidate location/syntax and existing missing/duplicate controls, each
 paired with the clean CLI. CLI tests use temporary directories; `TMPDIR` selects
-their scratch root. Run logs and any CLI control plants belong in an external scratch directory, outside the
-tracked vector inventory; the checker writes no output artifacts.
+their scratch root. Run logs and any CLI control plants belong in an external
+scratch directory, outside the tracked vector inventory; the checker writes no output artifacts.
 
 The twenty static JSON fixtures under `fixtures/` exercise `check.verify`, including
 envelope ids, signatures, ordered verdicts, exact JWT bytes and resulting state.

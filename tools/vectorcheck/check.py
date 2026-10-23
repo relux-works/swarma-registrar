@@ -739,11 +739,27 @@ def clock_fixture_rows(vectors):
     return rows
 
 
+def declaration_candidates(spec):
+    # Letter/digit/underscore/hyphen boundaries prevent matches inside longer names.
+    identifiers=list(re.finditer(r'(?<![\w-])abstract[-_]post[-_]hold[-_]rows'
+                                 r'(?:[-_]v[0-9]+)?(?![\w-])',spec,re.I))
+    candidates=list(identifiers)
+    identifier_starts={item.start() for item in identifiers}
+    for comment in re.finditer(r'<!--(.*?)-->',spec,re.S):
+        content=comment[1].lstrip(' \t\r\n')
+        normalized=re.sub(r'[ \t_-]+',' ',content.lower())
+        if normalized.startswith('abstract post hold row'):
+            start=comment.start(1)+len(comment[1])-len(content)
+            # The header can satisfy both alternatives; count that declaration once.
+            # Other bounded identifiers in the same comment remain distinct candidates.
+            if start not in identifier_starts:
+                candidates.append(comment)
+    return sorted(candidates,key=lambda item:item.start())
+
+
 def verify_time_declaration(spec,vectors,legacy_rows):
-    # Discover the reserved namespace before filtering location or canonical syntax.
-    # Also count malformed names, case/separator variants and multiple hits on a line.
-    candidates=list(re.finditer(r'abstract[-_\s]+post[-_\s]+hold[-_\s]+rows?'
-                                r'|abstract[-_]post[-_]hold',spec,re.I))
+    # Discover both candidate forms globally before checking location or syntax.
+    candidates=declaration_candidates(spec)
     require(len(candidates)==1,'abstract post-hold declaration must occur exactly once globally')
     appendix=re.search(r'^## Appendix A\.[^\n]*\n(.*?)(?=^## Appendix B\.)',spec,re.M|re.S)
     require(appendix is not None,'missing Appendix A abstract post-hold declaration')
