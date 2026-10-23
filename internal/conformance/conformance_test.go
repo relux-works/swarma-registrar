@@ -1,0 +1,647 @@
+// Package conformance_test binds offline fixtures to the existing core APIs.
+// Run with go test -v ./internal/conformance. CONFORMANCE_VECTORS may point to
+// a scratch copy of vectors/; the specification always comes from this checkout.
+// This harness implements no enrollment schema, loader or admission state machine.
+package conformance_test
+
+import (
+	"bytes"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"testing"
+
+	"github.com/relux-works/swarma-registrar/internal/ccj"
+	"github.com/relux-works/swarma-registrar/internal/envelope"
+	"github.com/relux-works/swarma-registrar/internal/keys"
+	"github.com/relux-works/swarma-registrar/internal/refusal"
+	"github.com/relux-works/swarma-registrar/internal/registration"
+	"github.com/relux-works/swarma-registrar/internal/sig"
+)
+
+type vector struct {
+	Row, Domain, Mode string
+	Input             struct {
+		Bytes string `json:"bytes_base64"`
+	}
+	Fixture struct {
+		Audience string
+		Registry struct {
+			PublisherKey string `json:"publisher_key"`
+		}
+	}
+	Expected struct {
+		Code      string
+		Canonical string `json:"canonical_bytes_base64"`
+		ID        string
+		JWT       *struct{ Claims struct{ JTI string } }
+	}
+}
+
+type pendingCase struct {
+	stage, prefix, prefixCode string
+}
+
+// Every deferred row is named here. A successful prefix is not a successful
+// admission or registry load. R106 deliberately masks an ID mismatch with an
+// audit override; its core-prefix expectation is separate from the final code.
+var pendingRows = map[string]pendingCase{
+	"E100": {"enrollment/body-schema", "envelope", "accept"},
+	"E101": {"registry/conflicts", "none", "accept"},
+	"E102": {"registry/preflight", "none", "accept"},
+	"E103": {"registry/persistence", "none", "accept"},
+	"E104": {"registry/preflight", "none", "accept"},
+	"E105": {"registry/preflight", "none", "accept"},
+	"E106": {"enrollment/reserved-sigs", "envelope", "accept"},
+	"E107": {"registry/snapshot-reserved-sigs", "none", "accept"},
+	"E108": {"registry/snapshot-reserved-sigs", "none", "accept"},
+	"E109": {"registry/snapshot-shapes", "none", "accept"},
+	"E110": {"registry/conflicts", "none", "accept"},
+	"E111": {"registry/conflicts", "none", "accept"},
+	"E12":  {"enrollment/body-schema", "envelope", "accept"},
+	"E14":  {"enrollment/body-schema", "envelope", "accept"},
+	"E16":  {"enrollment/body-schema", "envelope", "accept"},
+	"E25":  {"enrollment/body-schema", "envelope", "accept"},
+	"E26":  {"enrollment/body-schema", "envelope", "accept"},
+	"E27":  {"enrollment/body-schema", "envelope", "accept"},
+	"E28":  {"enrollment/body-schema", "envelope", "accept"},
+	"E29":  {"enrollment/body-schema", "envelope", "accept"},
+	"E30":  {"enrollment/body-schema", "envelope", "accept"},
+	"E31":  {"enrollment/body-schema", "envelope", "accept"},
+	"E36":  {"enrollment/reserved-sigs", "envelope", "accept"},
+	"E37":  {"enrollment/reserved-sigs", "envelope", "accept"},
+	"E38":  {"enrollment/body-schema", "envelope", "accept"},
+	"E39":  {"enrollment/body-schema", "envelope", "accept"},
+	"E40":  {"enrollment/body-schema", "envelope", "accept"},
+	"E41":  {"enrollment/body-schema", "envelope", "accept"},
+	"E42":  {"enrollment/body-schema", "envelope", "accept"},
+	"E43":  {"enrollment/body-schema", "envelope", "accept"},
+	"E45":  {"enrollment/body-schema", "envelope", "accept"},
+	"E46":  {"enrollment/body-schema", "envelope", "accept"},
+	"E47":  {"enrollment/body-schema", "envelope", "accept"},
+	"E48":  {"enrollment/body-schema", "envelope", "accept"},
+	"E49":  {"enrollment/body-schema", "envelope", "accept"},
+	"E50":  {"enrollment/body-schema", "envelope", "accept"},
+	"E51":  {"enrollment/body-schema", "envelope", "accept"},
+	"E52":  {"enrollment/body-schema", "envelope", "accept"},
+	"E53":  {"enrollment/body-schema", "envelope", "accept"},
+	"E54":  {"enrollment/body-schema", "envelope", "accept"},
+	"E55":  {"enrollment/body-schema", "envelope", "accept"},
+	"E56":  {"enrollment/body-schema", "envelope", "accept"},
+	"E57":  {"enrollment/body-schema", "envelope", "accept"},
+	"E58":  {"enrollment/body-schema", "envelope", "accept"},
+	"E59":  {"enrollment/body-schema", "envelope", "accept"},
+	"E60":  {"enrollment/body-schema", "envelope", "accept"},
+	"E61":  {"enrollment/body-schema", "envelope", "accept"},
+	"E62":  {"enrollment/body-schema", "envelope", "accept"},
+	"E63":  {"enrollment/body-schema", "envelope", "accept"},
+	"E64":  {"enrollment/body-schema", "envelope", "accept"},
+	"E65":  {"enrollment/body-schema", "envelope", "accept"},
+	"E66":  {"enrollment/body-schema", "envelope", "accept"},
+	"E67":  {"enrollment/body-schema", "envelope", "accept"},
+	"E68":  {"enrollment/body-schema", "envelope", "accept"},
+	"E69":  {"registry/conflicts", "none", "accept"},
+	"E70":  {"registry/conflicts", "none", "accept"},
+	"E71":  {"registry/conflicts", "none", "accept"},
+	"E72":  {"registry/conflicts", "none", "accept"},
+	"E73":  {"registry/history-rollback", "none", "accept"},
+	"E74":  {"registry/history-rollback", "none", "accept"},
+	"E75":  {"registry/history-rollback", "none", "accept"},
+	"E76":  {"registry/history-rollback", "none", "accept"},
+	"E77":  {"registry/history-rollback", "none", "accept"},
+	"E78":  {"registry/preflight", "none", "accept"},
+	"E79":  {"registry/preflight", "none", "accept"},
+	"E80":  {"registry/snapshot-shapes", "none", "accept"},
+	"E81":  {"registry/preflight", "none", "accept"},
+	"E83":  {"enrollment/body-schema", "envelope", "accept"},
+	"E84":  {"enrollment/body-schema", "envelope", "accept"},
+	"E85":  {"enrollment/body-schema", "envelope", "accept"},
+	"E86":  {"enrollment/body-schema", "envelope", "accept"},
+	"E88":  {"registry/preflight", "none", "accept"},
+	"E89":  {"registry/preflight", "none", "accept"},
+	"E90":  {"registry/preflight", "none", "accept"},
+	"E91":  {"enrollment/body-schema", "envelope", "accept"},
+	"E92":  {"enrollment/body-schema", "envelope", "accept"},
+	"E93":  {"enrollment/body-schema", "envelope", "accept"},
+	"E94":  {"enrollment/body-schema", "envelope", "accept"},
+	"E95":  {"enrollment/body-schema", "envelope", "accept"},
+	"E96":  {"enrollment/body-schema", "envelope", "accept"},
+	"E97":  {"enrollment/body-schema", "envelope", "accept"},
+	"E98":  {"enrollment/body-schema", "envelope", "accept"},
+	"E99":  {"enrollment/body-schema", "envelope", "accept"},
+	"PE1":  {"registry/install", "enrollment-positive", "accept"},
+	"PE10": {"registry/install", "enrollment-positive", "accept"},
+	"PE11": {"registry/install", "enrollment-positive", "accept"},
+	"PE12": {"registry/install", "enrollment-positive", "accept"},
+	"PE13": {"registry/install", "enrollment-positive", "accept"},
+	"PE2":  {"registry/install", "enrollment-positive", "accept"},
+	"PE3":  {"registry/install", "enrollment-positive", "accept"},
+	"PE4":  {"registry/install", "enrollment-positive", "accept"},
+	"PE5":  {"registry/install", "enrollment-positive", "accept"},
+	"PE6":  {"registry/install", "enrollment-positive", "accept"},
+	"PE7":  {"registry/install", "enrollment-positive", "accept"},
+	"PE8":  {"registry/install", "enrollment-positive", "accept"},
+	"PE9":  {"registry/install", "enrollment-positive", "accept"},
+	"PR1":  {"admission/JWT-release", "audience", "accept"},
+	"PR10": {"admission/JWT-release", "audience", "accept"},
+	"PR11": {"admission/JWT-release", "audience", "accept"},
+	"PR12": {"admission/JWT-release", "audience", "accept"},
+	"PR13": {"admission/JWT-release", "audience", "accept"},
+	"PR14": {"admission/JWT-release", "audience", "accept"},
+	"PR15": {"admission/JWT-release", "audience", "accept"},
+	"PR16": {"admission/JWT-release", "audience", "accept"},
+	"PR17": {"admission/JWT-release", "audience", "accept"},
+	"PR18": {"admission/JWT-release", "audience", "accept"},
+	"PR19": {"admission/JWT-release", "audience", "accept"},
+	"PR2":  {"admission/JWT-release", "audience", "accept"},
+	"PR20": {"admission/JWT-release", "audience", "accept"},
+	"PR21": {"admission/JWT-release", "audience", "accept"},
+	"PR22": {"admission/JWT-release", "audience", "accept"},
+	"PR23": {"admission/JWT-release", "audience", "accept"},
+	"PR24": {"admission/JWT-release", "audience", "accept"},
+	"PR25": {"admission/JWT-release", "audience", "accept"},
+	"PR26": {"admission/JWT-release", "audience", "accept"},
+	"PR27": {"admission/JWT-release", "audience", "accept"},
+	"PR3":  {"admission/JWT-release", "audience", "accept"},
+	"PR4":  {"admission/JWT-release", "audience", "accept"},
+	"PR5":  {"admission/JWT-release", "audience", "accept"},
+	"PR6":  {"admission/JWT-release", "audience", "accept"},
+	"PR7":  {"admission/JWT-release", "audience", "accept"},
+	"PR8":  {"admission/JWT-release", "audience", "accept"},
+	"PR9":  {"admission/JWT-release", "audience", "accept"},
+	"R103": {"admission/key-window", "registration", "accept"},
+	"R105": {"admission/limiter", "audience", "accept"},
+	"R106": {"admission/audit-override", "registration", "registration_id_mismatch"},
+	"R110": {"admission/key-window", "registration", "accept"},
+	"R111": {"admission/limiter", "audience", "accept"},
+	"R114": {"http/media", "none", "accept"},
+	"R122": {"admission/expiry", "audience", "accept"},
+	"R123": {"admission/final-authority", "audience", "accept"},
+	"R124": {"admission/clock-fence", "audience", "accept"},
+	"R125": {"admission/clock-fence", "audience", "accept"},
+	"R126": {"admission/future-time", "audience", "accept"},
+	"R127": {"admission/clock-fence", "audience", "accept"},
+	"R128": {"admission/signing-generation", "audience", "accept"},
+	"R129": {"admission/limiter", "audience", "accept"},
+	"R130": {"admission/clock-fence", "audience", "accept"},
+	"R131": {"admission/clock-fence", "audience", "accept"},
+	"R132": {"admission/clock-fence", "audience", "accept"},
+	"R133": {"admission/clock-fence", "audience", "accept"},
+	"R62":  {"registry/current-key", "registration", "accept"},
+	"R63":  {"registry/current-key", "registration", "accept"},
+	"R64":  {"admission/key-window", "registration", "accept"},
+	"R65":  {"admission/key-window", "registration", "accept"},
+	"R66":  {"admission/key-window", "registration", "accept"},
+	"R67":  {"admission/revocation", "registration", "accept"},
+	"R73":  {"admission/name-permission", "name", "accept"},
+	"R74":  {"admission/name-permission", "name", "accept"},
+	"R75":  {"admission/name-permission", "name", "accept"},
+	"R78":  {"admission/clock-fence", "audience", "accept"},
+	"R79":  {"admission/clock-fence", "audience", "accept"},
+	"R80":  {"admission/clock-fence", "audience", "accept"},
+	"R81":  {"admission/future-time", "audience", "accept"},
+	"R82":  {"admission/expiry", "audience", "accept"},
+	"R83":  {"admission/nonce", "audience", "accept"},
+	"R84":  {"admission/nonce", "audience", "accept"},
+	"R85":  {"admission/nonce", "audience", "accept"},
+	"R86":  {"admission/limiter", "audience", "accept"},
+	"R87":  {"admission/limiter", "audience", "accept"},
+	"R88":  {"admission/limiter", "audience", "accept"},
+	"R90":  {"http/media", "none", "accept"},
+	"R91":  {"http/media", "none", "accept"},
+	"R92":  {"http/endpoint", "none", "accept"},
+	"R93":  {"http/method", "none", "accept"},
+	"R94":  {"registry/availability", "registration", "accept"},
+	"R95":  {"admission/signer", "audience", "accept"},
+	"R96":  {"admission/audit", "audience", "accept"},
+	"R97":  {"admission/audit", "audience", "accept"},
+	"R98":  {"admission/final-authority", "audience", "accept"},
+	"R99":  {"admission/nonce", "audience", "accept"},
+}
+
+// Executed routes are fixed by row identity, never selected from expected.code.
+var executedRows = map[string]string{
+	"E01":  "envelope",
+	"E02":  "envelope",
+	"E03":  "envelope",
+	"E04":  "envelope",
+	"E05":  "envelope",
+	"E06":  "envelope",
+	"E07":  "envelope",
+	"E08":  "envelope",
+	"E09":  "envelope",
+	"E10":  "envelope",
+	"E11":  "envelope",
+	"E13":  "envelope",
+	"E15":  "envelope",
+	"E17":  "envelope",
+	"E18":  "envelope",
+	"E19":  "envelope",
+	"E20":  "envelope",
+	"E21":  "envelope",
+	"E22":  "envelope",
+	"E23":  "envelope",
+	"E24":  "envelope",
+	"E32":  "enrollment-id",
+	"E33":  "enrollment-signature",
+	"E34":  "enrollment-signature",
+	"E35":  "enrollment-signature",
+	"E44":  "enrollment-key",
+	"E82":  "envelope",
+	"E87":  "enrollment-signature",
+	"PC1":  "codec",
+	"PC10": "extract",
+	"PC2":  "codec",
+	"PC3":  "codec",
+	"PC4":  "codec",
+	"PC5":  "codec",
+	"PC6":  "codec",
+	"PC7":  "codec",
+	"PC8":  "codec",
+	"PC9":  "codec",
+	"R01":  "registration",
+	"R02":  "registration",
+	"R03":  "registration",
+	"R04":  "registration",
+	"R05":  "registration",
+	"R06":  "registration",
+	"R07":  "registration",
+	"R08":  "registration",
+	"R09":  "registration",
+	"R10":  "registration",
+	"R100": "registration",
+	"R101": "registration",
+	"R102": "registration",
+	"R104": "name",
+	"R107": "registration",
+	"R108": "registration",
+	"R109": "registration",
+	"R11":  "registration",
+	"R112": "registration",
+	"R115": "registration",
+	"R116": "registration",
+	"R117": "registration",
+	"R118": "registration",
+	"R119": "registration",
+	"R12":  "registration",
+	"R120": "registration",
+	"R121": "registration",
+	"R13":  "registration",
+	"R14":  "registration",
+	"R15":  "registration",
+	"R16":  "registration",
+	"R17":  "registration",
+	"R18":  "registration",
+	"R19":  "registration",
+	"R20":  "registration",
+	"R21":  "registration",
+	"R22":  "registration",
+	"R23":  "registration",
+	"R24":  "registration",
+	"R25":  "registration",
+	"R26":  "registration",
+	"R27":  "registration",
+	"R28":  "registration",
+	"R29":  "registration",
+	"R30":  "registration",
+	"R31":  "registration",
+	"R32":  "registration",
+	"R33":  "registration",
+	"R34":  "registration",
+	"R35":  "registration",
+	"R36":  "registration",
+	"R37":  "registration",
+	"R38":  "registration",
+	"R39":  "registration",
+	"R40":  "registration",
+	"R41":  "registration",
+	"R42":  "registration",
+	"R43":  "registration",
+	"R44":  "registration",
+	"R45":  "registration",
+	"R46":  "registration",
+	"R47":  "registration",
+	"R48":  "registration",
+	"R49":  "registration",
+	"R50":  "registration",
+	"R51":  "registration",
+	"R52":  "registration",
+	"R53":  "registration",
+	"R54":  "registration",
+	"R55":  "registration",
+	"R56":  "registration",
+	"R57":  "registration",
+	"R58":  "registration",
+	"R59":  "registration",
+	"R60":  "registration",
+	"R61":  "registration",
+	"R68":  "name",
+	"R69":  "name",
+	"R70":  "name",
+	"R71":  "name",
+	"R72":  "name",
+	"R76":  "audience",
+	"R77":  "audience",
+	"R89":  "registration",
+}
+
+type specRow struct {
+	line            int
+	domain, outcome string
+}
+type counts struct{ pass, fail, pending, prefixes int }
+type observation struct {
+	err       error
+	canonical []byte
+	envelope  *envelope.Envelope
+	proof     *registration.Body
+}
+
+// Every planned row is classified exactly once. Executable rows must match the
+// stored outcome and stated canonical bytes/ID. Deferred rows check only their
+// available prefix; no clock, authority, nonce, limiter, audit or JWT is proved.
+func TestVectorConformance(t *testing.T) {
+	// go test runs each package in its source directory; runtime.Caller paths
+	// may be module-relative under -trimpath and cannot locate fixture files.
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Clean(filepath.Join(cwd, "..", ".."))
+	vectorRoot := os.Getenv("CONFORMANCE_VECTORS")
+	if vectorRoot == "" {
+		vectorRoot = filepath.Join(root, "vectors")
+	}
+	specification := readSpec(t, filepath.Join(root, "spec", "registrar.md"))
+	seen := make(map[string]bool)
+	totals := map[string]*counts{"registration/1": {}, "enrollment/1": {}}
+	for _, domainDir := range []string{"registration-1", "enrollment-1"} {
+		domain := strings.Replace(domainDir, "-1", "/1", 1)
+		files := vectorFiles(t, filepath.Join(vectorRoot, domainDir))
+		for _, file := range files {
+			var v vector
+			raw, err := os.ReadFile(file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := json.Unmarshal(raw, &v); err != nil {
+				t.Fatalf("%s: fixture JSON: %v", filepath.Base(file), err)
+			}
+			if v.Row == "" || filepath.Base(file) != v.Row+".json" || v.Domain != domain || v.Expected.Code == "" {
+				t.Fatalf("%s: inconsistent row/domain/outcome metadata", filepath.Base(file))
+			}
+			if seen[v.Row] {
+				t.Fatalf("%s: duplicate vector", v.Row)
+			}
+			seen[v.Row] = true
+			spec, ok := specification[v.Row]
+			if !ok || spec.domain != domain {
+				t.Fatalf("%s: not in the two-domain specification plan", v.Row)
+			}
+			route, executed := executedRows[v.Row]
+			pending, deferred := pendingRows[v.Row]
+			if executed == deferred {
+				t.Fatalf("%s: unclassified or multiply classified row", v.Row)
+			}
+			stat := totals[domain]
+			passed := t.Run(domainDir+"/"+v.Row, func(t *testing.T) {
+				input, err := base64.RawURLEncoding.Strict().DecodeString(v.Input.Bytes)
+				if err != nil || base64.RawURLEncoding.EncodeToString(input) != v.Input.Bytes {
+					t.Fatal("fixture input.bytes_base64 is not canonical base64url")
+				}
+				want := v.Expected.Code
+				if deferred {
+					t.Logf("stage-pending %s: %s; final expectation=%s; spec/registrar.md:%d", v.Row, pending.stage, want, spec.line)
+					route, want = pending.prefix, pending.prefixCode
+					if route == "none" {
+						return
+					}
+				}
+				got := exercise(v, input, route)
+				code := resultCode(got.err)
+				if code != want {
+					t.Errorf("DISAGREEMENT %s spec/registrar.md:%d (plan=%s): route=%s core=%s vector=%s prefix-expectation=%s", v.Row, spec.line, spec.outcome, route, code, v.Expected.Code, want)
+				}
+				if v.Expected.Canonical != "" && !bytes.Equal(got.canonical, decodeExpected(t, v.Expected.Canonical)) {
+					t.Errorf("DISAGREEMENT %s spec/registrar.md:%d: core canonical bytes differ from vector", v.Row, spec.line)
+				}
+				if got.envelope != nil && v.Expected.ID != "" && got.envelope.ID != v.Expected.ID {
+					t.Errorf("DISAGREEMENT %s spec/registrar.md:%d: core id=%s vector id=%s", v.Row, spec.line, got.envelope.ID, v.Expected.ID)
+				}
+				// The JWT claim is only an independent stated proof-ID witness;
+				// this assertion does not issue or validate the JWT itself.
+				if got.proof != nil && v.Expected.JWT != nil && got.proof.ID != v.Expected.JWT.Claims.JTI {
+					t.Errorf("DISAGREEMENT %s spec/registrar.md:%d: core id=%s vector JWT jti=%s", v.Row, spec.line, got.proof.ID, v.Expected.JWT.Claims.JTI)
+				}
+			})
+			switch {
+			case !passed:
+				stat.fail++
+			case deferred:
+				stat.pending++
+				if pending.prefix != "none" {
+					stat.prefixes++
+				}
+			default:
+				stat.pass++
+			}
+		}
+	}
+	for row := range specification {
+		if !seen[row] {
+			t.Errorf("%s: planned vector missing", row)
+		}
+	}
+	for row := range executedRows {
+		if !seen[row] {
+			t.Errorf("%s: stale executed classification", row)
+		}
+	}
+	for row := range pendingRows {
+		if !seen[row] {
+			t.Errorf("%s: stale stage-pending classification", row)
+		}
+	}
+	for _, domain := range []string{"registration/1", "enrollment/1"} {
+		c := totals[domain]
+		t.Logf("COUNTS %s: executed-pass=%d executed-fail=%d stage-pending=%d (available prefixes verified=%d)", domain, c.pass, c.fail, c.pending, c.prefixes)
+	}
+}
+
+func exercise(v vector, raw []byte, route string) observation {
+	switch route {
+	case "codec", "extract":
+		value, err := ccj.Parse(raw, refusal.EnrollmentMalformed)
+		if err != nil {
+			return observation{err: err}
+		}
+		if route == "extract" {
+			obj, ok := value.(map[string]any)
+			if !ok {
+				return observation{err: fmt.Errorf("extraction fixture must be an object")}
+			}
+			value, ok = obj["body"]
+			if !ok {
+				return observation{err: fmt.Errorf("extraction fixture lacks body")}
+			}
+		}
+		canonical, err := ccj.Marshal(value, refusal.EnrollmentMalformed)
+		return observation{err: err, canonical: canonical}
+	case "registration", "name", "audience":
+		b, err := registration.Read(bytes.NewReader(raw))
+		out := observation{err: err, proof: b}
+		if err != nil {
+			return out
+		}
+		e, err := envelope.Parse(raw, envelope.Registration)
+		if err != nil {
+			out.err = err
+			return out
+		}
+		out.envelope, out.canonical = e, e.CanonicalBody
+		if route != "registration" {
+			out.err = b.CheckName(v.Fixture.Audience)
+		}
+		if out.err == nil && route == "audience" {
+			out.err = b.CheckAudience(v.Fixture.Audience)
+		}
+		return out
+	case "envelope", "enrollment-key", "enrollment-id", "enrollment-signature", "enrollment-positive":
+		e, err := envelope.Read(bytes.NewReader(raw), envelope.Enrollment)
+		out := observation{err: err, envelope: e}
+		if err != nil {
+			return out
+		}
+		out.canonical = e.CanonicalBody
+		if route == "envelope" {
+			return out
+		}
+		// Adapt only existing key APIs; the remaining enrollment schema and
+		// snapshot phases are intentionally not reproduced in this test.
+		out.err = enrollmentKeys(e.Body)
+		if out.err != nil || route == "enrollment-key" {
+			return out
+		}
+		out.err = e.CheckID()
+		if out.err != nil || route == "enrollment-id" {
+			return out
+		}
+		publisher, err := keys.ParseEnrollment(v.Fixture.Registry.PublisherKey)
+		if err != nil {
+			out.err = err
+			return out
+		}
+		out.err = sig.Verify(publisher, e.Preimage, e.Signature, envelope.Enrollment)
+		return out
+	default:
+		return observation{err: fmt.Errorf("unknown core route %q", route)}
+	}
+}
+
+func enrollmentKeys(body map[string]any) error {
+	entries, ok := body["keys"].([]any)
+	if !ok {
+		return fmt.Errorf("key adapter needs keys array; enrollment schema is pending")
+	}
+	for _, entry := range entries {
+		obj, ok := entry.(map[string]any)
+		if !ok {
+			return fmt.Errorf("key adapter needs object entry")
+		}
+		text, ok := obj["key"].(string)
+		if !ok {
+			return fmt.Errorf("key adapter needs key string")
+		}
+		if _, err := keys.ParseEnrollment(text); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func resultCode(err error) string {
+	if err == nil {
+		return "accept"
+	}
+	var typed *refusal.Error
+	if errors.As(err, &typed) {
+		return string(typed.Code)
+	}
+	return "unexpected-error: " + err.Error()
+}
+
+func decodeExpected(t *testing.T, text string) []byte {
+	t.Helper()
+	raw, err := base64.RawURLEncoding.Strict().DecodeString(text)
+	if err != nil || base64.RawURLEncoding.EncodeToString(raw) != text {
+		t.Fatal("invalid expected byte encoding")
+	}
+	return raw
+}
+
+func vectorFiles(t *testing.T, root string) []string {
+	t.Helper()
+	var files []string
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if d.Type()&os.ModeSymlink != 0 || filepath.Ext(path) != ".json" {
+			return fmt.Errorf("unexpected vector entry %s", filepath.Base(path))
+		}
+		files = append(files, path)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(files)
+	return files
+}
+
+func readSpec(t *testing.T, path string) map[string]specRow {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := make(map[string]specRow)
+	inTable := false
+	for i, line := range strings.Split(string(raw), "\n") {
+		if strings.HasPrefix(line, "## Appendix B.") {
+			inTable = true
+			continue
+		}
+		if strings.HasPrefix(line, "### B.1") {
+			break
+		}
+		if !inTable || !strings.HasPrefix(line, "| ") {
+			continue
+		}
+		cells := strings.Split(line, "|")
+		if len(cells) != 8 {
+			continue
+		}
+		id, domain := strings.TrimSpace(cells[1]), strings.TrimSpace(cells[2])
+		if domain != "registration/1" && domain != "enrollment/1" {
+			continue
+		}
+		if _, exists := rows[id]; exists {
+			t.Fatalf("duplicate planned row %s", id)
+		}
+		rows[id] = specRow{line: i + 1, domain: domain, outcome: strings.TrimSpace(cells[5])}
+	}
+	if len(rows) == 0 {
+		t.Fatal("no Appendix B two-domain rows found")
+	}
+	return rows
+}
