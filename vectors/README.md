@@ -36,6 +36,10 @@ Each JSON file contains:
   nonce cache, monotonic limiter events/capacities, signer and audit inputs.
 - `before` and `after` define ordered request, clock, restart and signer events.
   Requests in those traces have their own exact outcomes and deterministic JWTs.
+  Request events may include optional `monotonic_now`, a nonnegative integer of
+  elapsed whole seconds used for monotonic limiter accounting. When absent,
+  that request uses `fixture.monotonic_now`, even if the preceding request supplied
+  an override; it does not inherit the preceding request's value.
   Restart clears only volatile accounting, never prior audit or authority.
 - `expected.code` is exactly one refusal or `accept`. Side effects are separate
   in `expected.state`: exact authority record IDs/revision, accounting, audit
