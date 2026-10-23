@@ -724,6 +724,75 @@ def verify_test_keys(root,seeds):
         public=ed25519.Ed25519PrivateKey.from_private_bytes(seed).public_key().public_bytes(serialization.Encoding.Raw,serialization.PublicFormat.Raw)
         require(item['seed_hex']==seed.hex() and item['public_key']=='ed25519:'+enc(public),'derived public test key')
 
+CLOCK_FIXTURE_FIELDS=frozenset(('actual_start_millis','start_barrier',
+                                'startup_verified','clock_healthy','clock_fenced'))
+
+
+def clock_fixture_rows(vectors):
+    # Field presence (not truthiness) includes inherited defaults and scheduled inputs.
+    rows=set()
+    for vector in vectors:
+        inputs=[vector.get('fixture',{})]+vector.get('before',[])+vector.get('after',[])
+        if any(CLOCK_FIXTURE_FIELDS.intersection(item) or
+               (item.get('event')=='clock' and 'healthy' in item) for item in inputs):
+            rows.add(vector['row'])
+    return rows
+
+
+def verify_time_declaration(spec,vectors,legacy_rows):
+    appendix=re.search(r'^## Appendix A\.[^\n]*\n(.*?)(?=^## Appendix B\.)',spec,re.M|re.S)
+    require(appendix is not None,'missing Appendix A abstract post-hold declaration')
+    markers=[line for line in appendix[1].splitlines()
+             if line.startswith('<!-- abstract-post-hold-rows-v1:')]
+    require(len(markers)==1,'abstract post-hold declaration must occur exactly once')
+    match=re.fullmatch(r'<!-- abstract-post-hold-rows-v1: (.+) -->',markers[0])
+    require(match is not None,'malformed abstract post-hold declaration')
+    try:
+        declared=json.loads(match[1])
+    except ValueError as exc:
+        raise Rejected('malformed abstract post-hold declaration JSON') from exc
+    require(isinstance(declared,list) and all(isinstance(row,str) for row in declared),
+            'abstract post-hold declaration must list row ids')
+    require(len(declared)==len(set(declared)),'duplicate abstract post-hold declaration row')
+    actual=clock_fixture_rows(vectors)
+    require(not actual-set(declared),
+            'undeclared clock fixture rows: '+', '.join(sorted(actual-set(declared))))
+    require(not set(declared)-actual,
+            'declared rows without clock fixture fields: '+', '.join(sorted(set(declared)-actual)))
+
+    section=re.search(r'^### B\.3 [^\n]*\n(.*?)(?=^### |^## |\Z)',spec,re.M|re.S)
+    require(section is not None,'missing B.3 startup plan')
+    startup={}
+    positive_seen=False
+    for line in section[1].splitlines():
+        columns=[value.strip() for value in line.split('|')[1:-1]]
+        if not columns or not re.fullmatch(r'P?T[0-9]+',columns[0]):
+            continue
+        row=columns[0]
+        require(len(columns)==5,'malformed startup plan row: '+row)
+        require(row not in startup,'duplicate startup plan row: '+row)
+        if row.startswith('PT'):
+            positive_seen=True
+        else:
+            require(not positive_seen,'negative startup row follows positive controls: '+row)
+            require(re.fullmatch(r'PT[0-9]+',columns[-1]) is not None,
+                    'negative startup row requires PT control: '+row)
+        startup[row]=columns[-1]
+    missing={'T1','T2','T3','T4'}-startup.keys()
+    require(not missing,'missing negative startup hold rows: '+', '.join(sorted(missing)))
+    # Every PT chain must end in an existing positive legacy row, without cycles.
+    for control in startup.values():
+        seen=set()
+        while control.startswith('PT'):
+            require(control in startup,'unresolved startup positive control: '+control)
+            require(control not in seen,'cyclic startup positive control: '+control)
+            seen.add(control)
+            control=startup[control]
+        require(control.startswith('P') and control in legacy_rows,
+                'unresolved startup legacy positive control: '+control)
+    return len(actual),len(startup)
+
+
 def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--vectors',type=Path,default=Path('vectors'))
@@ -731,13 +800,15 @@ def main():
     seeds=json.loads((args.vectors/'keys/seeds.json').read_text())
     verify_test_keys(args.vectors,seeds)
     require(seeds['test_only'] is True,'test-key label')
-    table=Path('spec/registrar.md').read_text().split('## Appendix B.',1)[1].split('### B.1',1)[0]
+    spec=Path('spec/registrar.md').read_text()
+    table=spec.split('## Appendix B.',1)[1].split('### B.1',1)[0]
     plan={}
     for line in table.splitlines():
         columns=[v.strip() for v in line.split('|')[1:-1]]
         if len(columns)==6 and columns[1] in ('registration/1','enrollment/1'):
             plan[columns[0]]=columns
     found={}
+    vectors=[]
     loaded_paths=set()
     counts={}
     for domain in ('registration-1','enrollment-1'):
@@ -747,6 +818,7 @@ def main():
             for path in files:
                 loaded_paths.add(path)
                 v=parse(path.read_bytes());row=v['row']
+                vectors.append(v)
                 require(row not in found and path.stem==row and row in plan,'row id/inventory')
                 found[row]=str(path)
                 p=plan[row]
@@ -761,12 +833,14 @@ def main():
                 except (Rejected,KeyError,TypeError,ValueError,InvalidSignature) as exc:
                     raise Rejected(f'{row}: {exc}') from exc
     require(set(found)==set(plan),'missing/extra planned rows')
+    abstract_rows,startup_rows=verify_time_declaration(spec,vectors,set(plan))
     all_paths={p for domain in ('registration-1','enrollment-1') for p in (args.vectors/domain).rglob('*.json')}
     require(loaded_paths==all_paths,'unexpected vector JSON path')
     require({p.name for p in (args.vectors/'keys').glob('*.json')}=={'seeds.json','public-keys.json'},'unexpected test-key JSON file')
     for domain in ('registration-1','enrollment-1'):
         print(f'{domain}: {counts[domain,"0-negative"]} negative / {counts[domain,"1-positive"]} positive')
     print(f'PASS: {len(found)} independently checked vectors, exact outcomes, deterministic JWTs and state oracles')
+    print(f'PASS: {abstract_rows} declared abstract post-hold rows; {startup_rows} startup plan rows with resolving controls')
     print(f'Envelope observations: {OBSERVATIONS["ids"]} derivable ids; {OBSERVATIONS["signatures"]} raw signature verdicts')
     print('LIMIT: external trust, clock-health and sink results are fixture inputs; no live service or deployment qualification')
 

@@ -1,10 +1,35 @@
-# Independent checker regressions
+# Independent vector checker and regressions
 
 Run from the repository root with the same pinned dependency as `check.py`:
 
 ```sh
-python3 -B -m unittest discover -s tools/vectorcheck -p test_regressions.py -v
+python3 -B tools/vectorcheck/check.py
+python3 -B -m unittest discover -s tools/vectorcheck -p 'test_*.py' -v
 ```
+
+The checker reads the single `abstract-post-hold-rows-v1` JSON-array marker in
+Appendix A and requires exact set equality with the vector rows carrying
+`actual_start_millis`, `start_barrier`, `startup_verified`, `clock_healthy` or
+`clock_fenced`. It checks field presence, including false/default values, in
+`fixture`, `before` and `after`; scheduled `clock` events carrying `healthy` also
+count. All 310 current vectors carry these inputs, including enrollment and
+codec rows that inherit shared defaults. Duplicate declarations and rows,
+undeclared field-bearing rows and declared field-free rows fail.
+
+Appendix B.3 must contain negative hold rows T1–T4 before its PT controls.
+Every negative startup row must name a PT control, and every control chain must
+resolve without cycles to a positive legacy vector row. These checks preserve
+the declaration and the startup **plan**; they do not execute the provider checks
+or qualify the four-second production hold. No vector bytes are changed.
+The Go generator and conformance harness continue to consume the legacy byte
+rows; they do not need to interpret this documentation inventory declaration.
+
+`test_time_declaration.py` supplies paired rejection/valid-control regressions
+for both inventory mismatch directions, malformed declarations, missing hold
+rows, field-presence derivation, row ordering and control resolution. These tests
+read the real specification and vectors and mutate copies in memory. Run logs
+and any CLI control plants belong in an external scratch directory, outside the
+tracked vector inventory; the checker writes no output artifacts.
 
 The twenty static JSON fixtures under `fixtures/` exercise `check.verify`, including
 envelope ids, signatures, ordered verdicts, exact JWT bytes and resulting state.
