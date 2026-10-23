@@ -420,7 +420,7 @@ MUST NOT attempt later checks merely to select a different refusal.
 | 12 | Name grammar and configured-audience mxid limit pass. | `name_invalid` | 400 |
 | 13 | The key's host permits the name (§5). | `name_not_permitted` | 403 |
 | 14 | Audience equals the configured server name. | `audience_mismatch` | 403 |
-| 15 | Process clock is healthy and `iat >= start_barrier = floor(process-start UTC) + 31` (§7). | `clock_skew` | 400 |
+| 15 | Startup clock health is verified, current clock is healthy, no process-lifetime clock fence has tripped, and `iat >= start_barrier = floor(process-start UTC) + 31` (§7). | `clock_skew` | 400 |
 | 16 | Request `iat <= now + 30`. | `request_not_yet_valid` | 403 |
 | 17 | `now < request.exp + 30`. | `request_expired` | 403 |
 | 18 | Both per-key and per-name budgets have capacity (§7). | `rate_limited` | 429 |
@@ -479,12 +479,21 @@ maximum accepted future skew plus one strict-boundary second. Requests with
 `iat < start_barrier` MUST be refused as `clock_skew`, without skew allowance.
 The barrier is fixed for that process; waiting MUST NOT lower or replace it.
 
-With healthy, nonregressing UTC across process instances, every earlier
-admission had `old_now <= floor(new_process_start)`, so its proof necessarily
-had `iat <= floor(new_process_start) + 30 < start_barrier`. Thus no proof
-admissible by an earlier instance can become admissible in the new instance,
-even after its nonce cache is lost and even after waiting. This argument depends
-on the clock-health/restore fence; a regressed clock does not qualify for it.
+Every admission MUST occur only under verified synchronized UTC. Before serving,
+each process MUST pass its own startup clock-health check establishing that its
+barrier was derived under healthy synchronized UTC, with every earlier
+admission time no later than this process's synchronized start time. Current
+synchronization alone does not validate a start timestamp recorded during a
+regression. If this startup premise cannot be established, the process MUST
+remain clock-fenced, fail closed, and issue no JWT.
+
+Under this premise, every earlier admission had
+`old_now <= floor(new_process_start)`, so its proof necessarily had
+`iat <= floor(new_process_start) + 30 < start_barrier`. Thus no proof admissible
+by an earlier instance can become admissible in the new instance, even after
+its nonce cache is lost and even after waiting. This argument depends on the
+startup check and permanent process clock fence below; it does not establish
+trustworthy UTC from timestamps alone.
 
 Availability cost: with synchronized client and registrar clocks, fresh proofs
 refuse until UTC reaches `start_barrier`, a delay greater than 30 and at most
@@ -503,9 +512,20 @@ jitter while bounding the added replay period. Future `iat = now + 30` is
 accepted; `now + 31` is refused. `now = exp + 29` may pass; `now = exp + 30`
 is expired. These are request-proof rules, not homeserver JWT leeway. Hosts,
 registrar and homeserver MUST have monitored clock synchronization. Loss of
-synchronization or a backwards UTC step MUST fence admission (`clock_skew`)
-until operator-validated recovery; retained nonce entries MUST NOT be cleared
-to recover a clock. Monotonic clocks measure limiter intervals and watchdogs.
+synchronization or a backwards UTC step MUST fence admission (`clock_skew`).
+A process whose barrier was fixed under unhealthy or regressed UTC, or whose
+clock fence has ever tripped, MUST NOT reopen admission in that process.
+Restoring synchronization, operator acknowledgement and waiting do not clear
+this process-lifetime fence or replace its fixed barrier. Recovery requires the
+operator to verify synchronized UTC and then restart the registrar. The new
+process derives its own `floor(actual process-start UTC time) + 31` barrier
+under that verified healthy clock and MUST independently pass the startup
+clock-health check above before admission. If verification cannot establish the
+ordering premise, admission stays fenced; the ordinary startup wait is not a
+recovery timeout. Retained nonce entries MUST NOT be cleared to recover a clock.
+Monotonic clocks measure limiter intervals and watchdogs. Version 0 uses no
+durable replay cache or clock/admission-time high-water mark; the separate
+durable registry high-water requirements in §4 remain unchanged.
 
 Nonce identity is the canonical public-key string plus the 16 decoded nonce
 bytes. Reserving that pair and testing absence MUST be atomic. An accepted
@@ -793,7 +813,8 @@ Bare numeric timestamps in restart rows are integer seconds after
 `2030-01-01T00:00:00Z`; a fractional process-start value denotes actual UTC
 before flooring, not a fractional wire timestamp. For these restart traces the
 prior process started at offset 0 (old barrier 31), before the stated first proof.
-Both admissions have healthy clocks and otherwise valid proof/enrollment/audit;
+Unless a row explicitly injects clock failure, both admissions have healthy
+clocks and otherwise valid proof/enrollment/audit;
 only the explicitly stated restart clears nonce and limiter memory. Later replay
 requests MUST NOT alter the prior proof's bytes, id, signature or nonce.
 
@@ -852,6 +873,7 @@ profile refines the general stage profile; unmentioned state stays unchanged:
 | PR14 | Unchanged. | Two seeded same-name events/nonces become three after the fresh successful proof. | One additional issued line; healthy readiness. |
 | PR18 | Unchanged. | Existing pair for key A stays; same nonce inserts a distinct pair for key B, debits B and the shared-name budget once (both below cap). | One additional issued line; healthy readiness. |
 | R124–R127 / PR22–PR24 restart traces | Authority unchanged; explicit process restart is an input. | Restart clears cache/budgets. Rejected replay/future proof debits and reserves nothing; fresh successful control inserts/debits once. | Persistent old audit lines remain; append the stated refusal or fresh issuance. Healthy clocks/readiness. |
+| R130–R133 / PR27 clock-recovery traces | Authority unchanged. Explicit clock failure/recovery and process restarts are fixture inputs; the unhealthy-start or tripped-fence process never reopens. | Each restart clears cache/budgets. Clock refusals reserve/debit nothing; PR27 inserts/debits once for its fresh proof. | Keep prior audit lines; append/ack one refusal per rejected attempt or one issued line for PR27. The old process stays fenced even after synchronized UTC returns; only the new verified-start process becomes ready. |
 
 Loader failures MUST not install partial authority. The positive control column
 names an actual planned row, not agreement with a second implementation. Every planned vector is a separate
@@ -1100,6 +1122,10 @@ registry installation or the specified emission assertion, not just parsing.
 | R127 | registration/1 | Restart waiting does not rehabilitate proof | Replay R124 unchanged at now=92 after waiting; fixed barrier still 92 and old iat still 90 | clock_skew | PR23 |
 | R128 | registration/1 | Pending-token key cutover | Sign at generation A; await audit; switch active generation to B; acknowledge audit; final release sees mismatch | service_unavailable; no JWT; reserved nonce retained | PR26 |
 | R129 | registration/1 | Lowered positive rate capacity | Configured key/name capacities both 1; second fresh attempt in 60-second window | rate_limited; no second debit/reservation | PR25 |
+| R130 | registration/1 | `test_clock_recovery_does_not_reenable_pre_restart_proof` | A starts at 0 and accepts iat=90, exp=210 at now=60; UTC regresses, B starts at 31.2 with barrier=62 and fails startup clock health; restore synchronized UTC to 62 and attempt in-place reopening with the identical proof | clock_skew; B remains fenced; no JWT | PR27 |
+| R131 | registration/1 | Recovery still fenced without restart | Continue R130 in B at now=93 with a fresh iat=93, exp=213 and nonce; current clock is healthy but B's process-lifetime fence remains | clock_skew; no JWT | PR27 |
+| R132 | registration/1 | Restart after clock recovery rejects old proof | After R130, operator verifies synchronized UTC and restarts at 62.2; new process passes its startup check, barrier=93; replay A's identical iat=90, exp=210 proof at now=93 | clock_skew; no JWT | PR27 |
+| R133 | registration/1 | Healthy-start process cannot clear a later clock fence | Process starts with verified healthy UTC at 0, then loses synchronization and trips its clock fence; restore verified synchronization at now=60 and offer fresh iat=60, exp=180 and nonce without restart | clock_skew; process remains fenced; no JWT | PR27 |
 | E107 | enrollment/1 | Loader snapshot-wide phases | a.json has bad publisher signature; z.json has reserved sigs; all phase-1 shapes valid | enrollment_sigs_unsupported | PE1 |
 | E108 | enrollment/1 | Loader path-order independence | a.json has reserved sigs; z.json has bad publisher signature; all phase-1 shapes valid | enrollment_sigs_unsupported | PE1 |
 | E109 | enrollment/1 | Loader parse-before-reserved phase | a.json has reserved sigs; z.json has duplicate JSON member | enrollment_malformed | PE1 |
@@ -1143,6 +1169,7 @@ registry installation or the specified emission assertion, not just parsing.
 | PR24 | registration/1 | Restart adjacent upper edge | Restart=61.2, barrier=92, now=92, fresh iat=93, exp=213 and nonce | accept | PR1 |
 | PR25 | registration/1 | Minimum positive limiter capacity | Configure key/name capacities both 1, empty windows/cache, first valid proof | accept; one debit per budget and one nonce | PR1 |
 | PR26 | registration/1 | Pending token without key cutover | Sign at generation A, audit waits and acknowledges, active generation remains A and unpaused | accept; one JWT released | PR16 |
+| PR27 | registration/1 | Fresh proof at recovered restart barrier | Continue R132 in the new verified-start process, barrier=93, now=93, fresh iat=93, exp=213 and nonce | accept; one debit per budget and one nonce; one JWT | PR1 |
 | PE13 | enrollment/1 | Same-host historical legacy name | One active host removes then re-adds its legacy.dev at higher sequences, all retained | accept; no cross-host ownership change | PE1 |
 | PC1 | enrollment/1 | CCJ codec: Object order | Keys include a supplementary scalar and a BMP scalar; sort by scalar, not UTF-16 code unit | accept (codec) | PC1 |
 | PC2 | enrollment/1 | CCJ codec: Whitespace | No insignificant whitespace in canonical output | accept (codec) | PC2 |
@@ -1248,7 +1275,8 @@ Other source-gap choices made for determinism are listed completely by category:
 | Ordered HTTP checks, empty error details, final authority and signing-generation revalidation | Multi-defect vectors need one result; cancel pending old-key issuance at cutover rather than release an already invalid token. |
 | Snapshot-wide loader phases in bytewise Git-path order; conflict before rollback | Combined-defect snapshots need a single diagnostic independent of filesystem traversal. |
 | Separate authority, accounting, audit and readiness fixture oracles | Rejection forbids unauthorized authority changes while permitting mandatory nonce consumption, limiter debits, audit appends and fences. |
-| Thirty-second proof skew and barrier floor(start)+31; clock failures fence issuance | Exclude every earlier-admissible future-skew proof after restart; accept a 30–31 second synchronized startup hold (up to 61 seconds for a client 30 seconds behind) and require fresh-proof retry. |
+| Thirty-second proof skew and barrier floor(start)+31; verified synchronized startup and permanent per-process clock fence | Exclude every earlier-admissible future-skew proof after restart, including clock recovery: verify synchronized UTC, then restart and independently validate the new start before serving. A failed-start or ever-fenced process never reopens. Keep the ordinary 30–31 second synchronized startup hold (up to 61 seconds for a client 30 seconds behind) and fresh-proof retry. |
+| No durable replay cache or clock/admission-time high-water mark in version 0 | Rely on the explicit synchronized-start ordering premise and fail closed when it cannot be established. A durable clock/admission-time high-water or replay store is a later design option requiring separate qualification; the existing durable registry high-water remains required. |
 | Nonce scoped to key, consumed at reservation even after later failure, held until exp+30 | Bound memory and eliminate racing/retry double issuance. |
 | Sliding 60-second budgets: key 10, name 3; lower only to integer capacities at least 1; authenticated-stage charging only | Bound signing load without unauthenticated quota exhaustion or undefined retry delays from zero capacity. |
 | JWT iat is issuance time; no kid; PKCS#8 private / SPKI public PEM | Separate proof freshness from fixed token lifetime and match one-key homeserver verification. |
