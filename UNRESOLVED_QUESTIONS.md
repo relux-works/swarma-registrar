@@ -36,48 +36,34 @@ Quoted charset values of any case yield `unsupported_media_type`; this is a
 deliberate narrowing of RFC 9110's quoted parameter syntax. These choices are
 no longer open. HTTP implementation alignment is a separate pending change.
 
-## External high-water witness proposal
+## External high-water witness rulings and activation dependencies
 
-The 2026-10-23 content-review ruling requested option C: record every accepted
-high-water digest outside the host's failure domain and compare local state
-with the fresh latest witnessed state on start. Specification §4.5 and Appendix
-B.2 are a proposal for independent review and content review before any code.
-They do not claim implemented or qualified witness support. Option A remains
-explicit operator reconciliation on every start or after indeterminate
-persistence; a local file or cached acknowledgement alone is insufficient.
+Content review on 2026-10-23 accepted the option C specification (§4.5 and
+Appendix B.2). Both reviewed choices are accepted: externally acknowledged
+write-ahead intent before Store.Commit, and fencing old authority when intent
+append fails, even if no local commit occurs. A lost receipt cannot establish
+that the append failed. This is specification acceptance, not implemented or
+qualified witness support.
 
-Open choices and recommendations are tracked in Appendix C.3:
+Until option C is activated, option A with its four shared invariants applies
+unchanged (§4.4 and the documented `serve --reconcile` procedure):
 
-- **WC1 — Witness and independent retention:** recommend an independently
-  administered append-only service and separately retained trusted checkpoint.
-  Qualify rollback/restore boundaries; matching stale host and witness views
-  cannot establish freshness without independent surviving evidence.
-- **WC2 — Authenticated fresh-head protocol:** recommend extending the §9 audit
-  channel with typed witness append/read operations, protected peer pins and
-  challenge-bound linearizable latest-head replies. Exact framing, nonce
-  strength, credentials/rotation, record limits and continuity proofs remain
-  open. Ordinary shipping or signed historical records do not suffice.
-- **WC3 — Second consumer:** recommend separate consumer-bound streams on the
-  same external service with common registry/pin policy. Shared streams need
-  serialized ownership and lagging-reader fences. Keymaker internals remain
-  owned by its separate specification.
-- **WC4 — Instance takeover:** recommend explicit exclusion of the old serving
-  instance before replacement and throughout authority use. A witness write CAS
-  does not prevent an old process from signing. Any distributed lease needs a
-  separately reviewed signing-fence design.
-- **WC5 — Reconciliation and recovery runbook:** recommend operator actions
-  bound to the exact digest/revision and independent surviving evidence for
-  bootstrap, manual fallback, witness repair/migration and mode changes. Define
-  operator authorization/evidence records and the no-surviving-evidence
-  procedure. The proposed mechanism is now an exact externally durable intent
-  acknowledged before Store.Commit, followed by a matching committed resolution
-  after successful local commit. Local pending metadata is insufficient across
-  whole-host restore. A latest unresolved intent fences regardless of local
-  digest or remembered pending state. Operator completion must bind the intent
-  hash, candidate digest/revision and independent evidence; no automatic
-  roll-forward or rollback from local bytes is permitted. Any intent cancellation
-  or replacement procedure remains a separate open decision.
+1. Interactive exact-digest confirmation in the starting process against
+   trustworthy surviving evidence outside the restored failure domain.
+2. Process-lifetime confirmation only; every restart needs confirmation, with
+   no persisted receipt or reusable local freshness flag.
+3. No digest supplied by flag, environment variable or non-terminal input.
+4. Missing high-water never implies first use; bootstrap needs explicit
+   protected configuration for the exact pin and the same confirmation.
 
-Option C activation is blocked until these choices and their qualification
-evidence are supplied. This does not block specification review. No automatic
+Appendix C.3 records the accepted directions and remaining activation work:
+
+- **WC1 — direction accepted, open for activation:** an independently administered append-only service outside the platform's failure domain with a separately retained trusted checkpoint; qualify restore/continuity and joint-loss bounds. Exact placement is an owner infrastructure decision and does not block this ruling.
+- **WC2 — direction accepted, open for activation:** a typed witness stream over the §9 audit channel with challenge-bound linearizable latest-head reads; close transport, authentication, provisioning, rotation, limits and continuity-proof details.
+- **WC3 — direction accepted, open for activation:** separate consumer-bound streams on one external service with common registry/pin policy; qualify both consumers without defining Keymaker internals.
+- **WC4 — direction accepted, open for activation:** exclude the old serving instance before replacement and throughout authority use; qualify exclusion. Any distributed lease requires separate review of signing fences.
+- **WC5 — direction accepted, open for activation:** an operator runbook bound to the exact digest, intent hash, revision and independent surviving history evidence; close authorization/evidence records, bootstrap, repair/migration, mode changes and loss-of-evidence handling. Cancellation/replacement remains a separate explicit decision; local restored bytes never authorize it.
+
+Implementation and activation wait until WC1–WC5 are closed and qualification
+evidence is supplied. This does not reopen specification acceptance. No automatic
 downgrade, empty-stream bootstrap or joint-rollback detection is claimed.

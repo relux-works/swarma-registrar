@@ -1621,38 +1621,52 @@ Other source-gap choices made for determinism are listed completely by category:
 | Local durable audit plus off-host acknowledgement before release; 5-second deadline | Off-host audit cannot be claimed from best-effort buffering, and sink stalls must be bounded. |
 | Typed runtime/audit/registry errors and loader-only diagnostics | CIP lists admission refusals but leaves infrastructure and enrollment validation failures unnamed. |
 
-### C.3 External-witness proposal and open choices (informative)
+### C.3 External-witness rulings and activation dependencies (informative)
 
-Content review on 2026-10-23 requested option C as the next specification slice.
-Section 4.5 is a proposal for independent and content review, not an approved
-implementation or activation. Option A remains the fallback. The source
+Content review on 2026-10-23 accepted the option C specification, including
+write-ahead intent before Store.Commit and fencing old authority when an intent
+append fails. This accepts the specification, not implementation or activation.
+WC1–WC5 below have accepted directions and remain open for activation;
+implementation and activation wait until all five are closed. The source
 contracts (§4.4, §9 and the current local adapters) do not supply a production
 witness, fresh-head protocol or instance-exclusion mechanism.
 
-| Proposed choice | Reason |
+Until option C is activated, option A with its four shared invariants applies
+unchanged (§4.4 and the documented `serve --reconcile` procedure):
+
+1. The starting process obtains interactive exact-digest confirmation against
+   trustworthy surviving evidence outside the restored failure domain.
+2. Confirmation lasts only for that process; every restart needs confirmation,
+   with no persisted receipt or reusable local freshness flag.
+3. No flag, environment variable or non-terminal input supplies the digest.
+4. Missing high-water never implies first use; bootstrap needs explicit
+   protected configuration for the exact pin and the same confirmation.
+
+| Specification choice | Reason / ruling |
 | --- | --- |
 | Digest the complete version-1 canonical high-water, including ownership/history, with SHA-256 and no LF | Reuse current local-state bytes; a revision or current-sequence-only hash would omit irreversible evidence. |
 | Separate typed witness stream over the §9 channel; LF-inclusive record hash and exact receipt | Reuse authenticated off-host durability without changing the closed admission-audit schema or mixing sequence spaces. |
 | Stable protected stream binding; positive safe-integer sequence, hash continuity and compare-head append | Prevent empty-stream resets, accidental consumer collisions and conflicting records at one position. |
 | Stream id limited to 128 ASCII identifier bytes; sequences bounded by CCJ-1 safe integers; exhaustion fences | Bound record parsing, avoid identifier normalization and forbid counter wrap. |
-| Acknowledged witness intent, local commit, acknowledged matching resolution, then authority use | Proposed content-review choice: a whole-host restore can erase any local pending marker before a post-commit witness append. The write-ahead external intent preserves that obligation for both changed-state and unchanged-state commits. |
-| Intent failure leaves old authority fenced with no Store.Commit; operator alone resolves an actual unresolved intent | Preserve §4.4 failed-reload safety and avoid treating an uncertain external append or restored local bytes as freshness evidence. |
+| Acknowledged witness intent, local commit, acknowledged matching resolution, then authority use | Accepted on 2026-10-23: a whole-host restore can erase any local pending marker before a post-commit witness append. The write-ahead external intent preserves that obligation for both changed-state and unchanged-state commits. |
+| Intent failure leaves old authority fenced with no Store.Commit; operator alone resolves an actual unresolved intent | Accepted on 2026-10-23: preserve §4.4 failed-reload safety and avoid treating an uncertain external append or restored local bytes as freshness evidence. |
 | Fresh challenge-bound authoritative latest read, not cached receipt equality | A valid old receipt and rolled-back local file can agree while both are stale. |
 | Five-second default per witness operation; fence on failure, explicit option A recovery | Bound startup/reload waiting while preserving the existing failure-closed rule. |
 | Reuse registry_unavailable for witness fences, preserving restricted loader diagnostics | Registry authority is unavailable; this introduces no HTTP or helper refusal code. |
-| Preserve single-instance serving; shared or independent streams for consumers | Witness compare-head serialization does not fence an already signing process; no helper-internal design is imported. |
+| Preserve single-instance serving; separate consumer-bound streams on one service | Witness compare-head serialization does not fence an already signing process; no helper-internal design is imported. |
 | B.2 lifecycle plans have separate W/PW ids | Do not imply new byte-vector fixtures or executable conformance in this specification-only slice. |
 
-The following choices remain open; none may be silently supplied by a local
-file or an audit shipping adapter. Recommendations are not adopted mechanisms.
+The following directions are accepted; their implementation details and
+qualification remain open for activation. None may be silently supplied by a
+local file or an audit shipping adapter.
 
-| Item | Open choice | Recommendation / activation evidence needed |
+| Item | Status | Accepted direction / activation evidence needed |
 | --- | --- | --- |
-| WC1 | Production witness, independent storage/backup domain and rollback/equivocation detection | Use an independently administered append-only service with durable head continuity and a separately retained trusted checkpoint. Qualify restore of each side separately and joint loss; an undetectable joint rollback remains outside the claim. |
-| WC2 | Transport, authentication, fresh-head request/reply framing and stable stream provisioning | Extend the authenticated audit transport with typed append/read operations, protected peer pins and challenge-bound linearizable latest-head replies. Specify exact wire types, nonce strength, credentials/rotation, record limits and continuity proofs before implementation. A signed historical record alone is insufficient. |
-| WC3 | Cross-consumer shared stream versus independent streams and synchronized registry rollout | Prefer independent consumer-bound streams on the same external service, with common registry/pin policy. If one stream is shared, define serialized writer ownership and fence lagging readers; qualify both consumers without defining helper internals here. |
-| WC4 | Serving-instance exclusion and takeover evidence | Retain one active instance per consumer; require operator-confirmed old-instance shutdown/isolation before replacement. Qualify that exclusion persists throughout authority use. Any future distributed lease must fence signing as well as writes and needs its own design. |
-| WC5 | Option A runbook, first stream bootstrap, witness repair/migration, mode changes and operator intent recovery authorization | Use externally durable acknowledged intent before Store.Commit, not local pending metadata. Bind recovery to exact intent hash, candidate digest/revision and independent surviving history evidence. Define operator authorization/evidence records, bootstrap and loss-of-evidence procedure before activation. This slice permits completion of the exact candidate; any cancellation/replacement procedure needs a separate explicit decision and MUST NOT be inferred from restored local bytes. |
+| WC1 | direction accepted, open for activation | An independently administered append-only service outside the platform's failure domain with a separately retained trusted checkpoint; qualify independent restore, continuity and joint-loss bounds. Exact placement is an owner infrastructure decision and does not block this ruling. |
+| WC2 | direction accepted, open for activation | A typed witness stream over the §9 audit channel with challenge-bound linearizable latest-head reads; close framing, peer authentication, provisioning, rotation, limits and continuity-proof details before implementation. |
+| WC3 | direction accepted, open for activation | Separate consumer-bound streams on one external service with common registry/pin policy; qualify each consumer without defining Keymaker internals here. |
+| WC4 | direction accepted, open for activation | Exclude the old serving instance before replacement and throughout authority use; qualify exclusion. Any distributed lease requires separate review of signing fences. |
+| WC5 | direction accepted, open for activation | An operator runbook bound to the exact digest, intent hash, revision and independent surviving history evidence; close authorization/evidence records, bootstrap, repair/migration, mode changes and loss-of-evidence handling. Exact-candidate completion is specified; cancellation/replacement still needs a separate explicit decision and cannot be inferred from restored local bytes. |
 
 No service code, socket implementation, vector files, live-account tests,
-network-registry API or deployment change is included in this draft.
+network-registry API or deployment change is included in this specification slice.
