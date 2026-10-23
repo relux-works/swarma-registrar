@@ -35,9 +35,10 @@ transitional; the reusable core is key proof → enrollment → carrier credenti
 
 Service (in progress): the Go core implements CCJ-1, signed envelopes, strict
 key/signature checks, stateless registration/enrollment validation, in-memory
-registry snapshots and an internal admission core with injected dependencies.
+registry snapshots, an internal admission core and a net/http handler with
+injected dependencies.
 The repository also contains 305 offline format vectors, with a Go generator
-and an independent Python checker. No service endpoint exists yet. These
+and an independent Python checker. No service listener exists yet. These
 fixtures do not qualify a running service or homeserver.
 Source inspection of tuwunel v1.9.3 found that `access_token_ttl` alone cannot provide
 access-token expiry without refresh-token issuance, and JWT login does not
@@ -81,7 +82,7 @@ automatically.
 
 | Tool | Purpose | Exact entry point | Output |
 | --- | --- | --- | --- |
-| Go 1.26 | Test the module, examples and public API inventories; run static validation. | `go test ./...`; `go test -race ./internal/admission/...`; `go vet ./...` | Terminal diagnostics and Go build cache; no generated repository files. |
+| Go 1.26 | Test the module, examples and public API inventories; run static validation. | `go test ./...`; `go test ./internal/...`; `go test -race ./internal/admission/...`; `go vet ./...` | Terminal diagnostics and Go build cache; no generated repository files. |
 | Go (standard library) | Regenerate vectors or check exact committed bytes and file set. | `GOMAXPROCS=2 go run ./tools/vectorgen`; `GOMAXPROCS=2 go run ./tools/vectorgen -check` | `vectors/registration-1/`, `vectors/enrollment-1/`, `vectors/keys/seeds.json`, `vectors/keys/public-keys.json`; check mode writes nothing. |
 | Python 3 with cryptography | Independently check CCJ-1, cryptography, ordered outcomes, JWT bytes and state. | `python3 tools/vectorcheck/check.py` (dependencies: `python3 -m pip install -r tools/vectorcheck/requirements.txt`) | Terminal verdicts; writes nothing. |
 | Python unittest | Check signed HTTP media-token and structured-name regressions against the independent checker. | `python3 -B -m unittest discover -s tools/vectorcheck -p test_regressions.py -v` | Terminal verdicts; fixtures under `tools/vectorcheck/fixtures/` stay separate from the 305 planned vectors. |
@@ -106,8 +107,15 @@ serialization. Local audit sequencing honors each request's cancellation.
 After an expired request, a separate bounded local refusal-spool attempt does
 not delay its response or reopen the audit fence; exact-head recovery is explicit.
 The caller supplies actual startup-ordering evidence, random
-process ID and retained audit-chain head. HTTP and concrete clock, signer,
-storage and off-host adapters remain outside this implementation. Registration parsing verifies schema, id and signature in that
+process ID and retained audit-chain head. The internal/httpapi package provides
+`httpapi.New(admitter)` and a standard `net/http` Handler for checks 1–7 at
+`POST /v1/registration`. Mount it directly to preserve routing refusal behavior.
+It bounds received bodies, audits early refusals and writes safe JSON with
+no-store headers. Surrounding media-header whitespace remains unspecified;
+implementation comments describe the current MIME parser behavior. Tests use
+`httptest` without a listener. HTTPS, transport deadlines, ingress limits and
+concrete clock, signer, storage and off-host adapters belong to deployment.
+Registration parsing verifies schema, id and signature in that
 order. Name syntax and audience checks are separate methods
 so admission can run enrollment checks first, as required by specification §6.1.
 Future service tooling must document its entry points here.
@@ -118,7 +126,7 @@ standard library; the checker uses the pinned Python dependency. See the
 [public test material](vectors/keys/README.md) for seed provenance. Control plants
 belong in an isolated scratch copy, passed with generator `-out <copy> -check`
 and checker `--vectors <copy>`; they must never alter committed fixtures.
-There is no registrar service endpoint or live integration target yet.
+There is no registrar service listener or live integration target yet.
 
 The [checker regressions](tools/vectorcheck/README.md) exercise signed neighboring
 inputs and exact refusal, JWT and state expectations without expanding Appendix B.
