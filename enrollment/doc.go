@@ -3,8 +3,8 @@
 // Callers supply one pinned Ed25519 publisher, a validated canonical audience and
 // independently trusted host classifications. Peer identity enforcement belongs
 // to the helper.
-// The implementation stays internal. Registration-proof verification remains
-// internal and is not provided by these public format packages.
+// The implementation stays internal. Use the registration package to build and
+// self-check registration proofs; this package supplies enrollment policy only.
 //
 // This package performs no I/O or network access and has no mutable global or
 // process state. Caller-supplied interfaces own external operations; configured

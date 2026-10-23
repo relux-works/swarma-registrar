@@ -58,11 +58,16 @@ contracts have been checked (KM1). See specification §1, §4.3, §10 and Append
 | --- | --- |
 | `github.com/relux-works/swarma-registrar/ccj` | Strict CCJ-1 parsing and canonicalization. |
 | `github.com/relux-works/swarma-registrar/envelope` | Bounded envelope parsing and generic domain-separated signature verification. |
+| `github.com/relux-works/swarma-registrar/registration` | Build canonical registration proofs, check unsigned names/schema, assemble caller signatures and verify rows 5–7. |
 | `github.com/relux-works/swarma-registrar/enrollment` | One pinned publisher, enrollment schema and read-only verified records. |
 | `github.com/relux-works/swarma-registrar/registry` | Phased snapshot validation, caller-supplied trust/storage interfaces and read-only queries. |
 
-The implementations remain in `internal/`. Registration-proof verification stays
-internal for the registrar. Package examples use fixed public test seeds. Generic
+The implementations remain in `internal/`. The registration facade accepts public
+keys and raw signatures; callers sign outside the package and self-check with
+`registration.Verify` before release. `Build` and `Check` use a trusted configured
+audience for the name byte cap; audience equality and admission authority remain
+caller responsibilities. See the package example (`go test ./registration`) for
+the build/sign/assemble/verify flow. Package examples use fixed public test seeds. Generic
 envelope verification does not validate enrollment schema or publisher authority;
 use the enrollment policy or registry loader for those checks. Key lookup returns
 current-record data, including revoked hosts and expired windows; callers check

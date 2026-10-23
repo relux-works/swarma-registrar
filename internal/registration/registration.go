@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/relux-works/swarma-registrar/internal/ccj"
 	"github.com/relux-works/swarma-registrar/internal/envelope"
 	"github.com/relux-works/swarma-registrar/internal/keys"
 	"github.com/relux-works/swarma-registrar/internal/refusal"
@@ -28,6 +29,24 @@ type Body struct {
 }
 
 func Parse(raw []byte) (*Body, error) { return Read(bytes.NewReader(raw)) }
+
+// ParseBody checks an unsigned body's CCJ-1 and row-5 schema only. Name rules,
+// key points, authority and signature verification remain separate stages.
+func ParseBody(raw []byte) (*Body, error) {
+	if len(raw) > envelope.MaxBytes {
+		return nil, refusal.New(refusal.RequestTooLarge)
+	}
+	v, err := ccj.Parse(raw, refusal.RegistrationMalformed)
+	if err != nil {
+		return nil, err
+	}
+	obj, ok := v.(map[string]any)
+	if !ok {
+		return nil, refusal.New(refusal.RegistrationMalformed)
+	}
+	return parseBody(obj)
+}
+
 func Read(reader io.Reader) (*Body, error) {
 	e, err := envelope.Read(reader, envelope.Registration)
 	if err != nil {
