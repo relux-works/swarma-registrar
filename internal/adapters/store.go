@@ -2,6 +2,8 @@ package adapters
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"os"
@@ -138,6 +140,25 @@ func (s *FileStore) Load() (Stored, error) {
 		return Stored{}, failure(registry.RegistryUnavailable)
 	}
 	return Stored{HighWater: water, Reconciled: false}, nil
+}
+
+// Inspect exposes local evidence, including explicit absence, without attesting
+// freshness or authorizing bootstrap. Only an operator can make those decisions.
+func (s *FileStore) Inspect() (*registry.HighWater, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.read()
+}
+
+// HighWaterDigest identifies the exact canonical durable encoding, not its
+// freshness. An absent or invalid state has no high-water digest.
+func HighWaterDigest(w *registry.HighWater) (string, error) {
+	raw, err := waterBytes(w)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(raw)
+	return "sha256:" + hex.EncodeToString(sum[:]), nil
 }
 func (s *FileStore) Commit(previous *registry.HighWater, next registry.HighWater) (result error) {
 	s.mu.Lock()

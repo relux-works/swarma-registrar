@@ -17,6 +17,7 @@ type Config struct {
 	HighWater, SigningKey, AuditFile                             string
 	Stations                                                     map[string]bool
 	PerKey, PerName                                              int
+	Listen, TLSCertificate, TLSKey, FirstUse                     string
 }
 
 func LoadConfig(path string) (Config, error) { return loadConfig(path, protected) }
@@ -51,10 +52,10 @@ func ParseConfig(raw []byte) (Config, error) {
 		return bad()
 	}
 	required := []string{"v", "audience", "repository", "revision", "allowed_signers", "publisher_key", "stations", "high_water", "signing_key", "audit_file"}
-	if len(obj) < len(required) || len(obj) > len(required)+2 {
+	if len(obj) < len(required) || len(obj) > len(required)+6 {
 		return bad()
 	}
-	allowed := map[string]bool{"per_key": true, "per_name": true}
+	allowed := map[string]bool{"per_key": true, "per_name": true, "listen": true, "tls_certificate": true, "tls_key": true, "first_use": true}
 	for _, name := range required {
 		if _, ok := obj[name]; !ok {
 			return bad()
@@ -77,6 +78,34 @@ func ParseConfig(raw []byte) (Config, error) {
 		}
 	}
 	if !fullRevision(c.Revision) || !serverName(c.Audience) {
+		return bad()
+	}
+	c.Listen = "127.0.0.1:8443"
+	for _, field := range []struct {
+		name   string
+		target *string
+	}{
+		{"listen", &c.Listen}, {"tls_certificate", &c.TLSCertificate},
+		{"tls_key", &c.TLSKey}, {"first_use", &c.FirstUse},
+	} {
+		if value, present := obj[field.name]; present {
+			text, ok := value.(string)
+			if !ok || text == "" {
+				return bad()
+			}
+			*field.target = text
+		}
+	}
+	if _, err := netip.ParseAddrPort(c.Listen); err != nil {
+		return bad()
+	}
+	if (c.TLSCertificate == "") != (c.TLSKey == "") {
+		return bad()
+	}
+	if c.TLSKey != "" && (!absolute(c.TLSKey) || !absolute(c.TLSCertificate)) {
+		return bad()
+	}
+	if c.FirstUse != "" && c.FirstUse != c.Revision {
 		return bad()
 	}
 	hosts, ok := obj["stations"].(map[string]any)

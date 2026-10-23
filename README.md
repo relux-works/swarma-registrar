@@ -30,7 +30,7 @@ transitional; the reusable core is key proof → enrollment → carrier credenti
 | `vectors/` | 310 committed negative-first registration/enrollment fixtures and public test keys; all 310 Appendix B rows are instantiated. |
 | `internal/` | Go byte formats, strict signatures, registration/enrollment validation and in-memory registry snapshots. |
 | `internal/adapters/` | Offline pinned Git, durable local state/audit, file signer, clock evidence boundary and strict startup configuration. |
-| `cmd/registrar` (planned) | Registrar service binary in Go. |
+| `cmd/registrar/` | HTTPS registrar binary with interactive, process-scoped rollback reconciliation. |
 
 ## Status
 
@@ -39,8 +39,10 @@ key/signature checks, stateless registration/enrollment validation, in-memory
 registry snapshots, an internal admission core and a net/http handler with
 injected dependencies.
 The repository also contains 310 offline format vectors, with a Go generator
-and an independent Python checker. No service listener exists yet. These
-fixtures do not qualify a running service or homeserver.
+and an independent Python checker. The first service binary wires the local
+adapters, HTTPS, admission and HTTP. It remains fenced without production clock
+evidence and cannot issue without an authenticated remote audit sink. Offline
+fixtures and loopback tests do not qualify a deployment or homeserver.
 Source inspection of tuwunel v1.9.3 found that `access_token_ttl` alone cannot provide
 access-token expiry without refresh-token issuance, and JWT login does not
 refuse deactivated accounts. A reviewed change to the operated homeserver must
@@ -84,11 +86,125 @@ that a change received review. An unchanged `api.txt` or green inventory test is
 not approval for a signature or behavior change. No test updates the inventories
 automatically.
 
+## Run the registrar
+
+Build from the module root with Go 1.26, Git and OpenSSH installed:
+
+```sh
+go build ./cmd/registrar
+./registrar serve --config /etc/registrar/config.json
+```
+
+The default listener requires HTTPS certificate and key files. It loads the
+protected configuration, signed pinned registry source, high-water store, PKCS8
+JWT signer and durable local audit chain. `GET /readyz` returns 503 until a
+verified registry snapshot is installed and the admission clock/signer/audit
+fences allow readiness. `POST /v1/registration` retains the specified ordered
+refusals. SIGINT/SIGTERM shuts down the listener and drains requests for up to
+five seconds. HTTP header/body/write/idle deadlines are 5/10/10/30 seconds, with
+a 16 KiB header limit. These limits do not qualify blocked local kernel I/O.
+
+Plain HTTP requires the explicit `--loopback-test-http` flag **and** a literal
+loopback listener, for example `127.0.0.1:8443` or `[::1]:8443`. Wildcard,
+non-loopback, DNS and scoped addresses are refused in that mode. This flag does
+not bypass ownership, registry, clock or audit checks. There is no CLI or
+configuration switch that asserts a healthy clock or supplies a remote audit sink.
+
+### Configuration reference
+
+Use one root-owned regular JSON file, not writable by the service or group/other;
+run the service as an unprivileged dedicated UID. Unknown, duplicate or missing
+required fields, coercions and invalid paths are rejected. The complete base
+schema, pin syntax and custody requirements are in the
+[adapter configuration reference](internal/adapters/README.md#startup-configuration).
+Required fields are `v` (integer 1), `audience`, `repository`, `revision`,
+`allowed_signers`, `publisher_key`, `stations`, `high_water`, `signing_key` and
+`audit_file`. Optional `per_key`/`per_name` default to 10/3 and can only reduce
+those capacities. All configured file paths are absolute and clean, without
+expansion; example paths here are operator-owned installation locations.
+
+The binary adds these optional fields to that same strict schema:
+
+| Field | Rule |
+| --- | --- |
+| `listen` | Literal IP address and port; default `127.0.0.1:8443`. No DNS resolution. |
+| `tls_certificate`, `tls_key` | Both or neither; absolute clean paths. Required by `serve` unless the loopback test flag is present. Both files must be service-owned regular 0600 files in service-owned 0700 immediate directories. Final symlinks are refused. The certificate/key pair is loaded once, with TLS 1.2 minimum. |
+| `first_use` | If present, the exact full `revision` string; authorizes proposing bootstrap for that pin when high-water is absent. A boolean, different pin or empty string is refused. Still requires terminal confirmation; remove this setting after deliberate first bootstrap. Never use it to replace lost rollback evidence. |
+
+Keep signing, TLS, state and audit files separate. Root-owned configuration and
+allowed-signers material, protected parent namespaces and a trusted executable
+search path remain operator requirements. Configured paths, underlying parser
+errors, private material and raw request text are excluded from diagnostics.
+Configuration/pin/signing/audit custody failures prevent startup. Registry
+reconciliation failures instead leave a running process registry-fenced.
+
+### Reconcile when starting
+
+The single reconciliation command is:
+
+```sh
+./registrar serve --config /etc/registrar/config.json --reconcile
+```
+
+Run it from a controlling terminal with terminal stdin. It authenticates the
+pinned candidate and validates the full registry against retained history before
+prompting. It prints the SHA-256 of the canonical locally stored high-water,
+the exact pinned revision and every candidate enrollment ID, in sorted order.
+Compare them with trustworthy surviving records **outside the restored failure
+domain**. The tool cannot discover whether an old but valid local backup is fresh;
+the operator supplies that attestation. Do not confirm merely because the digest
+matches the local file.
+
+Illustrative session (the digest/IDs must come from the actual validated state):
+
+```text
+$ ./registrar serve --config /etc/registrar/config.json --reconcile
+Local high-water digest: sha256:1111111111111111111111111111111111111111111111111111111111111111
+Pinned registry revision: 2222222222222222222222222222222222222222
+Enrollment IDs to accept:
+sha256:3333333333333333333333333333333333333333333333333333333333333333
+Verify this evidence against trustworthy surviving records outside the restored failure domain.
+Type exactly sha256:1111111111111111111111111111111111111111111111111111111111111111 to authorize this process only: sha256:1111111111111111111111111111111111111111111111111111111111111111
+```
+
+Only the exact complete digest line is accepted: no whitespace padding, partial
+input, wrong value, EOF or nonterminal stdin. There is no confirmation flag,
+environment variable or piped-input path. The command reads its controlling
+terminal, then commits the validated state through the Store's full-state CAS
+and durability contract. A state change while the prompt is open refuses rather
+than overwrite another writer's evidence. No snapshot becomes usable before
+that commit succeeds.
+
+Confirmation applies to this process only. No receipt, reconciled flag or local
+freshness marker is persisted. Every restart needs a fresh confirmation; an
+ordinary `serve` starts registry-fenced and prints the reconciliation command.
+A rejected confirmation leaves it fenced without changing the high-water.
+Missing high-water is refused unless the protected `first_use` field explicitly
+names this pin. For that deliberately configured first use, the prompt states
+that evidence is absent and asks for a domain-separated digest of the approved
+pin; the operator must confirm that displayed digest before the initial Store
+commit. Missing or corrupt evidence is never silently treated as first use.
+
+| Condition | Behavior |
+| --- | --- |
+| No confirmation, wrong/missing/nonterminal confirmation or unverified registry | No installed registry; readiness 503, admission `registry_unavailable`. |
+| Missing state without explicit configured first-use pin | No bootstrap or state write; registry remains fenced. |
+| Store commit failure or concurrent replacement | No authority returned; durability may be indeterminate. Reconcile again against surviving evidence in a new process. |
+| No production clock evidence source | Permanent process clock fence; readiness 503, valid enrolled requests refuse `clock_skew` (400). Waiting never reopens it. |
+| No authenticated remote audit sink | Local refusals can be durably spooled; an otherwise issuable request refuses `audit_unavailable` (503), with no JWT release. |
+
+The shipped binary has neither production clock evidence nor a remote sink.
+Successful reconciliation establishes registry authority only; it does not
+establish clock ordering, off-host durability or deployment readiness. The
+loopback issuance control injects trusted fixed-time evidence and an exact-hash
+in-memory remote; these test adapters are not selectable in the executable.
+
 ## Tools
 
 | Tool | Purpose | Exact entry point | Output |
 | --- | --- | --- | --- |
 | Go 1.26 | Test the module, examples and public API inventories; run static validation. | `go test ./...`; `go test ./internal/...`; `go test -race ./internal/admission/...`; `go vet ./...` | Terminal diagnostics and Go build cache; no generated repository files. |
+| Registrar command | Build and run the HTTPS service; confirm rollback evidence interactively. | `go build ./cmd/registrar`; `./registrar serve --config /etc/registrar/config.json --reconcile`; command checks: `go test ./cmd/registrar` | The build writes `registrar` in the current directory; service writes protected high-water/audit files configured below. Terminal diagnostics contain no key paths. |
 | Go conformance harness | Compare committed vectors against landed code and report pass/fail/pending counts per domain. | `go test -v ./internal/conformance`; narrow internal validation: `go test ./internal/...` | Terminal diagnostics; `CONFORMANCE_VECTORS` optionally selects a scratch vector copy. |
 | Go 1.26, Git and OpenSSH ssh-keygen | Check local adapters and internal packages; create disposable signed Git fixtures with generated test keys. | `GOMAXPROCS=2 go test ./internal/...`; `GOMAXPROCS=2 go vet ./...`; focused adapter checks: `go test ./internal/adapters` | Terminal verdicts; fixture files in Go's temporary directory (set `TMPDIR` to a scratch directory). No network. |
 | Go (standard library) | Regenerate vectors or check exact committed bytes and file set. | `GOMAXPROCS=2 go run ./tools/vectorgen`; `GOMAXPROCS=2 go run ./tools/vectorgen -check` | `vectors/registration-1/`, `vectors/enrollment-1/`, `vectors/keys/seeds.json`, `vectors/keys/public-keys.json`; check mode writes nothing. |
@@ -124,14 +240,16 @@ It bounds received bodies, audits early refusals and writes safe JSON with
 no-store headers. Section 6 now fixes media-header OWS boundaries and requires
 unquoted charset values. The HTTP layer enforces those boundaries before MIME
 normalization, retaining the raw unsupported-parameter guard. Tests use
-`httptest` without a listener. HTTPS, transport deadlines, ingress limits and
-concrete clock, signer, storage and off-host adapters belong to deployment.
+`httptest` without a listener. The binary adds HTTPS and bounded transport
+reads/writes; its integration tests listen only on loopback. Deployment still
+owns ingress policy, production clock evidence and authenticated off-host audit.
 Registration parsing verifies schema, id and signature in that
 order. Name syntax and audience checks are separate methods
 so admission can run enrollment checks first, as required by specification §6.1.
-There is no runnable service binary yet. Admission/HTTP wiring, a production
-clock evidence source, authenticated off-host audit and operator reconciliation
-remain follow-up work; the adapters cannot establish those deployment facts.
+The binary supplies admission/HTTP wiring and interactive operator
+reconciliation as described below. Production clock evidence and authenticated
+off-host audit remain unconfigured; local adapters cannot establish those
+deployment facts.
 
 `go test -v ./internal/conformance/...` runs the offline fixture harnesses;
 `go test -v ./internal/conformance/... -run '^TestAdmissionVectorConformance$'`

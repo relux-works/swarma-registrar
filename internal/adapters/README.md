@@ -1,16 +1,15 @@
 # Local service adapters
 
 These adapters implement specification §4.3–4.4, §7 and §9 where local mechanisms
-are decided. They do not provide a service binary. Wiring the landed admission
-and HTTP packages is deferred to service integration. Git and FileStore implement
-the landed
-`registry.Verifier` and `registry.Store`; clock/audit values are neutral named
-types for that later wiring to translate. No unlanded package is imported.
+are decided. The `cmd/registrar` binary wires them to the admission and HTTP
+packages. Git and FileStore implement `registry.Verifier` and `registry.Store`;
+the command bridges the neutral clock/audit values to the core types.
 
 | Adapter | Entry points | Authority and failure boundary |
 | --- | --- | --- |
 | Git | `NewGit`, `Read`, `Verify`, `Descends` | Exact full commit, approved SSH signature, exact entry set and Git ancestry; no branch following, working-tree authority or fetch. |
-| High-water | `NewFileStore`, `Load`, `Commit` | Full-state CAS under a stable exclusive lock, temporary file, file fsync, rename, directory fsync. Every error leaves durability indeterminate. |
+| High-water | `NewFileStore`, `Load`, `Inspect`, `HighWaterDigest`, `Commit` | Full-state CAS under a stable exclusive lock, temporary file, file fsync, rename, directory fsync. Every error leaves durability indeterminate. |
+| TLS | `LoadTLS` | One private local certificate/key pair; generic failures omit paths and underlying parser diagnostics. |
 | Signer | `LoadSigner`, `PublicKey`, `Sign` | One PKCS8 PEM Ed25519 generation. Generic failures contain neither paths nor key bytes. |
 | Clock | `NewClock`, `Startup`, `Now`, `Deadline` | System UTC/monotonic time; explicit evidence must attest synchronization and startup ordering. Faults latch for the instance. |
 | Audit | `NewAudit`, `Append`, `Acknowledge`, `Probe`, `Head`, `Close` | Canonical exact-schema lines, LF-inclusive hash chain, local fsync and exclusive writer. Remote acknowledgement must match exact durable bytes. |
@@ -20,7 +19,12 @@ types for that later wiring to translate. No unlanded package is imported.
 Missing/restored files cannot establish freshness. After any Commit error, fence
 admission using neither the old nor new state. A restart still needs external
 operator reconciliation, including explicit bootstrap authorization for an absent
-file. `Commit(nil, next)` merely implements the CAS creation primitive.
+file. `Commit(nil, next)` merely implements the CAS creation primitive. `Inspect`
+returns local evidence or explicit absence; `HighWaterDigest` identifies its
+canonical bytes. Neither grants freshness. The command obtains an operator
+attestation from its controlling terminal for that starting process only and
+then uses the real CAS. No reconciliation marker is written; see the root
+README for `serve --reconcile`.
 
 There is **no production ClockEvidence implementation**. Capture actual process
 entry time with `time.Now()` and preserve its monotonic component when constructing
@@ -64,6 +68,9 @@ for bytes only and must not substitute for LoadConfig at startup.
 | `stations` | Object mapping valid host labels to booleans, for example `{"host-a":false}`. |
 | `high_water`, `signing_key`, `audit_file` | Absolute clean file paths without NUL or expansion. Use separate files/directories for state, audit and signing material. |
 | `per_key`, `per_name` | Optional integer limits, respectively 1–10 and 1–3. Defaults 10 and 3. |
+| `listen` | Optional literal IP:port, default `127.0.0.1:8443`. |
+| `tls_certificate`, `tls_key` | Optional paired absolute clean paths; serve requires them except in explicit loopback HTTP test mode. Both require service-owned 0600 files in service-owned 0700 immediate directories. |
+| `first_use` | Optional exact full configured revision, never a boolean. Only explicit operator-confirmed bootstrap may use absent state. |
 
 Configuration and allowed-signers files must be root-owned, regular and have no
 group/other write permission; running as root is refused. Final symlinks are

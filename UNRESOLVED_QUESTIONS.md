@@ -20,6 +20,7 @@ contracts have been checked.
 
 Remaining dependencies:
 
+- Service activation: production clock health/startup-ordering evidence and an authenticated durable off-host audit sink still need implementations and qualification. The binary supplies neither; it stays clock-fenced and never releases a JWT without remote acknowledgement. Interactive registry reconciliation alone cannot qualify them.
 - HS2 / HS4: the chosen reviewed change to the operated homeserver must provide access-token expiry without refresh-token issuance and refuse JWT login for deactivated accounts. Deployment remains blocked until that change is qualified. Specification, vectors and service code continue meanwhile; §11's lock/containment and logout steps remain required.
 
 These are implementation and qualification dependencies, not unresolved choices
