@@ -164,7 +164,9 @@ and maps those failures to `enrollment_malformed`.
 ### 3.2 P-256 signatures (normative)
 
 P-256 signs `SHA-256(preimage)` with ECDSA. The signature MUST be exactly
-`r || s`, each an unsigned 32-byte big-endian scalar; DER is not accepted.
+`r || s`, each an unsigned 32-byte big-endian scalar; DER is not accepted as an
+encoding. A 64-byte value is always interpreted as raw scalars, even if it is
+also DER-shaped; no DER auto-detection changes its range/low-S/equation checks.
 Let `n = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551`.
 Both scalars MUST satisfy `1 <= scalar < n`. Invalid ranges yield
 `registration_signature_invalid`. After range checks, `s > floor(n/2)` yields
@@ -267,22 +269,44 @@ spelling carries no authority. Every envelope MUST validate before any new
 snapshot is installed. Invalid records MUST NOT be skipped to choose a lower
 `seq`.
 
-Enrollment validation order is: byte limit and CCJ-1/envelope shape
-(`enrollment_malformed`); reserved `sigs` (`enrollment_sigs_unsupported`);
-remaining body/key/name/UID schema (`enrollment_malformed`); recomputed id
-(`enrollment_id_mismatch`); publisher signature (`enrollment_signature_invalid`);
-then registry-wide/history checks (`registry_conflict` or
-`registry_rollback` below). Failure refuses the entire load atomically.
+Registry trust/readability, aggregate caps and entry-type prerequisites are
+checked first; failure yields `registry_unavailable`. Then enumerate enrollment
+files by unsigned-byte lexicographic order of their complete Git paths. Perform
+**snapshot-wide phases** in the following order: complete one phase over every
+file before starting the next. Within a phase, stop at the first failing file
+in that path order. This traversal chooses diagnostic context, never authority.
+
+| Phase | Check across all files / the complete snapshot | Diagnostic |
+| --- | --- | --- |
+| 1 | Per-file byte limit, CCJ-1 parsing and basic envelope shape. | `enrollment_malformed` |
+| 2 | Presence of reserved body member `sigs`. | `enrollment_sigs_unsupported` |
+| 3 | Remaining body, key, name and UID schema. | `enrollment_malformed` |
+| 4 | Recomputed envelope id. | `enrollment_id_mismatch` |
+| 5 | Publisher signature. | `enrollment_signature_invalid` |
+| 6 | Duplicate positions, cross-host keys and explicit-name conflicts below. | `registry_conflict` |
+| 7 | Revision ancestry, retained history/high-water and irreversible tombstones below. | `registry_rollback` |
+
+Thus a reserved `sigs` in any well-shaped file wins over a bad publisher
+signature in any other file, regardless of their path order. Conflict wins over
+rollback when both exist. Only after all phases pass may atomic persistence and
+installation occur; persistence failure is `registry_unavailable`. Every failure
+refuses the entire candidate load atomically and fences admission. No earlier
+file or valid lower sequence becomes partial authority.
 
 Group records by exact host label. The highest valid `seq` is current; gaps
 are allowed. Duplicate `(host, seq)` is `registry_conflict`, even for identical
 bodies: there MUST be one record at each position. A host appearing at distinct
 sequence positions is history, not a duplicate current host. A decoded public
 key MUST NOT belong to different hosts anywhere in retained history, including
-revoked hosts. An explicit legacy localpart MUST NOT be claimed by two hosts,
-or fall under another host's structured namespace; such ambiguity is
-`registry_conflict`. Prefix authorization of valid structured names otherwise
-belongs uniquely to the parsed host.
+revoked hosts. An explicit legacy localpart MUST NOT be claimed by different
+hosts anywhere in retained history, including revoked hosts and entries removed
+from a current list. Removing a claim stops its current authorization but does
+not release that name for another host. The same active host MAY remove and
+later re-add its own legacy name at higher sequences. Moving a legacy name to
+another host is outside this version. An explicit claim MUST NOT fall under
+another host's structured namespace; either ambiguity is `registry_conflict`.
+Prefix authorization of valid structured names otherwise belongs uniquely to
+the parsed host.
 
 A `revoked` record is an irreversible tombstone: a later `active` record for
 that host is `registry_rollback`. Reusing a host label requires a new protocol
@@ -396,12 +420,12 @@ MUST NOT attempt later checks merely to select a different refusal.
 | 12 | Name grammar and configured-audience mxid limit pass. | `name_invalid` | 400 |
 | 13 | The key's host permits the name (§5). | `name_not_permitted` | 403 |
 | 14 | Audience equals the configured server name. | `audience_mismatch` | 403 |
-| 15 | Process clock is healthy and `iat >= start_barrier` (§7). | `clock_skew` | 400 |
+| 15 | Process clock is healthy and `iat >= start_barrier = floor(process-start UTC) + 31` (§7). | `clock_skew` | 400 |
 | 16 | Request `iat <= now + 30`. | `request_not_yet_valid` | 403 |
 | 17 | `now < request.exp + 30`. | `request_expired` | 403 |
 | 18 | Both per-key and per-name budgets have capacity (§7). | `rate_limited` | 429 |
 | 19 | `(key, nonce)` has not been consumed. Reserve it atomically. | `nonce_replayed` | 409 |
-| 20 | Signer and service prerequisites work; all final authority/time checks still pass. | `service_unavailable` | 503 |
+| 20 | Signer and service prerequisites work; all final authority/time checks still pass; signing-key generation remains current through release. | `service_unavailable` | 503 |
 | 21 | Audit commit and off-host acknowledgement succeed before releasing JWT (§9). | `audit_unavailable` | 503 |
 
 Row 20 repeats rows 8–17 immediately before issuance, under serialization with
@@ -417,8 +441,14 @@ precedence vectors assume healthy audit unless the vector expressly faults it.
 After row 21 acknowledgement, the service MUST reacquire its admission
 serialization and repeat rows 8–17 before releasing the signed JWT; registry
 publication and signing-key cutover MUST share that serialization. A changed
-verdict discards the JWT and records a refusal with that original code. No
-service state lock is held during off-host I/O. No failure releases a JWT.
+verdict discards the JWT and records a refusal with that original code. The
+service MUST also compare the signing-key generation captured at signing with
+the active generation immediately before release. A paused signer or generation
+mismatch cancels the pending issuance as `503 service_unavailable`; the signed
+JWT MUST NOT be returned or re-signed implicitly. Keep its consumed nonce and
+limiter debits, and append a refusal (an earlier committed issued audit line may
+remain). Audit failure retains its terminal override. No service state lock is
+held during off-host I/O. No failure releases a JWT.
 All outcomes are audited as §9 permits.
 Malformed HTTP framing is rejected by the HTTP server before this API; no
 application verdict is promised for an uninterpretable HTTP request.
@@ -444,11 +474,29 @@ loading any such candidate leaves admission unavailable as §4.4 requires.
 The registrar MUST run as one replica. Scaling requires a shared, atomic nonce
 store and a new qualified design. Store all times at integer-second precision
 for comparison. Let `now = floor(current UTC Unix time)` for one check pass.
-Set `start_barrier = floor(actual process-start UTC time) + 1`. Requests with
+Set `start_barrier = floor(actual process-start UTC time) + 31`: the 30-second
+maximum accepted future skew plus one strict-boundary second. Requests with
 `iat < start_barrier` MUST be refused as `clock_skew`, without skew allowance.
-The first partial second after startup therefore cannot admit a request. This
-strict rounding avoids admitting a proof issued earlier in the restart second.
-Keymaker should generate a fresh request after startup-related refusals.
+The barrier is fixed for that process; waiting MUST NOT lower or replace it.
+
+With healthy, nonregressing UTC across process instances, every earlier
+admission had `old_now <= floor(new_process_start)`, so its proof necessarily
+had `iat <= floor(new_process_start) + 30 < start_barrier`. Thus no proof
+admissible by an earlier instance can become admissible in the new instance,
+even after its nonce cache is lost and even after waiting. This argument depends
+on the clock-health/restore fence; a regressed clock does not qualify for it.
+
+Availability cost: with synchronized client and registrar clocks, fresh proofs
+refuse until UTC reaches `start_barrier`, a delay greater than 30 and at most
+31 seconds after actual start. With a client clock 30 seconds behind, the delay
+can be up to 61 seconds; a client 30 seconds ahead can first pass at the next
+whole registrar second. No proof can pass during the initial partial second,
+because the future-skew check still limits `iat` to `now + 30`.
+Clients MUST wait with bounded backoff (at most the 61-second startup horizon
+plus transport margin), then request a new proof and nonce from Keymaker. A
+persistent refusal past that horizon requires clock/readiness diagnosis; clients
+MUST NOT retry an old proof indefinitely. Waiting alone with an old proof or
+with the former next-second-only barrier is not a replay fix.
 
 The admission skew bound is 30 seconds. This allows ordinary synchronized-host
 jitter while bounding the added replay period. Future `iat = now + 30` is
@@ -478,8 +526,12 @@ counts, including later replay/signing/audit failures. Earlier refusals do not
 count toward these authenticated budgets; a rate-limited refusal debits neither
 and does not extend the window. Ingress connection/byte limits MUST separately
 bound unauthenticated traffic and audit growth without trusting supplied names.
-Operators MAY lower these two defaults; changes MUST be explicit configuration
-and recorded in deployment/test evidence. Vector defaults are the values above.
+Operators MAY lower these two defaults only to whole-number capacities in
+`1..10` per key and `1..3` per name. Zero, negative, fractional or out-of-range
+capacities MUST be rejected as configuration errors before serving admission;
+they MUST NOT produce an infinite or undefined `Retry-After`. Changes MUST be
+explicit configuration and recorded in deployment/test evidence. Vector defaults
+are the values above unless a row explicitly configures lower capacities.
 
 ## 8. Login JWT and signing-key lifecycle (normative)
 
@@ -671,7 +723,13 @@ the registrar, and no host tombstone is needed for normal rotation.
 
 For registrar-key rotation, pause issuance, replace the homeserver public key
 and registrar private key as one coordinated operation, verify the installed
-pair, then resume. During mismatch, login MUST fail closed. Already issued old
+pair, then resume. Cutover MUST advance the active signing-key generation under
+the release serialization in §6.1, even when restoring earlier key bytes. This
+generation is internal state, not a JWT `kid`. Pending issuance signed by an earlier
+generation is cancelled, not drained or returned as an outstanding token; its
+client receives `service_unavailable` (subject to the audit override) and obtains
+a fresh proof after recovery. Previously released JWTs remain outstanding old
+JWTs. During mismatch, login MUST fail closed. Already issued old
 JWTs cease to verify once the public key changes; new JWTs require the new key.
 Do not promise an automatic outage bound: coordinated healthy rollout aims for
 120 seconds, but operator/reload failure can extend it. Existing Matrix access
@@ -731,6 +789,14 @@ key window. All dependent ids/signatures MUST be rebuilt after a deliberate
 body edit unless id/signature invalidity is the defect. A positive enrollment
 control includes a valid offline publisher signature and verified commit pin.
 
+Bare numeric timestamps in restart rows are integer seconds after
+`2030-01-01T00:00:00Z`; a fractional process-start value denotes actual UTC
+before flooring, not a fractional wire timestamp. For these restart traces the
+prior process started at offset 0 (old barrier 31), before the stated first proof.
+Both admissions have healthy clocks and otherwise valid proof/enrollment/audit;
+only the explicitly stated restart clears nonce and limiter memory. Later replay
+requests MUST NOT alter the prior proof's bytes, id, signature or nonce.
+
 A row with a temporal defect MUST keep both `iat` and current time inside the
 key window unless the window itself is under test. Future/expiry controls MUST
 adjust `start_barrier` so the restart check does not mask the intended result.
@@ -738,11 +804,57 @@ A name-length control MAY use a longer configured audience and an explicit
 legacy name to reach precisely the mxid byte boundary. Body input order and
 wire escaping can vary without changing signed canonical bytes.
 
-For stateful rows the vector fixture MUST include prior registry/high-water,
-clock, nonce, limiter or audit state and assert unchanged protected state on
-rejection. Refusals MUST have no returned JWT. Loader failures MUST not install
-partial authority. The positive control column names an actual planned row,
-not agreement with a second implementation. Every planned vector is a separate
+Each stateful fixture MUST declare initial state, scheduled external/operator
+changes, and exact expected final state in these separate categories:
+
+- **Authority:** enrollment snapshot, pins, high-water/tombstones, signing-key
+  generation and clock policy. A refused request MUST NOT mutate authority.
+  Scheduled operator changes (for example revocation or key cutover) are explicit
+  fixture inputs, not prohibited request effects. A rejected registry candidate
+  MUST leave the last accepted authority/high-water unchanged; readiness may be
+  fenced, but stale authority MUST NOT be used.
+- **Admission accounting:** consumed nonce pairs and limiter events. Failure
+  before row 18 changes neither. Passing row 18 debits both budgets; a refusal
+  there debits neither. Row 19 inserts only an absent nonce, keeps an existing
+  pair on replay, and never removes a reserved pair after later failure. A
+  fixture MUST explicitly state any time-driven expiry/pruning.
+- **Audit:** expected appended lines and acknowledgements, including permitted
+  issued-then-refused pairs and the possibility of no append on local failure.
+  A refusal is not an assertion that audit bytes remain unchanged.
+- **Readiness:** a fixture MUST state any required clock, signer, loader or
+  audit fence independently of authority and accounting.
+
+Refusals MUST return no JWT. All stateful rows MUST instantiate this oracle,
+including their paired positive controls; they MUST NOT merely assert that
+all state stayed unchanged. The following traces pin the subtle cases:
+
+| Row | Immutable authority / scheduled inputs | Nonce and limiter oracle | Audit and readiness oracle |
+| --- | --- | --- | --- |
+| R88 | No operator change; authority unchanged. Seed two accepted attempts for the same name, using distinct nonces; the first nonce is retained. | Replay the first proof: both budgets debit their third event, nonce set stays at two. A following fresh proof is rate-limited: no fourth debit and no new nonce. Key capacity remains 10. | After the two seed issued lines, append one nonce_replayed and one rate_limited refusal; readiness stays healthy. |
+| R99 | No operator change; authority unchanged. Start with empty budgets/cache; signer fails after nonce reservation, then recovers for the retry. | First attempt consumes one nonce and one event per budget. Identical retry debits a second event per budget and refuses replay; the nonce set still has exactly one pair. | Append service_unavailable then nonce_replayed refusals; healthy audit, recovered signer. |
+| R106 | No operator change; authority unchanged. Id mismatch fails before row 18. | No nonce reservation or budget debit. | Inject local refusal-append failure: no new local/off-host line; return audit_unavailable and fence readiness. Existing audit bytes remain unchanged. |
+
+The remaining stateful rows use these explicit oracle profiles; no profile
+permits request-driven authority mutation or a JWT on refusal. A named row
+profile refines the general stage profile; unmentioned state stays unchanged:
+
+| Rows / reached stage | Authority | Nonce / limiter changes | Audit / readiness |
+| --- | --- | --- | --- |
+| All enrollment rejection rows | Accepted snapshot, pins and high-water stay unchanged. | Neither admission cache nor budgets change. | No admission-audit event; restricted loader diagnostic is permitted; admission fenced. |
+| All enrollment positive controls PE1–PE13 | Install only the exact validated candidate and its durable high-water. | Admission accounting unchanged. | No admission-audit event; readiness healthy. |
+| Registration refusal before row 18, excluding R106 | Unchanged except explicit scheduled operator inputs. | No reservation or debit. | One refusal append/ack with healthy audit; R79/R80 require clock fencing, R94 requires registry fencing. |
+| R86/R87/R105/R111/R129, plus the final attempt in R88 | Unchanged. | Budget-full refusal debits neither and inserts no nonce; R111 checks release time is not extended. | One rate_limited refusal, healthy readiness. |
+| R83/R84, plus R99 retry | Unchanged. | One debit per budget; retained nonce unchanged. | One nonce_replayed refusal; no issued line for this attempt. |
+| R85/PR12 concurrent pair | Unchanged. | Two debits per budget in total; exactly one nonce insertion. | One issued and one nonce_replayed line; exactly one response contains a JWT. |
+| R95/R96/R97/R98/R123/R128 after reservation | No request-driven change; revocation/cutover inputs remain effective. | One debit per budget and one retained nonce despite failure. | R95 signer refusal, R96 unacknowledged issued line plus locally spooled audit refusal, R97 no new line on local failure and audit fence; R98 revokes before row 20 and appends only host_revoked; R123/R128 acknowledge an issued line then append their final refusal. No JWT release. |
+| All otherwise unspecified registration positive controls | Unchanged. | One debit per budget and one inserted nonce for the successful attempt. | One issued line acknowledged off-host; healthy readiness. |
+| PR13 | Unchanged. | At now=60 prune the oldest of ten seeded key events (one at 0, nine at 1), then debit one new event. Use a new permitted name with empty name budget; retained nonce pairs are not pruned. | One issued line for the new request; healthy readiness. |
+| PR14 | Unchanged. | Two seeded same-name events/nonces become three after the fresh successful proof. | One additional issued line; healthy readiness. |
+| PR18 | Unchanged. | Existing pair for key A stays; same nonce inserts a distinct pair for key B, debits B and the shared-name budget once (both below cap). | One additional issued line; healthy readiness. |
+| R124–R127 / PR22–PR24 restart traces | Authority unchanged; explicit process restart is an input. | Restart clears cache/budgets. Rejected replay/future proof debits and reserves nothing; fresh successful control inserts/debits once. | Persistent old audit lines remain; append the stated refusal or fresh issuance. Healthy clocks/readiness. |
+
+Loader failures MUST not install partial authority. The positive control column
+names an actual planned row, not agreement with a second implementation. Every planned vector is a separate
 row; transport/state rows use the affected signing domain even when their
 fixture is not itself a signed object.
 
@@ -832,7 +944,7 @@ registry installation or the specified emission assertion, not just parsing.
 | R45 | registration/1 | P-256 scalar s | Raw s=0 with valid r | registration_signature_invalid | PR2 |
 | R46 | registration/1 | P-256 scalar s | Raw s=n with valid r | registration_signature_invalid | PR2 |
 | R47 | registration/1 | P-256 high-S | Valid ECDSA transformed to high-S twin | signature_high_s | PR2 |
-| R48 | registration/1 | P-256 raw format | DER signature instead of 64 raw bytes | registration_malformed | PR2 |
+| R48 | registration/1 | P-256 raw format | DER-encoded signature of exactly 70 decoded bytes, not 64 | registration_malformed | PR2 |
 | R49 | registration/1 | P-256 equation | In-range low-S scalars fail the equation | registration_signature_invalid | PR2 |
 | R50 | registration/1 | Ed25519 scalar | S at group order L | registration_signature_invalid | PR1 |
 | R51 | registration/1 | Ed25519 weak key | Identity public key | registration_signature_invalid | PR1 |
@@ -872,7 +984,7 @@ registry installation or the specified emission assertion, not just parsing.
 | R85 | registration/1 | Concurrent nonce | Second concurrent reservation of same pair | nonce_replayed | PR12 |
 | R86 | registration/1 | Key limiter | 11th distinct-name attempt for key within 60 seconds | rate_limited | PR13 |
 | R87 | registration/1 | Name limiter | 4th attempt for same name within 60 seconds | rate_limited | PR14 |
-| R88 | registration/1 | Failed attempt counts | Replay debits name budget, next attempt exceeds it | rate_limited | PR14 |
+| R88 | registration/1 | Failed attempt counts | Two accepted seed attempts, replay debits third event, following fresh attempt exceeds name budget (Appendix A) | rate_limited | PR14 |
 | R89 | registration/1 | Transport size | 65,537 received bytes with missing Content-Length | request_too_large | PR15 |
 | R90 | registration/1 | Content type | text/plain with valid JSON body | unsupported_media_type | PR1 |
 | R91 | registration/1 | Content encoding | gzip encoding | unsupported_media_type | PR1 |
@@ -897,7 +1009,6 @@ registry installation or the specified emission assertion, not just parsing.
 | R110 | registration/1 | Key window now lower edge | now one second before not_before, valid iat | key_not_valid_now | PR5 |
 | R111 | registration/1 | Limiter rejection no debit | Rate refusal must not extend next release time | rate_limited; no debit | PR13 |
 | R112 | registration/1 | Audit confidentiality | Faulted request contains token-like arbitrary data | registration_malformed; no raw log data | PR16 |
-| R113 | registration/1 | No JWT replay promise | Same issued JWT submitted twice in its accepted window | both logins may accept; same mxid | PR17 |
 | E32 | enrollment/1 | Enrollment id | One valid id hex digit changed | enrollment_id_mismatch | PE1 |
 | E33 | enrollment/1 | Publisher signature | Signature valid only under an unpinned publisher | enrollment_signature_invalid | PE1 |
 | E34 | enrollment/1 | Envelope authority | Valid host signature used as publisher signature | enrollment_signature_invalid | PE1 |
@@ -983,6 +1094,17 @@ registry installation or the specified emission assertion, not just parsing.
 | E105 | enrollment/1 | Publisher pin missing | No configured offline publisher public key | registry_unavailable | PE1 |
 | E106 | enrollment/1 | Reserved sigs precedence | sigs=[] plus body schema violation | enrollment_sigs_unsupported | PE1 |
 | R123 | registration/1 | Final post-audit revalidation | Registry changes to revoked while sink acknowledgement is in flight | host_revoked; no JWT released | PR16 |
+| R124 | registration/1 | Future-skew-across-restart regression | Prior process accepted iat=90, exp=210 at now=60; restart at 61.2, empty cache, identical proof replayed at now=62; barrier=92 | clock_skew | PR22 |
+| R125 | registration/1 | Restart adjacent lower edge | Prior process accepted iat=91, exp=211 at now=61 before restart 61.2; new barrier=92, replay at now=62 with iat=barrier-1 | clock_skew | PR22 |
+| R126 | registration/1 | Restart initial partial second | Restart at 61.2; fresh proof iat=92, exp=212 equals barrier, but registrar now=61 still permits only iat<=91 | request_not_yet_valid | PR22 |
+| R127 | registration/1 | Restart waiting does not rehabilitate proof | Replay R124 unchanged at now=92 after waiting; fixed barrier still 92 and old iat still 90 | clock_skew | PR23 |
+| R128 | registration/1 | Pending-token key cutover | Sign at generation A; await audit; switch active generation to B; acknowledge audit; final release sees mismatch | service_unavailable; no JWT; reserved nonce retained | PR26 |
+| R129 | registration/1 | Lowered positive rate capacity | Configured key/name capacities both 1; second fresh attempt in 60-second window | rate_limited; no second debit/reservation | PR25 |
+| E107 | enrollment/1 | Loader snapshot-wide phases | a.json has bad publisher signature; z.json has reserved sigs; all phase-1 shapes valid | enrollment_sigs_unsupported | PE1 |
+| E108 | enrollment/1 | Loader path-order independence | a.json has reserved sigs; z.json has bad publisher signature; all phase-1 shapes valid | enrollment_sigs_unsupported | PE1 |
+| E109 | enrollment/1 | Loader parse-before-reserved phase | a.json has reserved sigs; z.json has duplicate JSON member | enrollment_malformed | PE1 |
+| E110 | enrollment/1 | Conflict-before-rollback precedence | Candidate contains a cross-host duplicate key and lowers an acknowledged host sequence | registry_conflict | PE6 |
+| E111 | enrollment/1 | Legacy-name historical non-transfer | Host removes legacy.dev in a higher sequence; another host claims it while original history remains | registry_conflict | PE13 |
 | PR1 | registration/1 | Ordinary Ed25519 admission and exact seven-member body | None | accept | PR1 |
 | PR2 | registration/1 | Valid compressed P-256 and raw low-S signature | None | accept | PR2 |
 | PR3 | registration/1 | Proof lifetime exactly 120 seconds | None | accept | PR1 |
@@ -1016,6 +1138,12 @@ registry installation or the specified emission assertion, not just parsing.
 | PE10 | enrollment/1 | UID maximum 4294967294 | None | accept | PE1 |
 | PE11 | enrollment/1 | Host label lengths 1 and 32 (32-byte witness) | None | accept | PE1 |
 | PE12 | enrollment/1 | Sequence at safe integer maximum | None | accept | PE1 |
+| PR22 | registration/1 | Fresh restart-barrier proof with maximum future skew | Restart=61.2, barrier=92, now=62, fresh iat=92, exp=212 and nonce | accept | PR1 |
+| PR23 | registration/1 | Fresh synchronized proof after startup hold | Restart=61.2, barrier=92, now=92, fresh iat=92, exp=212 and nonce | accept | PR1 |
+| PR24 | registration/1 | Restart adjacent upper edge | Restart=61.2, barrier=92, now=92, fresh iat=93, exp=213 and nonce | accept | PR1 |
+| PR25 | registration/1 | Minimum positive limiter capacity | Configure key/name capacities both 1, empty windows/cache, first valid proof | accept; one debit per budget and one nonce | PR1 |
+| PR26 | registration/1 | Pending token without key cutover | Sign at generation A, audit waits and acknowledges, active generation remains A and unpaused | accept; one JWT released | PR16 |
+| PE13 | enrollment/1 | Same-host historical legacy name | One active host removes then re-adds its legacy.dev at higher sequences, all retained | accept; no cross-host ownership change | PE1 |
 | PC1 | enrollment/1 | CCJ codec: Object order | Keys include a supplementary scalar and a BMP scalar; sort by scalar, not UTF-16 code unit | accept (codec) | PC1 |
 | PC2 | enrollment/1 | CCJ codec: Whitespace | No insignificant whitespace in canonical output | accept (codec) | PC2 |
 | PC3 | enrollment/1 | CCJ codec: Array order | Distinct array values retain input order | accept (codec) | PC3 |
@@ -1046,7 +1174,21 @@ this plan. Integration cases are separate from the two-domain byte vectors:
 | I9 | CLI atomically persists exactly three credential fields with mode 0600. | JWT, password, refresh token and secret-bearing errors never reach file, stdout or logs. |
 | I11 | Keymaker refuses a wrong audience before producing a proof. | Correct configured audience and permitted name produce a registrar-verifiable proof; refusal name belongs to Keymaker. |
 | I12 | Keymaker obtains caller UID from the kernel and enforces uid_map. | Foreign UID, false executable evidence and unsupported peer credentials refuse under its own contract. |
-| I10 | Restart refuses proofs from earlier in the same wall-clock second. | Fresh proof at/after the next-second barrier passes. |
+| I10 | Restart refuses the previously accepted +30-second-future proof with an empty nonce cache. | Fresh proof at/after the skew-covering barrier passes; waiting never rehabilitates the old proof. |
+| I13 | `second_login_has_same_mxid`: repeat the identical JWT under the pinned state below; assert `(second.status, second.user_id) == (200, first.user_id)`. | A signature-corrupted token is the separate invalid-token control from I1; no single-use jti guarantee is claimed. |
+| I14 | Configured limiter capacities of zero prevent admission startup as a configuration error. | Capacities of 1 start successfully and follow PR25/R129; no infinite Retry-After is issued. |
+
+I13 replaces the former R113 homeserver-replay row; it is an integration
+assertion, not a two-domain format verdict. Pin the homeserver to the §10.2
+commit and operator JWT configuration, one unchanged registrar verification
+key, an existing active/unlocked JWT-origin account, healthy audit/clock and
+unchanged issuer/audience. The JWT has `iat=now`, `nbf=iat`, `exp=iat+120` and a
+fixed `jti`. Sequentially log in at `iat+1` and `iat+2`, with the identical JWT,
+no refresh request, and distinct device identifiers. Test-server limiter
+configuration/counters MUST allow both logins; there are no concurrent lock,
+account or key changes. The first 200 login is setup. The sole named replay
+assertion is `second_login_has_same_mxid` from the row; service/runtime failures
+are unrun qualification, never an alternative expected outcome.
 
 A future test harness MUST demonstrate that its refusal/side-effect checker
 fails on a bounded deliberate bypass (for example a nonce-check bypass producing
@@ -1101,12 +1243,14 @@ Other source-gap choices made for determinism are listed completely by category:
 | Literal optional absolute POSIX executable path with no ambiguous components | Publish portable syntax while leaving kernel/executable proof to Keymaker. |
 | Structured project/role/qualifier lengths and character sets; qualifier is variable | CIP gives a shape, not these token limits; disallow underscores inside tokens for unique host parsing. |
 | Conservative lowercase legacy localpart grammar and configured-audience 255-byte mxid bound | Preserve exact legacy exceptions without admitting Matrix case folding or arbitrary reserved punctuation. |
-| No cross-host explicit structured-name claims | Explicit lists must not defeat the promised host namespace boundary. |
+| No cross-host explicit structured-name claims; legacy explicit names cannot move across hosts even through history | Preserve namespace attribution and prevent stale historical claims from authorizing reassignment; same-host removal/re-addition remains allowed. |
 | Exact media-type parameters, identity-only content encoding and 404/405 routing | Avoid implicit decoder and routing-dependent refusal behavior. |
-| Ordered HTTP checks, transport codes, empty error details and final revalidation | Multi-defect vectors need one result and no partial authorization release. |
-| Thirty-second proof skew and strict next-second start barrier; clock failures fence issuance | Balance synchronized-host jitter against replay, including same-second restart exposure. |
+| Ordered HTTP checks, empty error details, final authority and signing-generation revalidation | Multi-defect vectors need one result; cancel pending old-key issuance at cutover rather than release an already invalid token. |
+| Snapshot-wide loader phases in bytewise Git-path order; conflict before rollback | Combined-defect snapshots need a single diagnostic independent of filesystem traversal. |
+| Separate authority, accounting, audit and readiness fixture oracles | Rejection forbids unauthorized authority changes while permitting mandatory nonce consumption, limiter debits, audit appends and fences. |
+| Thirty-second proof skew and barrier floor(start)+31; clock failures fence issuance | Exclude every earlier-admissible future-skew proof after restart; accept a 30–31 second synchronized startup hold (up to 61 seconds for a client 30 seconds behind) and require fresh-proof retry. |
 | Nonce scoped to key, consumed at reservation even after later failure, held until exp+30 | Bound memory and eliminate racing/retry double issuance. |
-| Sliding 60-second budgets: key 10, name 3; authenticated-stage charging only | Bound legitimate signing load without unauthenticated name-based quota exhaustion. |
+| Sliding 60-second budgets: key 10, name 3; lower only to integer capacities at least 1; authenticated-stage charging only | Bound signing load without unauthenticated quota exhaustion or undefined retry delays from zero capacity. |
 | JWT iat is issuance time; no kid; PKCS#8 private / SPKI public PEM | Separate proof freshness from fixed token lifetime and match one-key homeserver verification. |
 | Local durable audit plus off-host acknowledgement before release; 5-second deadline | Off-host audit cannot be claimed from best-effort buffering, and sink stalls must be bounded. |
 | Typed runtime/audit/registry errors and loader-only diagnostics | CIP lists admission refusals but leaves infrastructure and enrollment validation failures unnamed. |
