@@ -187,8 +187,10 @@ func assertRegistryObservation(t *testing.T, v vector, got observation) {
 		if !errors.As(got.err, &diagnostic) {
 			t.Error("loader refusal lacks typed registry diagnostic")
 		}
+		// E103 explicitly reaches failed persistence after every phase passes.
+		// All other refusal scenarios stop earlier, even with unavailable storage.
 		calls := 0
-		if !v.Fixture.Registry.PersistAvailable {
+		if v.Row == "E103" {
 			calls = 1
 		}
 		if got.snapshot != nil || got.water != nil || got.commits != calls || !reflect.DeepEqual(got.persisted, got.before) {
@@ -385,6 +387,40 @@ func TestRegistryFixturePathOrder(t *testing.T) {
 				t.Errorf("diagnostic=%s want=%s", code, v.Expected.Code)
 			}
 			assertRegistryObservation(t, v, got)
+		})
+	}
+}
+
+// E103 reaches persistence; E104 and E107 refuse before it. The normal corpus
+// provides baseline controls. CONFORMANCE_VECTORS also runs this same regression
+// against a scratch copy where only E104/E107 persist_available becomes false;
+// their original codes, retained authority and zero-CAS expectations still hold.
+func TestRegistryPersistenceExceptionPrecedence(t *testing.T) {
+	for _, tc := range []struct {
+		row, code string
+		calls     int
+	}{
+		{"E103", "registry_unavailable", 1},
+		{"E104", "registry_unavailable", 0},
+		{"E107", "enrollment_sigs_unsupported", 0},
+	} {
+		t.Run(tc.row, func(t *testing.T) {
+			v := loadEnrollmentVector(t, tc.row)
+			if v.Expected.Code != tc.code {
+				t.Fatalf("fixture outcome=%s want=%s", v.Expected.Code, tc.code)
+			}
+			raw, err := base64.RawURLEncoding.Strict().DecodeString(v.Input.Bytes)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := exerciseRegistry(v, raw, executedRows[tc.row] == "registry-bootstrap")
+			if code := resultCode(got.err); code != tc.code {
+				t.Errorf("diagnostic=%s want=%s", code, tc.code)
+			}
+			assertRegistryObservation(t, v, got)
+			if got.commits != tc.calls {
+				t.Errorf("scenario CAS count=%d want=%d", got.commits, tc.calls)
+			}
 		})
 	}
 }
