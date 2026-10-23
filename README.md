@@ -126,9 +126,14 @@ Future service tooling must document its entry points here.
 selects the registration HTTP/admission path. It prints separate pass, fail and
 pending counts, checks exact responses, JWTs, audit lines and accounting, and
 replays declared restart, clock, revocation and signing-generation traces through
-injected interfaces. Rows with independently preloaded nonce or limiter state
-remain pending because the core exposes no seed interface or declared history
-for those inputs. The older prefix harness retains its own classifications.
+injected interfaces. R105 reaches its initial accounting through three preceding
+requests (issued, replay, replay), retains their audit chain, then executes the
+unchanged main request. Nine rows retain specific pending reasons: R83, R84 and
+PR18 need nonce state without limiter events; R86, R87, R111, R129, PR13 and PR14
+need limiter events without nonce state. The request API cannot produce those
+literal combinations. Initial registry permission comes from fixture rollback
+evidence, separately from empty storage; missing evidence fences admission.
+The older prefix harness retains its own classifications.
 Read-only inspection checks private accounting after requests have quiesced;
 it never seeds or modifies service state. External adapters and live concurrency
 remain unqualified. `go test -race ./internal/conformance/...` checks this harness

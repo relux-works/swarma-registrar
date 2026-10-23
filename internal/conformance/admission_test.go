@@ -22,6 +22,7 @@ import (
 	"github.com/relux-works/swarma-registrar/enrollment"
 	"github.com/relux-works/swarma-registrar/internal/admission"
 	"github.com/relux-works/swarma-registrar/internal/ccj"
+	"github.com/relux-works/swarma-registrar/internal/envelope"
 	"github.com/relux-works/swarma-registrar/internal/httpapi"
 	"github.com/relux-works/swarma-registrar/internal/refusal"
 	"github.com/relux-works/swarma-registrar/internal/registration"
@@ -179,6 +180,7 @@ func TestAdmissionVectorConformance(t *testing.T) {
 				t.Skipf("stage-pending %s: %s; spec/registrar.md:%d", v.Row, pending, row.line)
 			}
 			run := newAdmissionRun(t, v, row, key)
+			run.establishAccounting(t, vectorRoot)
 			for _, step := range v.Before {
 				run.transition(t, step)
 			}
@@ -208,14 +210,99 @@ func TestAdmissionVectorConformance(t *testing.T) {
 	t.Logf("ADMISSION COUNTS registration/1: pass=%d fail=%d pending=%d", total.pass, total.fail, total.pending)
 }
 
-// New starts empty. A request necessarily couples a budget debit to reservation
-// and audit; it cannot reproduce independently preloaded accounting without a
-// declared trace. Never inject private state or silently discard those inputs.
+// These literal states cannot be produced through the request API: reservation
+// follows both debits; pruning retains or inserts a nonce; restart clears both.
+// R105 instead has a declared generating prefix, executed below without writes
+// to private state. Unknown nonempty states fail rather than becoming pending.
+var admissionPendingReasons = map[string]string{
+	"R83":  "retained nonce with zero limiter events; reservation requires both budget debits and restart clears both",
+	"R84":  "retained nonce with zero limiter events; reservation requires both budget debits and restart clears both",
+	"PR18": "retained nonce with zero limiter events; reservation requires both budget debits and restart clears both",
+	"R86":  "limiter events without a nonce; reservation retains or inserts a pair, clock advance alone does not sweep, restart clears both",
+	"R87":  "limiter events without a nonce; reservation retains or inserts a pair, clock advance alone does not sweep, restart clears both",
+	"R111": "limiter events without a nonce; reservation retains or inserts a pair, clock advance alone does not sweep, restart clears both",
+	"R129": "limiter events without a nonce; reservation retains or inserts a pair, clock advance alone does not sweep, restart clears both",
+	"PR13": "limiter events without a nonce; reservation retains or inserts a pair, clock advance alone does not sweep, restart clears both",
+	"PR14": "limiter events without a nonce; reservation retains or inserts a pair, clock advance alone does not sweep, restart clears both",
+}
+
 func admissionPending(v admissionVector) string {
-	if len(v.Fixture.NonceCache) != 0 || len(v.Fixture.LimiterEvents) != 0 {
-		return "preloaded nonce/limiter state has no injected seed interface or declared request history"
+	return admissionPendingReasons[v.Row]
+}
+
+// R105's declared public prehistory reaches one nonce (expiry 00:02:30) and
+// three attempts at monotonic second 1: one issuance, then two replays. Keep
+// every prefix audit line and verify the literal initial accounting before
+// advancing to the unchanged main request at UTC/monotonic second 60.
+func (r *admissionRun) establishAccounting(t *testing.T, vectorRoot string) {
+	t.Helper()
+	f := r.v.Fixture
+	if r.v.Row != "R105" {
+		if len(f.NonceCache) != 0 || len(f.LimiterEvents) != 0 {
+			t.Fatal("nonempty accounting fixture lacks a declared prefix or per-row pending reason")
+		}
+		return
 	}
-	return ""
+	var input struct{ Body map[string]any }
+	if err := json.Unmarshal(decodeExpected(t, r.v.Input.Bytes), &input); err != nil {
+		t.Fatal(err)
+	}
+	// Read only the fixed, published host seed; never deployment key material.
+	var seeds struct {
+		Host     string `json:"host_ed25519"`
+		TestOnly bool   `json:"test_only"`
+	}
+	rawSeeds, err := os.ReadFile(filepath.Join(vectorRoot, "keys", "seeds.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(rawSeeds, &seeds); err != nil {
+		t.Fatal(err)
+	}
+	seed, err := hex.DecodeString(seeds.Host)
+	if err != nil || !seeds.TestOnly || len(seed) != ed25519.SeedSize {
+		t.Fatal("expected published host test seed")
+	}
+	hostKey := ed25519.NewKeyFromSeed(seed)
+	if input.Body["key"] != "ed25519:"+base64.RawURLEncoding.EncodeToString(hostKey.Public().(ed25519.PublicKey)) {
+		t.Fatal("prefix host test key differs from fixture")
+	}
+	epoch := f.Now - 60
+	input.Body["iat"] = time.Unix(epoch, 0).UTC().Format(time.RFC3339)
+	input.Body["exp"] = time.Unix(epoch+120, 0).UTC().Format(time.RFC3339)
+	preimage, id, err := envelope.SigningInput(envelope.Registration, input.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := ccj.Marshal(map[string]any{"body": input.Body, "id": id, "sig": base64.RawURLEncoding.EncodeToString(ed25519.Sign(hostKey, preimage))}, refusal.RegistrationMalformed)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The prefix's JWT oracle is fixed by §8 and this declared request; it is
+	// independent of the Handler response and production JWT construction.
+	at := epoch + 1
+	header, err := ccj.Marshal(map[string]any{"alg": "EdDSA", "typ": "JWT"}, refusal.ServiceUnavailable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims, err := ccj.Marshal(map[string]any{"iss": "swarma-registrar", "aud": []any{f.Audience}, "sub": input.Body["name"], "iat": at, "nbf": at, "exp": at + 120, "jti": id}, refusal.ServiceUnavailable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signingInput := base64.RawURLEncoding.EncodeToString(header) + "." + base64.RawURLEncoding.EncodeToString(claims)
+	issued := admissionExpected{Code: "accept", JWT: &struct{ Compact string }{signingInput + "." + base64.RawURLEncoding.EncodeToString(ed25519.Sign(r.signer.key, []byte(signingInput)))}}
+	r.clock.reading.Monotonic = time.Second
+	encoded := base64.RawURLEncoding.EncodeToString(raw)
+	r.request(t, encoded, at, issued, false)
+	for i := 0; i < 2; i++ {
+		r.request(t, encoded, at, admissionExpected{Code: "nonce_replayed"}, false)
+	}
+	r.checkAccounting(t, f.NonceCache, f.LimiterEvents)
+	r.disagree(t, "R105 prefix audit count", len(r.audit.lines), 3)
+	r.v.Expected.State.AuditOutcomes = append([]string{"issued", "nonce_replayed", "nonce_replayed"}, r.v.Expected.State.AuditOutcomes...)
+	r.clock.reading.UTC = f.Now
+	r.clock.reading.Monotonic = time.Duration(f.MonotonicNow) * time.Second
 }
 
 type admissionClock struct{ reading admission.Reading }
@@ -369,14 +456,14 @@ func newAdmissionRun(t *testing.T, v admissionVector, row specRow, key ed25519.P
 	for i := range r.instance {
 		r.instance[i] = byte(32 + i)
 	}
-	r.snapshot = r.load(t, f.Registry)
+	r.snapshot = r.load(t, f.Registry, true)
 	if f.StartBarrier != f.ActualStartMillis/1000+31 || f.SigningGeneration != "A" {
 		t.Fatal("unsupported startup/generation fixture")
 	}
 	r.start(t, f.ActualStartMillis, f.StartupVerified)
 	return r
 }
-func (r *admissionRun) load(t *testing.T, f admissionRegistry) *registry.Snapshot {
+func (r *admissionRun) load(t *testing.T, f admissionRegistry, initial bool) *registry.Snapshot {
 	t.Helper()
 	stations := map[string]bool{}
 	for _, host := range f.StationHosts {
@@ -394,15 +481,18 @@ func (r *admissionRun) load(t *testing.T, f admissionRegistry) *registry.Snapsho
 		entries = append(entries, registry.Entry{Path: file.Path, Bytes: decodeExpected(t, file.Bytes), Kind: registry.Regular})
 	}
 	r.store.available = f.PersistAvailable
-	input := registry.Input{Revision: f.Revision, Entries: entries, Retained: r.store.water.Clone(), FirstUse: r.store.water == nil, Reconciled: f.RollbackStateAvailable}
-	snapshot, _, err := (registry.Loader{Policy: policy, Verifier: admissionTrust{fixture: f, entries: entries}, Store: r.store}).Load(input)
-	if !f.Available {
-		if snapshot != nil || err == nil {
-			t.Fatal("unavailable registry did not fence")
-		}
-		return nil
-	}
+	// Registration fixtures attest permitted initial authority with their own
+	// rollback-state evidence. Empty storage cannot grant that permission.
+	// Later publications are reloads even if an earlier load returned no state.
+	input := registry.Input{Revision: f.Revision, Entries: entries, Retained: r.store.water.Clone(), FirstUse: initial && f.RollbackStateAvailable, Reconciled: f.RollbackStateAvailable}
+	snapshot, water, err := (registry.Loader{Policy: policy, Verifier: admissionTrust{fixture: f, entries: entries}, Store: r.store}).Load(input)
 	if err != nil {
+		if snapshot != nil || water != nil {
+			t.Fatal("refused registry published partial authority")
+		}
+		if refusal.Is(err, refusal.RegistryUnavailable) {
+			return nil // The real loader fences; the Handler decides the refusal.
+		}
 		t.Fatalf("fixture registry loader: %v", err)
 	}
 	return snapshot
@@ -495,7 +585,7 @@ func (r *admissionRun) request(t *testing.T, encoded string, now int64, want adm
 			if f.ScheduledRegistry == nil {
 				t.Fatal("scheduled revocation lacks registry")
 			}
-			r.snapshot = r.load(t, *f.ScheduledRegistry)
+			r.snapshot = r.load(t, *f.ScheduledRegistry, false)
 			r.core.Publish(r.snapshot)
 			r.revoked = true
 		}
@@ -641,9 +731,8 @@ func (r *admissionRun) expectAudit(t *testing.T, raw []byte, code string, now, j
 // it never writes fields, calls unsafe, seeds state or replaces service logic.
 // Limiter comparisons project fixture events into the two independent budgets;
 // the implementation does not retain an association between their event lists.
-func (r *admissionRun) checkState(t *testing.T) {
+func (r *admissionRun) checkAccounting(t *testing.T, noncesWant []admissionNonce, eventsWant []admissionEvent) {
 	t.Helper()
-	want := r.v.Expected.State
 	state := reflect.ValueOf(r.core).Elem()
 	var gotNonces []admissionNonce
 	nonces := state.FieldByName("nonces")
@@ -660,10 +749,10 @@ func (r *admissionRun) checkState(t *testing.T) {
 		sort.Slice(out, func(i, j int) bool { return out[i].Key+out[i].Nonce < out[j].Key+out[j].Nonce })
 		return out
 	}
-	r.disagree(t, "final nonce cache", sortNonces(gotNonces), sortNonces(want.NonceCache))
+	r.disagree(t, "final nonce cache", sortNonces(gotNonces), sortNonces(noncesWant))
 	for _, budget := range []string{"keyEvents", "nameEvents"} {
 		got, expected := map[string][]int64{}, map[string][]int64{}
-		for _, event := range want.LimiterEvents {
+		for _, event := range eventsWant {
 			id := event.Key
 			if budget == "nameEvents" {
 				id = event.Name
@@ -679,6 +768,13 @@ func (r *admissionRun) checkState(t *testing.T) {
 		}
 		r.disagree(t, "final "+budget, got, expected)
 	}
+}
+
+func (r *admissionRun) checkState(t *testing.T) {
+	t.Helper()
+	want := r.v.Expected.State
+	state := reflect.ValueOf(r.core).Elem()
+	r.checkAccounting(t, want.NonceCache, want.LimiterEvents)
 	var outcomes []string
 	for _, line := range r.audit.lines {
 		var event struct{ Code string }
