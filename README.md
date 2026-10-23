@@ -121,6 +121,19 @@ order. Name syntax and audience checks are separate methods
 so admission can run enrollment checks first, as required by specification §6.1.
 Future service tooling must document its entry points here.
 
+`go test -v ./internal/conformance/...` runs the offline fixture harnesses;
+`go test -v ./internal/conformance/... -run '^TestAdmissionVectorConformance$'`
+selects the registration HTTP/admission path. It prints separate pass, fail and
+pending counts, checks exact responses, JWTs, audit lines and accounting, and
+replays declared restart, clock, revocation and signing-generation traces through
+injected interfaces. Rows with independently preloaded nonce or limiter state
+remain pending because the core exposes no seed interface or declared history
+for those inputs. The older prefix harness retains its own classifications.
+Read-only inspection checks private accounting after requests have quiesced;
+it never seeds or modifies service state. External adapters and live concurrency
+remain unqualified. `go test -race ./internal/conformance/...` checks this harness
+under the race detector; commands print diagnostics without generating files.
+
 Run both vector checks from the repository root. The generator uses only Go's
 standard library; the checker uses the pinned Python dependency. See the
 [fixture contract](vectors/README.md) for inputs, state oracles and limits, and
