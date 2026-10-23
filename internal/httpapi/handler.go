@@ -93,23 +93,23 @@ func supportedMedia(header http.Header) bool {
 	if len(values) != 1 {
 		return false
 	}
-	// Surrounding whitespace and quoted charset values remain unspecified.
-	// Currently media/parameter-name whitespace is trimmed, MIME parameter
-	// spacing is permitted and quoted utf-8 is accepted. Tests deliberately
-	// do not assert these implementation choices. At most one parameter is
-	// allowed, so duplicate parameters cannot be collapsed into one by the parser.
-	if strings.Count(values[0], ";") > 1 {
+	// Section 6 permits SP/HTAB only around the complete value and semicolon.
+	// Charset must be unquoted, with no whitespace inside tokens or around '='.
+	// Reject extra parameters before MIME parsing can collapse duplicate names.
+	value := strings.Trim(values[0], " \t")
+	mediaToken, parameter, present := strings.Cut(value, ";")
+	if strings.Count(value, ";") > 1 || !strings.EqualFold(strings.Trim(mediaToken, " \t"), "application/json") {
 		return false
 	}
-	// Check the raw name before MIME normalization: RFC 2231 continuations
-	// and undecodable extended values can disappear from the returned map.
-	if _, parameter, present := strings.Cut(values[0], ";"); present {
-		name, _, assigned := strings.Cut(parameter, "=")
-		if !assigned || !strings.EqualFold(strings.TrimSpace(name), "charset") {
+	// Check the raw name and value before MIME normalization: RFC 2231 forms
+	// can disappear, while quoted values and equals whitespace can be normalized.
+	if present {
+		name, charset, assigned := strings.Cut(strings.Trim(parameter, " \t"), "=")
+		if !assigned || !strings.EqualFold(name, "charset") || !strings.EqualFold(charset, "utf-8") {
 			return false
 		}
 	}
-	media, params, err := mime.ParseMediaType(values[0])
+	media, params, err := mime.ParseMediaType(value)
 	if err != nil || !strings.EqualFold(media, "application/json") || len(params) > 1 {
 		return false
 	}
