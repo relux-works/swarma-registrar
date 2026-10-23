@@ -146,6 +146,10 @@ need limiter events without nonce state. The request API cannot produce those
 literal combinations. Initial registry permission comes from fixture rollback
 evidence, separately from empty storage; missing evidence fences admission.
 The older prefix harness retains its own classifications.
+Five new media rows (R138, R139, PR31, PR32 and PR33) await HTTP media alignment
+to the 2026-10-23 ruling. With these explicit pending rows, the HTTP/admission
+harness reports 157 passed, zero failed and 14 pending registration rows; the
+existing nine pending classifications are unchanged.
 Read-only inspection checks private accounting after requests have quiesced;
 it never seeds or modifies service state. External adapters and live concurrency
 remain unqualified. `go test -race ./internal/conformance/...` checks this harness

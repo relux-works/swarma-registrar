@@ -214,6 +214,7 @@ func TestAdmissionVectorConformance(t *testing.T) {
 // follows both debits; pruning retains or inserts a nonce; restart clears both.
 // R105 instead has a declared generating prefix, executed below without writes
 // to private state. Unknown nonempty states fail rather than becoming pending.
+// The five new media rows remain pending until the HTTP boundary is aligned.
 var admissionPendingReasons = map[string]string{
 	"R83":  "retained nonce with zero limiter events; reservation requires both budget debits and restart clears both",
 	"R84":  "retained nonce with zero limiter events; reservation requires both budget debits and restart clears both",
@@ -224,6 +225,11 @@ var admissionPendingReasons = map[string]string{
 	"R129": "limiter events without a nonce; reservation retains or inserts a pair, clock advance alone does not sweep, restart clears both",
 	"PR13": "limiter events without a nonce; reservation retains or inserts a pair, clock advance alone does not sweep, restart clears both",
 	"PR14": "limiter events without a nonce; reservation retains or inserts a pair, clock advance alone does not sweep, restart clears both",
+	"R138": "awaits HTTP media alignment to the 2026-10-23 ruling",
+	"R139": "awaits HTTP media alignment to the 2026-10-23 ruling",
+	"PR31": "awaits HTTP media alignment to the 2026-10-23 ruling",
+	"PR32": "awaits HTTP media alignment to the 2026-10-23 ruling",
+	"PR33": "awaits HTTP media alignment to the 2026-10-23 ruling",
 }
 
 func admissionPending(v admissionVector) string {
