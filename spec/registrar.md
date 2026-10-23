@@ -706,7 +706,10 @@ evidence. The policy requires:
 - Every configured chrony source is marked `nts`; the selected tracking source
   matches an `nts` line by name or address. Otherwise evidence is unavailable.
 - Tracking leap status is `Normal`, and the last synchronization is no older
-  than 1024 seconds (equality permitted).
+  than 2048 seconds (equality permitted).
+  A ceiling of twice the maximum poll interval of `2^10` seconds accommodates
+  update jitter; age-related uncertainty is bounded separately through root
+  distance in `delta_sample`.
 - Offset magnitude is at most 0.5 seconds, and root distance is at most 1 second
   (both equalities permitted).
 - Authority expires at sample time plus 5 minutes (300 seconds); at expiry it
@@ -1652,7 +1655,7 @@ Source-selection negatives do not claim authenticated per-source NTS observation
 | T6 | Selected source must match NTS config | Selected source matches no configured nts line by name or address, even if another line is nts | Provider unavailable; startup fenced | PT2 |
 | T7 | Every configured source uses NTS | Selected source matches an nts line, but another configured source lacks nts | Provider unavailable; startup fenced | PT2 |
 | T8 | Leap status | Tracking leap is not Normal | Startup clock fence | PT2 |
-| T9 | Synchronization age | Last synchronization age is 1024.001 seconds at a startup check | Startup clock fence | PT2 |
+| T9 | Synchronization age | Last synchronization age is 2048.001 seconds at a startup check | Startup clock fence | PT2 |
 | T10 | Offset magnitude bound | Offset is +0.5001 or -0.5001 seconds, with other fields healthy | Startup clock fence; signed cancellation cannot admit the negative case | PT2 |
 | T11 | Root distance bound | Root distance is 1.0001 seconds, with other fields healthy | Startup clock fence | PT2 |
 | T12 | Reported error cap | Provider reports delta_sample above 1.5, negative or not a finite error bound, despite a healthy status | Startup fenced; healthy boolean cannot bypass the common bound | PT2 |
@@ -1665,7 +1668,7 @@ Source-selection negatives do not claim authenticated per-source NTS observation
 | T19 | Wall progress cannot complete hold | Advance UTC by 4 seconds while only 0.5 monotonic seconds elapse; attempt to fix start | Still no qualified start or admission; only monotonic elapsed time counts | PT1 |
 | T20 | Only shared production provider supplies evidence | No provider sample, but a production path substitutes a local healthy flag or unqualified synchronization status | Startup fenced; test fixtures do not authorize a production bypass | PT1 |
 | PT1 | Healthy fixed start and new barrier | Both provider checks healthy/unexpired within cap; hold exactly 4 monotonic seconds; fixed UTC=1004.3, barrier=1035; at now=1035 offer fresh iat=1035 and nonce | Admit otherwise valid proof once; one reservation/debit per budget, one JWT | PR1 |
-| PT2 | Inclusive provider boundaries | At fixed-instant check all sources nts, selected name or address matches; leap Normal, sync age=1024, offset=+0.5 or -0.5, root distance=1, delta_sample=1.5; authority fresh; initial check also passed, full hold completed | Provider gates and startup pass at inclusive bounds; fresh proof at the barrier admits | PT1 |
+| PT2 | Inclusive provider boundaries | At fixed-instant check all sources nts, selected name or address matches; leap Normal, sync age=2048, offset=+0.5 or -0.5, root distance=1, delta_sample=1.5; authority fresh; initial check also passed, full hold completed | Provider gates and startup pass at inclusive bounds; fresh proof at the barrier admits | PT1 |
 | PT3 | Small new sample retains common hold | T4 old process/launch readings; new delta_sample=0.1 but hold=4, fixed UTC=1004.61, barrier=1035; at now=1035 replay old iat=1032 then use fresh iat=1035 and nonce | Old proof clock_skew without reservation/debit; fresh control admits once | PT1 |
 | PT4 | New process recovers, old process stays fenced | After a clock fence, exclude old process; new process independently passes both provider checks, holds 4 seconds and fixes a new barrier | Fresh proof at the new barrier admits only in the new process; old remains fenced | PT1 |
 | PT5 | Authority not yet expired: separate startup/admission controls | (a) Sample UTC=1000; first check UTC=1295.999 (age=295.999); hold 4; fixed recheck UTC=1299.999 (age=299.999), barrier=1330. Refresh authority before UTC=1300; later at UTC=1330 use fresh iat=1330 and nonce. (b) Already-qualified process fixed at UTC=1000, barrier=1031, sample UTC=1000; at UTC=1299.999 (age=299.999) offer fresh iat=1299 and nonce, finish release before UTC=1300, then refresh before age=300 | (a) Near-expiry startup check passes with no immediate JWT; later proof admits under refreshed authority. (b) Barrier/skew and unexpired authority hold throughout issuance; one JWT. Each issuance reserves/debits once; all other provider gates healthy | PT1 |
