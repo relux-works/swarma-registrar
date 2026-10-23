@@ -34,10 +34,11 @@ transitional; the reusable core is key proof → enrollment → carrier credenti
 ## Status
 
 Service (in progress): the Go core implements CCJ-1, signed envelopes, strict
-key/signature checks, stateless registration/enrollment validation and in-memory
-registry snapshots. The repository also contains 305 offline format vectors,
-with a Go generator and an independent Python checker. No service endpoint
-exists yet. These fixtures do not qualify a running service or homeserver.
+key/signature checks, stateless registration/enrollment validation, in-memory
+registry snapshots and an internal admission core with injected dependencies.
+The repository also contains 305 offline format vectors, with a Go generator
+and an independent Python checker. No service endpoint exists yet. These
+fixtures do not qualify a running service or homeserver.
 Source inspection of tuwunel v1.9.3 found that `access_token_ttl` alone cannot provide
 access-token expiry without refresh-token issuance, and JWT login does not
 refuse deactivated accounts. A reviewed change to the operated homeserver must
@@ -80,7 +81,7 @@ automatically.
 
 | Tool | Purpose | Exact entry point | Output |
 | --- | --- | --- | --- |
-| Go 1.26 | Test the module, examples and public API inventories; run static validation. | `go test ./...`; `go vet ./...` | Terminal diagnostics and Go build cache; no generated repository files. |
+| Go 1.26 | Test the module, examples and public API inventories; run static validation. | `go test ./...`; `go test -race ./internal/admission/...`; `go vet ./...` | Terminal diagnostics and Go build cache; no generated repository files. |
 | Go (standard library) | Regenerate vectors or check exact committed bytes and file set. | `GOMAXPROCS=2 go run ./tools/vectorgen`; `GOMAXPROCS=2 go run ./tools/vectorgen -check` | `vectors/registration-1/`, `vectors/enrollment-1/`, `vectors/keys/seeds.json`, `vectors/keys/public-keys.json`; check mode writes nothing. |
 | Python 3 with cryptography | Independently check CCJ-1, cryptography, ordered outcomes, JWT bytes and state. | `python3 tools/vectorcheck/check.py` (dependencies: `python3 -m pip install -r tools/vectorcheck/requirements.txt`) | Terminal verdicts; writes nothing. |
 | Python unittest | Check signed HTTP media-token and structured-name regressions against the independent checker. | `python3 -B -m unittest discover -s tools/vectorcheck -p test_regressions.py -v` | Terminal verdicts; fixtures under `tools/vectorcheck/fixtures/` stay separate from the 305 planned vectors. |
@@ -97,8 +98,13 @@ also come from caller-supplied interfaces. No live Git, file reader, network or
 process state is implemented. The deployment supplies a validated canonical
 audience, protected pins and externally reconciled rollback evidence. After any
 reload failure, the caller must fence admission rather than reuse an older
-snapshot. Admission state, HTTP, JWT issuance and audit remain outside this
-implementation. Registration parsing verifies schema, id and signature in that
+snapshot. The internal admission core runs checks 8–21 with injected clock
+and monotonic deadlines, Ed25519 signer and durable audit interfaces. It owns
+process-local limits, consumed nonces, permanent clock fences and signing-key
+generations. Callers publish registry changes and key cutovers through its release
+serialization. The caller supplies actual startup-ordering evidence, random
+process ID and retained audit-chain head. HTTP and concrete clock, signer,
+storage and off-host adapters remain outside this implementation. Registration parsing verifies schema, id and signature in that
 order. Name syntax and audience checks are separate methods
 so admission can run enrollment checks first, as required by specification §6.1.
 Future service tooling must document its entry points here.
