@@ -777,7 +777,9 @@ and homeserver MUST have monitored synchronization. The registrar MUST fence
 admission (`clock_skew`) on any detected backward UTC step relative to monotonic,
 including a step of at most 1 second that does not trigger the shared incident.
 Step detection concerns a UTC discontinuity, not repeated integer-second
-admission readings. Loss of provider health, unavailable evidence, expired
+admission readings. False fences from smooth slew and measurement jitter concern
+provider qualification and liveness, with no demonstrated safety gap; qualification
+MUST include those controls. Loss of provider health, unavailable evidence, expired
 authority or a reported error above delta_cap MUST also fence admission.
 These are process-lifetime fences, including during startup. Restored health,
 operator acknowledgement and waiting MUST NOT reopen that process or replace
@@ -1622,9 +1624,17 @@ Use one serving instance, an excluded prior instance, otherwise valid registry,
 proof, signer and audit, and independent true/UTC/monotonic readings. Record
 provider source/config matching, tracking status, sample/expiry, delta_sample,
 protected delta_cap, both check results, hold elapsed, fixed instant/barrier,
-readiness and JWT count. A startup/clock refusal has no JWT or nonce/budget
-reservation; authority is unchanged and any required refusal audit is retained.
-An already tripped process remains fenced after subsequent healthy evidence.
+readiness and JWT count. Every clock refusal releases no JWT and leaves authority
+unchanged. Startup refusals and row-15 refusals before reservation create no nonce
+reservation or budget debit. A clock failure at row 20 after rows 18–19, or at
+post-acknowledgement revalidation, MUST retain the consumed nonce and both limiter
+debits; health loss, authority expiry and over-cap evidence all follow this rule.
+Record the refusal as §9 requires; an already acknowledged issued audit line may
+remain alongside the later refusal. Audit failure keeps its terminal override.
+For T15/T16, start each subcase with empty accounting and one otherwise valid
+fresh proof: at refusal, early cases leave (nonces, key debits, name debits)=(0,0,0),
+while late cases retain (1,1,1). An already tripped process remains fenced after
+subsequent healthy evidence.
 Source-selection negatives do not claim authenticated per-source NTS observation.
 
 | Id | Claim | Fixture / scheduled action | Expected result / forbidden outcome | Positive control |
@@ -1643,8 +1653,8 @@ Source-selection negatives do not claim authenticated per-source NTS observation
 | T12 | Reported error cap | Provider reports delta_sample above 1.5, negative or not a finite error bound, despite a healthy status | Startup fenced; healthy boolean cannot bypass the common bound | PT2 |
 | T13 | Protected policy cap | Configure delta_cap above 1.5 seconds | Startup configuration refused; no serving or JWT | PT1 |
 | T14 | Fixed-instant second check | First check passes and hold completes; at the proposed fixed instant independently inject unavailable health, expired authority or delta_sample above cap | No valid fixed start; process-lifetime fence; no reuse of the first check | PT1 |
-| T15 | Loss of provider health during lifetime | After a passing first check, during the hold or during qualified serving, receive unavailable evidence or delta_sample above cap; then restore healthy evidence | clock_skew; process remains fenced; no later JWT in that process | PT4 |
-| T16 | Authority expiry equality | At startup recheck or admission, sample age reaches exactly 300 seconds without a replacement sample; status still says healthy | Expired authority fences; no stale-sample JWT or extension by healthy status | PT5 |
+| T15 | Loss of provider health by stage | Independently inject unavailable health or delta_sample above cap: (a) during the startup hold, (b) at row 15 before reservation, (c) at row 20 after rows 18–19, (d) after the issued audit acknowledgement; then restore healthy evidence | No JWT; permanent clock fence. Cases (a,b): accounting (0,0,0); cases (c,d): retain (1,1,1). Request refusals record clock_skew with healthy audit; (d) keeps the acknowledged issued line and adds the refusal | PT4 |
+| T16 | Authority expiry equality by stage | Independently reach sample age=300 with healthy status and no replacement: (a) startup recheck, (b) row 15 before reservation, (c) row-20 revalidation after rows 18–19 passed with unexpired authority, (d) post-ack revalidation after an unexpired issued acknowledgement | No JWT; permanent expiry fence. Cases (a,b): accounting (0,0,0); cases (c,d): retain (1,1,1). Request refusals record clock_skew with healthy audit; (d) retains the issued line plus refusal. Healthy status cannot extend authority | PT5 |
 | T17 | Registrar stricter than shared step threshold | After healthy start, detect a -0.25-second UTC step relative to monotonic; provider has not raised the shared >1-second incident | Registrar clock_skew and permanent fence; no JWT despite shared health | PT6 |
 | T18 | No in-place clock recovery | After T5/T14/T15/T16/T17, restore good evidence, acknowledge and wait, but do not restart | Original process never reopens, resets its barrier or releases a JWT | PT4 |
 | T19 | Wall progress cannot complete hold | Advance UTC by 4 seconds while only 0.5 monotonic seconds elapse; attempt to fix start | Still no qualified start or admission; only monotonic elapsed time counts | PT1 |
@@ -1653,7 +1663,7 @@ Source-selection negatives do not claim authenticated per-source NTS observation
 | PT2 | Inclusive provider boundaries | At fixed-instant check all sources nts, selected name or address matches; leap Normal, sync age=1024, offset=+0.5 or -0.5, root distance=1, delta_sample=1.5; authority fresh; initial check also passed, full hold completed | Provider gates and startup pass at inclusive bounds; fresh proof at the barrier admits | PT1 |
 | PT3 | Small new sample retains common hold | T4 old process/launch readings; new delta_sample=0.1 but hold=4, fixed UTC=1004.61, barrier=1035; at now=1035 replay old iat=1032 then use fresh iat=1035 and nonce | Old proof clock_skew without reservation/debit; fresh control admits once | PT1 |
 | PT4 | New process recovers, old process stays fenced | After a clock fence, exclude old process; new process independently passes both provider checks, holds 4 seconds and fixes a new barrier | Fresh proof at the new barrier admits only in the new process; old remains fenced | PT1 |
-| PT5 | Authority not yet expired | Fixed-instant recheck and admission at sample age=299.999 seconds, all tracking/error gates healthy, hold completed; refresh before age=300 | Otherwise valid fresh proof admits before expiry | PT1 |
+| PT5 | Authority not yet expired: separate startup/admission controls | (a) Sample UTC=1000; first check UTC=1295.999 (age=295.999); hold 4; fixed recheck UTC=1299.999 (age=299.999), barrier=1330. Refresh authority before UTC=1300; later at UTC=1330 use fresh iat=1330 and nonce. (b) Already-qualified process fixed at UTC=1000, barrier=1031, sample UTC=1000; at UTC=1299.999 (age=299.999) offer fresh iat=1299 and nonce, finish release before UTC=1300, then refresh before age=300 | (a) Near-expiry startup check passes with no immediate JWT; later proof admits under refreshed authority. (b) Barrier/skew and unexpired authority hold throughout issuance; one JWT. Each issuance reserves/debits once; all other provider gates healthy | PT1 |
 | PT6 | Normal monotonic progression | Qualified process, healthy fresh provider evidence; UTC advances continuously with monotonic, including repeated floored integer readings | No false backward-step fence; fresh proof at/after barrier admits | PT1 |
 | PT7 | Client backoff includes hold | Healthy fixed start after H=4; client is 30 seconds behind; by fixed instant+61 seconds (initial check+65, ignoring added latency) request new proof and nonce | Fresh proof satisfies barrier/skew; old proof is not rehabilitated; extras require stated margin, not indefinite proof replay | PT1 |
 
