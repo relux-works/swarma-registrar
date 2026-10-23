@@ -44,7 +44,16 @@ type Verifier interface {
 // Store stands in for §4.4: "The new high-water state MUST be persisted
 // atomically before new authority is usable." Commit must compare previous
 // against durable current state, atomically replace it, and report success only
-// after durability. On error it must leave previous authority/state unchanged.
+// after durability.
+//
+// If Store.Commit returns an error, the durable state is indeterminate. Load
+// returns no snapshot and no replacement high-water. The caller MUST fence
+// admission and MUST NOT continue with either the previous or the new state.
+// On the next start, the stored high-water MUST be treated as unreconciled until
+// an operator reconciles it. This follows spec §4.4: persistence failure is
+// registry_unavailable and fences admission; restored or missing rollback
+// evidence fences admission until reconciled.
+//
 // This interface supplies no file implementation or cross-process locking.
 type Store interface {
 	Commit(previous *HighWater, next HighWater) error

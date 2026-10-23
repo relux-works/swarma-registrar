@@ -19,6 +19,14 @@ type Input = core.Input
 type Verifier = core.Verifier
 
 // Store atomically compares and durably commits high-water state before authority returns.
+//
+// If Store.Commit returns an error, the durable state is indeterminate. Load
+// returns no snapshot and no replacement high-water. The caller MUST fence
+// admission and MUST NOT continue with either the previous or the new state.
+// On the next start, the stored high-water MUST be treated as unreconciled until
+// an operator reconciles it. This follows spec §4.4: persistence failure is
+// registry_unavailable and fences admission; restored or missing rollback
+// evidence fences admission until reconciled.
 type Store = core.Store
 
 // HostWater retains a host's highest position, tombstone and immutable historical IDs.

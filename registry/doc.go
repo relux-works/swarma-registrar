@@ -26,7 +26,16 @@
 // before returning authority. Verifier.Verify binds every supplied entry to the
 // approved signed commit; Verifier.Descends supplies ancestry. Store.Commit must
 // compare prior state and replace it atomically and durably. A failed Load returns
-// no snapshot or replacement state, and the caller must fence admission.
+// no snapshot or replacement high-water, and the caller MUST fence admission.
+//
+// If Store.Commit returns an error, the durable state is indeterminate. Load
+// returns no snapshot and no replacement high-water. The caller MUST fence
+// admission and MUST NOT continue with either the previous or the new state.
+// On the next start, the stored high-water MUST be treated as unreconciled until
+// an operator reconciles it. This follows spec §4.4: persistence failure is
+// registry_unavailable and fences admission; restored or missing rollback
+// evidence fences admission until reconciled.
+//
 // HighWater.Clone copies retained evidence; it does not reconcile its freshness.
 //
 // Revision returns the approved full commit ID. Current selects the highest
