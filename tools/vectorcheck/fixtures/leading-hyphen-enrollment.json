@@ -1,0 +1,77 @@
+{
+  "claim": "Spec sections 4.1 and 5: a signed structured UID-map name may begin with a hyphen in its host.",
+  "domain": "enrollment/1",
+  "expected": {
+    "code": "accept",
+    "state": {
+      "admission_ready": true,
+      "audit_outcomes": [],
+      "authority": {
+        "record_ids": [
+          "sha256:73f3e93d1e456db93d34e0c74ac2ee399e1c32cd2f551be0174c8544cf5be8ce"
+        ],
+        "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "authority_installed": true,
+      "limiter_events": [],
+      "nonce_cache": [],
+      "prior_authority_preserved": false
+    }
+  },
+  "fixture": {
+    "actual_start_millis": 1893455969000,
+    "audience": "example.org",
+    "audit": {
+      "local_available": true,
+      "remote_ack": true
+    },
+    "clock_fenced": false,
+    "clock_healthy": true,
+    "http": {
+      "content_encoding": "identity",
+      "content_type": "application/json",
+      "method": "POST",
+      "path": "/v1/registration"
+    },
+    "key_capacity": 10,
+    "limiter_events": [],
+    "monotonic_now": 60,
+    "name_capacity": 3,
+    "nonce_cache": [],
+    "now": 1893456060,
+    "registry": {
+      "approved": true,
+      "available": true,
+      "commit_signature_valid": true,
+      "descendant": true,
+      "files": [
+        {
+          "bytes_base64": "eyJib2R5Ijp7Imhvc3QiOiItbm9kZSIsImtleXMiOlt7ImtleSI6ImVkMjU1MTk6MTFxWUFZS3hDcmZWU183VHlXUUhPZzdoY3ZQYXBpTWxyd0lhYVBjSFVSbyIsIm5vdF9hZnRlciI6IjIwMzEtMDEtMDFUMDA6MDA6MDBaIiwibm90X2JlZm9yZSI6IjIwMzAtMDEtMDFUMDA6MDA6MDBaIn1dLCJuYW1lcyI6eyJleHBsaWNpdCI6WyJsZWdhY3kuZGV2Il0sInByZWZpeCI6Ii1ub2RlXyJ9LCJzZXEiOjEsInN0YXRlIjoiYWN0aXZlIiwidHlwZSI6ImVucm9sbG1lbnQvMSIsInVpZF9tYXAiOlt7Im5hbWVzIjpbIi1ub2RlX3Byb2plY3RfZGV2Il0sInVpZCI6MTAwMX1dfSwiaWQiOiJzaGEyNTY6NzNmM2U5M2QxZTQ1NmRiOTNkMzRlMGM3NGFjMmVlMzk5ZTFjMzJjZDJmNTUxYmUwMTc0Yzg1NDRjZjViZThjZSIsInNpZyI6IldRZXktc3ZiLUtoek15QmpSeXBsbG53Ukx4ekV0MTU5R0U4Rm5pNmVkOG5MS0xvUU1heC1xeHp2Y1NsRjZELVFOOHNsa09hbEdfOFdzdUZYNjhRRUNBIn0",
+          "kind": "regular",
+          "path": "enrollments/a.json",
+          "repeat": 1
+        }
+      ],
+      "persist_available": true,
+      "pin_is_exact": true,
+      "previous_files": [],
+      "publisher_key": "ed25519:PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw",
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "rollback_state_available": true,
+      "station_hosts": [
+        "-node",
+        "host-b"
+      ]
+    },
+    "signer_available": true,
+    "signing_generation": "A",
+    "start_barrier": 1893456000,
+    "startup_verified": true
+  },
+  "input": {
+    "bytes_base64": "eyJib2R5Ijp7Imhvc3QiOiItbm9kZSIsImtleXMiOlt7ImtleSI6ImVkMjU1MTk6MTFxWUFZS3hDcmZWU183VHlXUUhPZzdoY3ZQYXBpTWxyd0lhYVBjSFVSbyIsIm5vdF9hZnRlciI6IjIwMzEtMDEtMDFUMDA6MDA6MDBaIiwibm90X2JlZm9yZSI6IjIwMzAtMDEtMDFUMDA6MDA6MDBaIn1dLCJuYW1lcyI6eyJleHBsaWNpdCI6WyJsZWdhY3kuZGV2Il0sInByZWZpeCI6Ii1ub2RlXyJ9LCJzZXEiOjEsInN0YXRlIjoiYWN0aXZlIiwidHlwZSI6ImVucm9sbG1lbnQvMSIsInVpZF9tYXAiOlt7Im5hbWVzIjpbIi1ub2RlX3Byb2plY3RfZGV2Il0sInVpZCI6MTAwMX1dfSwiaWQiOiJzaGEyNTY6NzNmM2U5M2QxZTQ1NmRiOTNkMzRlMGM3NGFjMmVlMzk5ZTFjMzJjZDJmNTUxYmUwMTc0Yzg1NDRjZjViZThjZSIsInNpZyI6IldRZXktc3ZiLUtoek15QmpSeXBsbG53Ukx4ekV0MTU5R0U4Rm5pNmVkOG5MS0xvUU1heC1xeHp2Y1NsRjZELVFOOHNsa09hbEdfOFdzdUZYNjhRRUNBIn0"
+  },
+  "mode": "registry",
+  "positive_control": "PE1",
+  "row": "PE1"
+}

@@ -199,8 +199,20 @@ def basic_envelope(raw):
     require(len(b64(env['sig']))==64)
     return env
 
+def name_fits(name,audience):
+    return isinstance(name,str) and len(name.encode('utf-8'))+len(audience.encode('ascii'))+2 <= 255
+
+def legacy_syntax(name,audience):
+    return name_fits(name,audience) and LEGACY.fullmatch(name) is not None
+
 def syntax(name,audience):
-    return isinstance(name,str) and len(name.encode('utf-8'))+len(audience.encode('ascii'))+2 <= 255 and LEGACY.fullmatch(name) is not None
+    return name_fits(name,audience) and (STRUCTURED.fullmatch(name) is not None or LEGACY.fullmatch(name) is not None)
+
+def content_type_supported(value):
+    # HTTP whitespace may surround tokens and the semicolon, never split a token.
+    return isinstance(value,str) and re.fullmatch(
+        r'[ \t]*application/json(?:[ \t]*;[ \t]*charset=utf-8)?[ \t]*',
+        value,flags=re.IGNORECASE|re.ASCII) is not None
 
 def permitted(name,body):
     structured = STRUCTURED.fullmatch(name)
@@ -236,7 +248,7 @@ def enrollment_shape(body,fixture):
     require(isinstance(names,dict) and set(names)=={'prefix','explicit'} and names['prefix']==body['host']+'_')
     explicit = names['explicit']
     require(isinstance(explicit,list) and len(explicit)<=256)
-    require(all(syntax(n,fixture['audience']) for n in explicit))
+    require(all(legacy_syntax(n,fixture['audience']) for n in explicit))
     require(len(explicit)==len(set(explicit)))
     stations = fixture['registry']['station_hosts']
     if body['host'] in stations:
@@ -381,8 +393,7 @@ class Admission:
         if http['path']!='/v1/registration':return self.refuse('endpoint_not_found')
         if http['method']!='POST':return self.refuse('method_not_allowed')
         if len(raw)>65536:return self.refuse('request_too_large')
-        media=http['content_type'].lower().replace(' ','')
-        if media not in ('application/json','application/json;charset=utf-8') or http['content_encoding'] not in ('','identity'):
+        if not content_type_supported(http['content_type']) or http['content_encoding'] not in ('','identity'):
             return self.refuse('unsupported_media_type')
         try:
             env=basic_envelope(raw);body=env['body'];iat,exp=registration_shape(body)

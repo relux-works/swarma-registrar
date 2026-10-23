@@ -83,6 +83,7 @@ automatically.
 | Go 1.26 | Test the module, examples and public API inventories; run static validation. | `go test ./...`; `go vet ./...` | Terminal diagnostics and Go build cache; no generated repository files. |
 | Go (standard library) | Regenerate vectors or check exact committed bytes and file set. | `GOMAXPROCS=2 go run ./tools/vectorgen`; `GOMAXPROCS=2 go run ./tools/vectorgen -check` | `vectors/registration-1/`, `vectors/enrollment-1/`, `vectors/keys/seeds.json`, `vectors/keys/public-keys.json`; check mode writes nothing. |
 | Python 3 with cryptography | Independently check CCJ-1, cryptography, ordered outcomes, JWT bytes and state. | `python3 tools/vectorcheck/check.py` (dependencies: `python3 -m pip install -r tools/vectorcheck/requirements.txt`) | Terminal verdicts; writes nothing. |
+| Python unittest | Check signed HTTP media-token and structured-name regressions against the independent checker. | `python3 -B -m unittest discover -s tools/vectorcheck -p test_regressions.py -v` | Terminal verdicts; fixtures under `tools/vectorcheck/fixtures/` stay separate from the 293 planned vectors. |
 | Git | Inspect scope and check documentation whitespace. | `git diff --check`; `git diff --stat`; `git diff -- spec/registrar.md README.md UNRESOLVED_QUESTIONS.md` | Terminal diagnostics and diff; no generated repository files. |
 | curl | Retrieve the pinned public validator source for inspection. | `mkdir -p .temp/spec-source-review` then `curl --fail --location https://raw.githubusercontent.com/Keats/jsonwebtoken/900010fb1be550ec2cfa8c32038eb154f9ef56d7/src/validation.rs --output .temp/spec-source-review/validation.rs` | Source in the created task-scoped scratch directory. |
 | Python 3 | Count the planned vector rows in the draft. | `python3 -c 'from pathlib import Path; s=Path("spec/registrar.md").read_text().split("## Appendix B.")[1].split("### B.1")[0]; print(sum(line.startswith("\u007c ") for line in s.splitlines())-2)'` | Terminal count only. |
@@ -109,3 +110,6 @@ standard library; the checker uses the pinned Python dependency. See the
 belong in an isolated scratch copy, passed with generator `-out <copy> -check`
 and checker `--vectors <copy>`; they must never alter committed fixtures.
 There is no registrar service endpoint or live integration target yet.
+
+The [checker regressions](tools/vectorcheck/README.md) exercise signed neighboring
+inputs and exact refusal, JWT and state expectations without expanding Appendix B.
