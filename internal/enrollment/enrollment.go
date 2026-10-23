@@ -44,6 +44,17 @@ func NewPolicy(audience, publisher string, stations map[string]bool) (*Policy, e
 }
 func (p *Policy) Audience() string { return p.audience }
 
+// clone captures a document's policy independently of later caller assignments.
+func (p *Policy) clone() *Policy {
+	out := *p
+	out.publisher = p.publisher.Clone()
+	out.stations = make(map[string]bool, len(p.stations))
+	for host, station := range p.stations {
+		out.stations[host] = station
+	}
+	return &out
+}
+
 // Window is half-open; both instants must lie in this exact key interval.
 type Window struct {
 	Key                 *keys.Key
@@ -79,6 +90,9 @@ func (r *Record) Clone() *Record {
 	}
 	out := *r
 	out.Keys = append([]Window(nil), r.Keys...)
+	for i := range out.Keys {
+		out.Keys[i].Key = r.Keys[i].Key.Clone()
+	}
 	out.Explicit = append([]string(nil), r.Explicit...)
 	out.CanonicalBody = append([]byte(nil), r.CanonicalBody...)
 	out.UIDMap = make([]UIDEntry, len(r.UIDMap))
@@ -114,7 +128,8 @@ func (r *Record) Permits(name, audience string) error {
 }
 
 // Document exposes individual phases for snapshot-wide validation. Decode does
-// phase 1 only; no record is released until schema, id and publisher all verify.
+// phase 1 only and captures its own policy copy; no record is released until
+// schema, id and publisher all verify.
 type Document struct {
 	policy   *Policy
 	envelope *envelope.Envelope
@@ -129,7 +144,7 @@ func (p *Policy) Decode(raw []byte) (*Document, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Document{policy: p, envelope: e}, nil
+	return &Document{policy: p.clone(), envelope: e}, nil
 }
 func (d *Document) CheckReserved() error {
 	if _, present := d.envelope.Body["sigs"]; present {

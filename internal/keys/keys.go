@@ -29,6 +29,16 @@ func (k *Key) Algorithm() Algorithm { return k.algorithm }
 func (k *Key) Encoding() string     { return k.encoding }
 func (k *Key) Bytes() []byte        { return append([]byte(nil), k.raw...) }
 
+// Clone returns an independent key object and raw-byte backing storage.
+func (k *Key) Clone() *Key {
+	if k == nil {
+		return nil
+	}
+	out := *k
+	out.raw = append([]byte(nil), k.raw...)
+	return &out
+}
+
 // Parse performs only the wire checks; recognized bad lengths/points must reach row 7a.
 func Parse(text string, malformed refusal.Code) (*Key, error) {
 	fail := func() (*Key, error) { return nil, refusal.New(malformed) }
