@@ -1,0 +1,8 @@
+const EnrollmentMalformed
+const RegistrationMalformed
+field Error.Code
+func Marshal
+func Parse
+method Error.Error
+type Code
+type Error
