@@ -102,7 +102,10 @@ snapshot. The internal admission core runs checks 8–21 with injected clock
 and monotonic deadlines, Ed25519 signer and durable audit interfaces. It owns
 process-local limits, consumed nonces, permanent clock fences and signing-key
 generations. Callers publish registry changes and key cutovers through its release
-serialization. The caller supplies actual startup-ordering evidence, random
+serialization. Local audit sequencing honors each request's cancellation.
+After an expired request, a separate bounded local refusal-spool attempt does
+not delay its response or reopen the audit fence; exact-head recovery is explicit.
+The caller supplies actual startup-ordering evidence, random
 process ID and retained audit-chain head. HTTP and concrete clock, signer,
 storage and off-host adapters remain outside this implementation. Registration parsing verifies schema, id and signature in that
 order. Name syntax and audience checks are separate methods

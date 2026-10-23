@@ -39,7 +39,7 @@ type Admitter struct {
 	timeout                  time.Duration
 	nonces                   map[nonceID]int64
 	keyEvents, nameEvents    map[string][]time.Duration
-	auditMu                  sync.Mutex // Local chain sequencing only; never held during off-host I/O.
+	auditGate                chan struct{} // Cancellable local sequencing; never held during off-host I/O.
 	sink                     Audit
 	head                     AuditHead
 	instance                 string
@@ -71,7 +71,7 @@ func New(c Config) (*Admitter, error) {
 	if !validUTC(c.Startup.Reading.UTC) || c.Startup.Reading.Monotonic < 0 {
 		return nil, invalidConfig("invalid process start")
 	}
-	a := &Admitter{clock: c.Clock, audience: c.Audience, barrier: c.Startup.Reading.UTC + 31, last: c.Startup.Reading, snapshot: c.Registry, limits: limits, timeout: c.Timeout, nonces: map[nonceID]int64{}, keyEvents: map[string][]time.Duration{}, nameEvents: map[string][]time.Duration{}, sink: c.Audit, head: c.Head, instance: base64.RawURLEncoding.EncodeToString(c.Instance[:])}
+	a := &Admitter{auditGate: make(chan struct{}, 1), clock: c.Clock, audience: c.Audience, barrier: c.Startup.Reading.UTC + 31, last: c.Startup.Reading, snapshot: c.Registry, limits: limits, timeout: c.Timeout, nonces: map[nonceID]int64{}, keyEvents: map[string][]time.Duration{}, nameEvents: map[string][]time.Duration{}, sink: c.Audit, head: c.Head, instance: base64.RawURLEncoding.EncodeToString(c.Instance[:])}
 	a.clockFenced = !c.Startup.Ordered || !c.Startup.Reading.Healthy || c.Startup.Reading.Faulted
 	a.signing = signing{signer: c.Signer, public: signingPublic(c.Signer), generation: 1}
 	return a, nil
@@ -327,8 +327,10 @@ func (a *Admitter) Refuse(parent context.Context, code refusal.Code, observedByt
 func (a *Admitter) RecoverAudit(parent context.Context) error {
 	ctx, cancel := a.bounded(parent)
 	defer cancel()
-	a.auditMu.Lock()
-	defer a.auditMu.Unlock()
+	if err := a.acquireAudit(ctx); err != nil {
+		return deny(refusal.AuditUnavailable)
+	}
+	defer a.releaseAudit()
 	if err := a.sink.Probe(ctx, a.head); err != nil || ctx.Err() != nil {
 		return deny(refusal.AuditUnavailable)
 	}

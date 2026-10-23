@@ -52,13 +52,13 @@ func status(code refusal.Code) int64 {
 	switch code {
 	case refusal.RegistryUnavailable, refusal.ServiceUnavailable, refusal.AuditUnavailable:
 		return 503
-	case refusal.KeyNotEnrolled, refusal.KeyNotValidNow, refusal.HostRevoked, refusal.NameNotPermitted, refusal.RegistrationSignatureInvalid, refusal.SignatureHighS, refusal.RequestNotYetValid, refusal.RequestExpired:
+	case refusal.KeyNotEnrolled, refusal.KeyNotValidNow, refusal.HostRevoked, refusal.NameNotPermitted, refusal.AudienceMismatch, refusal.RegistrationSignatureInvalid, refusal.SignatureHighS, refusal.RequestNotYetValid, refusal.RequestExpired:
 		return 403
 	case refusal.NonceReplayed:
 		return 409
 	case refusal.RateLimited:
 		return 429
-	case refusal.RegistrationMalformed, refusal.RegistrationIDMismatch, refusal.NameInvalid, refusal.AudienceMismatch, refusal.ClockSkew:
+	case refusal.RegistrationMalformed, refusal.RegistrationIDMismatch, refusal.NameInvalid, refusal.ClockSkew:
 		return 400
 	case "endpoint_not_found":
 		return 404
@@ -73,19 +73,69 @@ func status(code refusal.Code) int64 {
 }
 func (a *Admitter) refuse(ctx context.Context, failure *Error, m metadata) error {
 	if err := a.record(ctx, m, "refused", failure, 0, false); err != nil {
+		if ctx.Err() != nil {
+			// §9 still requires a local refusal after an expired issuance/ack.
+			// Fence before returning; a separate bounded spool attempt must not
+			// extend the response deadline or implicitly reopen admission.
+			cleanup, cancel := a.bounded(context.Background())
+			go func() {
+				defer cancel()
+				_, _ = a.appendLocal(cleanup, m, "refused", deny(refusal.AuditUnavailable), 0)
+			}()
+		}
 		return deny(refusal.AuditUnavailable)
 	}
 	return failure
 }
+
+// Cancellation bounds acquisition itself, including when another request owns
+// the sequencer. Recheck after selection so an already-cancelled context cannot
+// acquire an available slot and start an append or recovery probe.
+func (a *Admitter) acquireAudit(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	select {
+	case a.auditGate <- struct{}{}:
+		if err := ctx.Err(); err != nil {
+			a.releaseAudit()
+			return err
+		}
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+func (a *Admitter) releaseAudit() { <-a.auditGate }
+
 func (a *Admitter) record(ctx context.Context, m metadata, outcome string, failure *Error, jwtIat int64, requireAck bool) error {
-	a.auditMu.Lock()
+	line, err := a.appendLocal(ctx, m, outcome, failure, jwtIat)
+	if err != nil {
+		return err
+	}
+	// No admission or chain-state lock may be held across off-host I/O (§6.1).
+	err = a.sink.Acknowledge(ctx, append([]byte(nil), line...))
+	if requireAck && (err != nil || ctx.Err() != nil) {
+		return deny(refusal.AuditUnavailable)
+	}
+	// Refusals may remain durably spooled locally when off-host ack is unavailable.
+	return nil
+}
+
+// appendLocal owns only local chain sequencing. Detached deadline cleanup uses
+// this path without remote acknowledgement; its context has its own finite budget.
+func (a *Admitter) appendLocal(ctx context.Context, m metadata, outcome string, failure *Error, jwtIat int64) ([]byte, error) {
+	if err := a.acquireAudit(ctx); err != nil {
+		a.fenceAudit()
+		return nil, deny(refusal.AuditUnavailable)
+	}
+	defer a.releaseAudit()
 	a.mu.Lock()
 	r := a.observe()
 	a.mu.Unlock()
 	if !validUTC(r.UTC) || ctx.Err() != nil {
-		a.auditMu.Unlock()
 		a.fenceAudit()
-		return deny(refusal.AuditUnavailable)
+		return nil, deny(refusal.AuditUnavailable)
 	}
 	code := "issued"
 	http := int64(200)
@@ -104,18 +154,10 @@ func (a *Admitter) record(ctx context.Context, m metadata, outcome string, failu
 		err = a.sink.Append(ctx, append([]byte(nil), line...))
 	}
 	if err != nil {
-		a.auditMu.Unlock()
 		a.fenceAudit()
-		return deny(refusal.AuditUnavailable)
+		return nil, deny(refusal.AuditUnavailable)
 	}
 	a.head = AuditHead{Sequence: a.head.Sequence + 1, Hash: hashLine(line)}
-	a.auditMu.Unlock()
-	// No admission or chain-state lock may be held across off-host I/O (§6.1).
-	err = a.sink.Acknowledge(ctx, append([]byte(nil), line...))
-	if requireAck && (err != nil || ctx.Err() != nil) {
-		return deny(refusal.AuditUnavailable)
-	}
-	// Refusals may remain durably spooled locally when off-host ack is unavailable.
-	return nil
+	return line, nil
 }
 func (a *Admitter) fenceAudit() { a.mu.Lock(); a.auditFenced = true; a.mu.Unlock() }

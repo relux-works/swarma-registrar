@@ -81,7 +81,10 @@ type Config struct {
 	Head     AuditHead
 	Instance [16]byte // Caller supplies a random process identifier; tests use public fixed bytes.
 	Limits   *Limits
-	Timeout  time.Duration // Zero selects the five-second total request deadline.
+	// Timeout bounds the total response deadline; zero selects five seconds.
+	// Expired audit refusals get a separate local-only spool attempt of this
+	// duration, without delaying the response or clearing the audit fence.
+	Timeout time.Duration
 }
 
 // Request contains the caller's verified proof and observed bytes. The caller
