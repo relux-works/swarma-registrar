@@ -65,11 +65,14 @@ current-record data, including revoked hosts and expired windows; callers check
 window validity and revocation in the required order.
 
 Any public API or loader behavior change requires its own reviewed pull request.
-Consumers raise their dependency pin with an explicit commit. Each package's
-`api.txt` lists exported identifiers, including fields and inherited methods;
+Consumers pin a reviewed commit that has landed on main and raise that pin in
+their own reviewed change. Each package's `api.txt` lists exported identifiers,
+including fields and inherited methods;
 `go test ./...` rejects additions/removals until that reviewed list is updated.
 This name inventory does not detect signature or behavioral changes or prove
-that a change received review. No test updates the inventories automatically.
+that a change received review. An unchanged `api.txt` or green inventory test is
+not approval for a signature or behavior change. No test updates the inventories
+automatically.
 
 ## Tools
 
