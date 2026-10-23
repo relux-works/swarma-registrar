@@ -93,13 +93,21 @@ func supportedMedia(header http.Header) bool {
 	if len(values) != 1 {
 		return false
 	}
-	// The spec leaves surrounding whitespace open. mime.ParseMediaType trims
-	// whitespace around the media type and permits spaces/tabs around parameters;
-	// these implementation choices are deliberately not asserted in our tests.
-	// Quoted charset values use ordinary MIME parsing. At most one parameter is
+	// Surrounding whitespace and quoted charset values remain unspecified.
+	// Currently media/parameter-name whitespace is trimmed, MIME parameter
+	// spacing is permitted and quoted utf-8 is accepted. Tests deliberately
+	// do not assert these implementation choices. At most one parameter is
 	// allowed, so duplicate parameters cannot be collapsed into one by the parser.
 	if strings.Count(values[0], ";") > 1 {
 		return false
+	}
+	// Check the raw name before MIME normalization: RFC 2231 continuations
+	// and undecodable extended values can disappear from the returned map.
+	if _, parameter, present := strings.Cut(values[0], ";"); present {
+		name, _, assigned := strings.Cut(parameter, "=")
+		if !assigned || !strings.EqualFold(strings.TrimSpace(name), "charset") {
+			return false
+		}
 	}
 	media, params, err := mime.ParseMediaType(values[0])
 	if err != nil || !strings.EqualFold(media, "application/json") || len(params) > 1 {
