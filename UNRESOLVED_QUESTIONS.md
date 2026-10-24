@@ -21,7 +21,7 @@ contracts have been checked.
 Remaining dependencies:
 
 - Service activation: the shared Platform time policy provider, the §7 two-check/4-second startup ordering and an authenticated durable off-host audit sink still need integration and qualification. The binary supplies neither production evidence source; it stays clock-fenced and never releases a JWT without remote acknowledgement. Interactive registry reconciliation alone cannot qualify them.
-- HS2 / HS4: the chosen reviewed change to the operated homeserver must provide access-token expiry without refresh-token issuance and refuse JWT login for deactivated accounts. Deployment remains blocked until that change is qualified. Specification, vectors and service code continue meanwhile; §11's lock/containment and logout steps remain required.
+- HS2 / HS4: the chosen path is documented patches in our build plus upstream PRs: HS2 supplies configurable access-token expiry without refresh-token issuance, and HS4 refuses deactivated-account JWT login without auto-provisioning re-creating the account. Any homeserver meeting §10.0 qualifies. Deployment remains blocked until the operated build passes Appendix B.1 requirements on an isolated test server; the test server location is pending the owner. The HS2 configuration key will be recorded at qualification. Specification, vectors and service code continue meanwhile; §11's lock/containment and logout steps remain required.
 
 These are implementation and qualification dependencies, not unresolved choices
 of signer, leeway, token lifetime or homeserver-fix path. This file records no

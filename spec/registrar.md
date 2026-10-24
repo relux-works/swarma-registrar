@@ -931,11 +931,38 @@ total per request); timeout obeys the same no-release rule.
 
 ## 10. Homeserver operator contract (normative; source findings informative)
 
-### 10.1 Configuration request (normative target)
+### 10.0 Homeserver requirements (normative)
 
-The operator MUST request this configuration with the real server name and
-registrar **public** PEM substituted. This is a configuration target, not a
-claim that stock v1.9.3 meets all requirements in §10.3.
+Any Matrix homeserver meeting these requirements qualifies, regardless of
+implementation; the configuration and source findings in §§10.1–10.2 describe
+one implementation profile, not a substitute for operated-build qualification.
+Each requirement MUST pass its Appendix B.1 cases on an isolated test server.
+
+| Id | Requirement | B.1 rows |
+| --- | --- | --- |
+| HR1 | The homeserver MUST accept `org.matrix.login.jwt` only with a signature verified by the configured Ed25519 public key and exactly `alg=EdDSA`, refusing `none`, HMAC, other algorithms and mismatched keys without using `kid` to select a key. | I1, I5 |
+| HR2 | JWT login MUST require the exact issuer string `swarma-registrar` and exactly one audience equal to the configured server name, as the single-element `aud` array emitted by §8. | I4 |
+| HR3 | JWT login MUST require and validate `exp` and `nbf`, with any leeway and exact equality acceptance bounds recorded at qualification and included in the revocation procedure. | I3, I4, I6 |
+| HR4 | JWT login MUST interpret `sub` as the localpart, provision exactly one account on its first valid login and reach the same mxid on subsequent valid logins, while an invalid signature creates no account, device or access token. | I1, I13 |
+| HR5 | JWT login MUST issue an access token that expires server-side after 86,400 seconds and MUST NOT issue a refresh token. | I7 |
+| HR6 | JWT login MUST refuse deactivated or locked accounts without creating a device or access token, and auto-provisioning MUST NOT re-create a deactivated account. | I15 |
+| HR7 | Password registration, registration-token registration, guest registration and shared-secret registration MUST all be disabled, leaving JWT provisioning as the only agent account-provisioning path. | I2 |
+| HR8 | The homeserver MUST use exactly one configured JWT verification key, refuse old-key signatures after a coordinated registrar/homeserver key switch and require separate logout to terminate existing access tokens. | I8 |
+| HR9 | Logout and device deletion MUST terminate the affected existing device sessions and invalidate their access tokens. | I3 |
+
+For the pinned profile, HS3 accepts 60 seconds of leeway: `exp = now - 60`
+and `nbf = now + 60` pass; `exp < now - 60` and `nbf > now + 60` refuse.
+The nominal JWT lifetime remains 120 seconds, and revocation MUST account for
+usability through `exp + 60` inclusive, separately from the registrar's
+30-second proof skew; another build MUST document its exact bounds under HR3.
+Client-side token discarding and CLI timeouts do not establish HR5.
+
+### 10.1 Configuration request (implementation profile; normative target)
+
+For the tuwunel implementation profile, the operator MUST request this
+configuration with the real server name and registrar **public** PEM
+substituted. This is a configuration target, not a claim that stock v1.9.3
+meets §10.0 or has passed §10.3 qualification.
 
 ```toml
 [global]
@@ -965,10 +992,15 @@ validate_signature = true
 
 The operated homeserver MUST provide access-token expiry after 86,400 seconds
 without refresh-token issuance and MUST refuse JWT login for deactivated
-accounts. A reviewed homeserver change MUST provide both requirements and be
-qualified before deployment (§10.3); no configuration keys for that change are
-specified here. Specification, vectors and service implementation may continue
-while deployment is blocked.
+accounts. For this profile, the chosen delivery path is two documented,
+reviewed patches in the operated build, with upstream pull requests: HS2 adds
+a configuration option for access-token expiry without refresh-token issuance;
+HS4 refuses deactivated-account JWT login and prevents auto-provisioning from
+re-creating that account. The HS2 configuration key is supplied by the reviewed
+patch and MUST be recorded at qualification; no key name is specified here.
+The configuration and source findings alone do not establish HR2's exact
+single-audience acceptance or any other untested requirement. Specification,
+vectors and service implementation may continue while deployment is blocked.
 
 Agent login requests MUST NOT request refresh tokens; credentials MUST NOT
 persist one. The accepted access-token lifetime is 86,400 seconds, with no
@@ -1009,24 +1041,22 @@ acceptance checks.
 
 ### 10.3 Activation gates and divergences (normative)
 
-**Access-token expiry without refresh tokens is not supported by stock
-v1.9.3's inspected login path.** The `access_token_ttl` setting alone cannot
-meet §10.1. The chosen path is a reviewed change to the operated homeserver
-providing both access-token expiry without refresh-token issuance and refusal
-of JWT login for deactivated accounts. Deployment MUST remain blocked until
-that change is qualified. Specification, vectors and service code continue
-meanwhile. Discarding a refresh token client-side, requesting one secretly, or
-asserting a CLI timeout is server-side expiry MUST NOT be used as a substitute.
+Deployment MUST remain blocked until the operated homeserver build passes the
+§10.0 requirements in Appendix B.1 on an isolated test server. The qualification
+record MUST identify the operated build, configuration, applicable patches and
+observed positive and negative outcomes; a source inspection or configuration
+request alone is insufficient. Specification, vectors and service code may
+continue meanwhile. Discarding a refresh token client-side, requesting one
+secretly, or asserting a CLI timeout is server-side expiry MUST NOT be used
+as a substitute.
 
-The stock 60-second JWT leeway is accepted (decision HS3). It extends nominal
-bearer validity and is separate from the registrar's 30-second proof skew.
-Revocation MUST account for a pending JWT being usable through `exp + 60`.
-The pinned stock version does not reject JWT login for deactivated accounts;
-that refusal is a requirement of the chosen homeserver change, not a claim
-about stock behavior. These are source-confirmed divergences from a naive
-reading of the CIP, not unverified claims. No live compatibility claim is
-made. Reload atomicity, revocation ordering and end-to-end account behavior
-still require isolated qualification; never test against a production server.
+The accepted HS3 60-second JWT leeway extends nominal bearer validity and is
+separate from the registrar's 30-second proof skew. Revocation MUST account
+for a pending JWT being usable through `exp + 60` for that profile. Other
+qualified builds MUST record their exact bounds and corresponding revocation
+procedure under HR3. Reload atomicity, revocation ordering and end-to-end
+account behavior require isolated qualification; never test against a
+production server. No live compatibility or deployment qualification is claimed.
 
 ## 11. Revocation, rotation and threats (normative)
 
@@ -1549,32 +1579,35 @@ audience. All other prerequisites and healthy audit use Appendix A defaults.
 
 After canonical and negative vectors, the next implementation stages MUST
 qualify an isolated test homeserver. No live carrier login is authorized by
-this plan. Integration cases are separate from the two-domain byte vectors:
+this plan. Integration cases are separate from the two-domain byte vectors;
+HR references map §10.0 requirements, while a dash denotes a separate
+client/helper/service qualification case:
 
-| Id | Required observation | Negative control / limit |
-| --- | --- | --- |
-| I1 | First valid JWT login creates one account; second reaches the same mxid. | Invalid JWT signature creates no account. |
-| I2 | Closed registration rejects a formerly valid registration token. | Qualified JWT provisioning remains available. |
-| I3 | Revocation fences helper and registrar, and logout ends existing devices. | Outstanding JWT cannot regain usable access under qualified lock/expiry procedure. |
-| I4 | Required JWT issuer, audience, exp and nbf checks apply. | Missing/wrong claims refuse; valid one-audience token passes. |
-| I5 | Allowed alg is EdDSA with configured Ed25519 public PEM. | HS256/none and mismatched key refuse; typ/kid are not assumed server gates. |
-| I6 | Homeserver exp+60 and nbf-60 equality boundaries match inspected version. | exp+61 and nbf-61 refuse; a modified version records its own exact bounds. |
-| I7 | The qualified reviewed homeserver change issues 86,400-second access tokens without refresh tokens. | Stock v1.9.3 no-refresh login is an expected unsupported control, never a green expiry claim. |
-| I8 | Coordinated registrar/homeserver key switch admits only current signatures. | Old signature refuses after switch; existing access tokens require separate logout. |
-| I9 | CLI atomically persists exactly three credential fields with mode 0600. | JWT, password, refresh token and secret-bearing errors never reach file, stdout or logs. |
-| I11 | Keymaker refuses a wrong audience before producing a proof. | Correct configured audience and permitted name produce a registrar-verifiable proof; refusal name belongs to Keymaker. |
-| I12 | Keymaker obtains caller UID from the kernel and enforces uid_map. | Foreign UID, false executable evidence and unsupported peer credentials refuse under its own contract. |
-| I10 | Restart refuses the previously accepted +30-second-future proof with an empty nonce cache. | Fresh proof at/after the skew-covering barrier passes; waiting never rehabilitates the old proof. |
-| I13 | `second_login_has_same_mxid`: repeat the identical JWT under the pinned state below; assert `(second.status, second.user_id) == (200, first.user_id)`. | A signature-corrupted token is the separate invalid-token control from I1; no single-use jti guarantee is claimed. |
-| I14 | Configured limiter capacities of zero prevent admission startup as a configuration error. | Capacities of 1 start successfully and follow PR25/R129; no infinite Retry-After is issued. |
-| I15 | The qualified reviewed homeserver change refuses an otherwise valid JWT login for a deactivated account. | The same valid JWT for that account while active and unlocked succeeds; the deactivated-account refusal creates no device or access token. |
+| Id | Requirements | Required observation | Negative control / limit |
+| --- | --- | --- | --- |
+| I1 | HR1, HR4 | First valid JWT login with localpart sub creates one account; second reaches the same mxid. | Invalid JWT signature creates no account, device or access token. |
+| I2 | HR7 | Password, registration-token, guest and shared-secret registration are disabled, including a formerly valid registration token. | Each disabled path refuses without creating an account; qualified JWT provisioning remains available. |
+| I3 | HR3, HR9 | Revocation fences helper and registrar; logout and device deletion each end affected existing devices and invalidate their access tokens. | Before each action a device token works; afterward it refuses, and outstanding JWT cannot regain usable access under the qualified lock/expiry procedure including documented leeway. |
+| I4 | HR2, HR3 | Exact issuer swarma-registrar, single server-name audience array, and required exp and nbf checks apply. | Missing/wrong issuer or audience, additional audiences and missing exp/nbf refuse; a valid one-audience token passes. |
+| I5 | HR1 | org.matrix.login.jwt verifies exactly EdDSA with the configured Ed25519 public key, without kid-based key selection. | none, HMAC (including HS256), other algorithms and mismatched keys refuse without provisioning; a kid naming another key cannot select it, while a valid configured-key signature passes; typ is not assumed a server gate. |
+| I6 | HR3 | Homeserver exp+60 and nbf-60 equality boundaries match inspected version. | exp+61 and nbf-61 refuse; a modified version records and tests its own exact bounds with adjacent accepting/refusing controls. |
+| I7 | HR5 | JWT login issues a server-enforced 86,400-second access token and no refresh token. | The token works immediately before expiry and refuses at/after expiry without a client timeout; a refresh token is absent; an unmodified profile with no server-side expiry is an expected unsupported control, never a green expiry claim. |
+| I8 | HR8 | One configured verification key and coordinated registrar/homeserver key switch admit only current signatures. | Old signature refuses after switch; a new-key signature passes; existing access tokens require separate logout. |
+| I9 | — | CLI atomically persists exactly three credential fields with mode 0600. | JWT, password, refresh token and secret-bearing errors never reach file, stdout or logs. |
+| I11 | — | Keymaker refuses a wrong audience before producing a proof. | Correct configured audience and permitted name produce a registrar-verifiable proof; refusal name belongs to Keymaker. |
+| I12 | — | Keymaker obtains caller UID from the kernel and enforces uid_map. | Foreign UID, false executable evidence and unsupported peer credentials refuse under its own contract. |
+| I10 | — | Restart refuses the previously accepted +30-second-future proof with an empty nonce cache. | Fresh proof at/after the skew-covering barrier passes; waiting never rehabilitates the old proof. |
+| I13 | HR4 | `second_login_has_same_mxid`: repeat the identical JWT under the pinned state below; assert `(second.status, second.user_id) == (200, first.user_id)`. | A signature-corrupted token is the separate invalid-token control from I1; no single-use jti guarantee is claimed. |
+| I14 | — | Configured limiter capacities of zero prevent admission startup as a configuration error. | Capacities of 1 start successfully and follow PR25/R129; no infinite Retry-After is issued. |
+| I15 | HR6 | An otherwise valid JWT for a deactivated or locked account refuses without a device or access token, and auto-provisioning never re-creates a deactivated account. | The same valid JWT for that account while active and unlocked succeeds; each refusal preserves account/deactivation state and creates no account, device or access token. |
 
 I13 replaces the former R113 homeserver-replay row; it is an integration
-assertion, not a two-domain format verdict. Pin the homeserver to the §10.2
-commit and operator JWT configuration, one unchanged registrar verification
-key, an existing active/unlocked JWT-origin account, healthy audit/clock and
-unchanged issuer/audience. The JWT has `iat=now`, `nbf=iat`, `exp=iat+120` and a
-fixed `jti`. Sequentially log in at `iat+1` and `iat+2`, with the identical JWT,
+assertion, not a two-domain format verdict. Record and pin the operated
+homeserver build and operator JWT configuration (including the §10.2 baseline
+and reviewed patches when using that profile), one unchanged registrar
+verification key, an existing active/unlocked JWT-origin account, healthy
+audit/clock and unchanged issuer/audience. The JWT has `iat=now`, `nbf=iat`,
+`exp=iat+120` and a fixed `jti`. Sequentially log in at `iat+1` and `iat+2`, with the identical JWT,
 no refresh request, and distinct device identifiers. Test-server limiter
 configuration/counters MUST allow both logins; there are no concurrent lock,
 account or key changes. The first 200 login is setup. The sole named replay
