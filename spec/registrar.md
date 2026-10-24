@@ -242,6 +242,11 @@ commit and the envelope signature with these same pins and the same rule.
 Location and transport of that registry are deployment matters. Neither service
 follows a mutable branch, fetches implicitly, or treats a working tree as authority.
 
+Informative ruling (2026-10-24): a future owner registry may serve as this
+registry only through the existing pinned signed-commit model of §4.3/§4.4.
+`enrollment/1` remains signed by the offline publisher key (E1); a snapshot-fed
+registry is a separate future specification slice.
+
 The pinned commit MUST have a valid signature under an out-of-band configured
 registry-maintainer verification-key allowlist, and MUST be the reviewed
 protected-branch revision approved by the operator. A valid signature alone
@@ -694,8 +699,8 @@ seconds: `now = floor(current UTC Unix time)` for one check pass. Clock evidence
 error bounds and monotonic holds MUST retain their required subsecond precision.
 
 The only production clock evidence source MUST be the shared provider for the
-**Platform time policy**, owned by the credential-broker project and intended
-for `docs/time-policy.md` there (publication/link pending; Appendix C.4).
+[Platform time policy](https://github.com/relux-works/swarma-credential-broker/blob/191c0c35aa2f4e6a850246b26c05c0462ff96c41/docs/time-policy.md),
+owned by the credential-broker project (Appendix C.4).
 All three services use that provider through an evidence-source interface;
 this specification does not define a second provider or a chrony parser.
 Version 0 uses the policy's option A, requiring no root-granted per-source data.
@@ -1765,7 +1770,7 @@ Other source-gap choices made for determinism are listed completely by category:
 | Ordered HTTP checks, empty error details, final authority and signing-generation revalidation | Multi-defect vectors need one result; cancel pending old-key issuance at cutover rather than release an already invalid token. |
 | Snapshot-wide loader phases in bytewise Git-path order; conflict before rollback | Combined-defect snapshots need a single diagnostic independent of filesystem traversal. |
 | Separate authority, accounting, audit and readiness fixture oracles | Rejection forbids unauthorized authority changes while permitting mandatory nonce consumption, limiter debits, audit appends and fences. |
-| Thirty-second proof skew and barrier floor(fixed start)+31; common 1.5-second error cap, 4-second monotonic pre-start hold, two provider checks and permanent process fence | Preserve restart ordering across bounded clock error and clock recovery. Proposed local choices are in C.4; aligned-client cost is 4+31=35 seconds and the 30-seconds-behind horizon is 4+61=65 seconds, plus stated latency margins. A failed-start or ever-fenced process never reopens. |
+| Thirty-second proof skew and barrier floor(fixed start)+31; common 1.5-second error cap, 4-second monotonic pre-start hold, two provider checks and permanent process fence | Preserve restart ordering across bounded clock error and clock recovery. Accepted local choices are in C.4; aligned-client cost is 4+31=35 seconds and the 30-seconds-behind horizon is 4+61=65 seconds, plus stated latency margins. A failed-start or ever-fenced process never reopens. |
 | No durable replay cache or clock/admission-time high-water mark in version 0 | Rely on the explicit synchronized-start ordering premise and fail closed when it cannot be established. A durable clock/admission-time high-water or replay store is a later design option requiring separate qualification; the existing durable registry high-water remains required. |
 | Nonce scoped to key, consumed at reservation even after later failure, held until exp+30 | Bound memory and eliminate racing/retry double issuance. |
 | Sliding 60-second budgets: key 10, name 3; lower only to integer capacities at least 1; authenticated-stage charging only | Bound signing load without unauthenticated quota exhaustion or undefined retry delays from zero capacity. |
@@ -1814,7 +1819,7 @@ local file or an audit shipping adapter.
 
 | Item | Status | Accepted direction / activation evidence needed |
 | --- | --- | --- |
-| WC1 | direction accepted, open for activation | An independently administered append-only service outside the platform's failure domain with a separately retained trusted checkpoint; qualify independent restore, continuity and joint-loss bounds. Exact placement is an owner infrastructure decision and does not block this ruling. |
+| WC1 | direction accepted, open for activation | Placement decided on 2026-10-24: an append-only witness on a separate trust-node VPS at a provider independent of the platform, administered only by the owner, with no agent or platform administrative access. The owner registry is co-located there; witness and registry use separate accounts, processes and streams, and the registry writer cannot append to witness streams. The trusted checkpoint is retained off that VPS. Residual risk: loss of the VPS loses both services, fences the registrar and requires option A recovery. Option A remains in force until option C is deployed and qualified. Placement is settled; deployment and qualification of independent restore, continuity and joint-loss bounds remain open. |
 | WC2 | direction accepted, open for activation | A typed witness stream over the §9 audit channel with challenge-bound linearizable latest-head reads; close framing, peer authentication, provisioning, rotation, limits and continuity-proof details before implementation. |
 | WC3 | direction accepted, open for activation | Separate consumer-bound streams on one external service with common registry/pin policy; qualify each consumer without defining Keymaker internals here. |
 | WC4 | direction accepted, open for activation | Exclude the old serving instance before replacement and throughout authority use; qualify exclusion. Any distributed lease requires separate review of signing fences. |
@@ -1826,23 +1831,25 @@ network-registry API or deployment change is included in this specification slic
 ### C.4 Platform-time alignment and proposed local choices (informative)
 
 The 2026-10-23 platform trusted-time ruling uses one shared policy/provider,
-owned by the credential-broker project. The intended document is **Platform time
-policy**, `docs/time-policy.md`; it is not yet published. Its exact reviewed link
-and provider integration/qualification remain activation dependencies, recorded
-in UNRESOLVED_QUESTIONS.md. Section 7 specifies the target; this slice adds no
+owned by the credential-broker project. [Platform time policy](https://github.com/relux-works/swarma-credential-broker/blob/191c0c35aa2f4e6a850246b26c05c0462ff96c41/docs/time-policy.md)
+is published at the pinned revision; the publication/link item is closed.
+Content review on 2026-10-23 accepted the §7 local choices below. Production
+provider integration and qualification of both startup checks, the fixed
+4-second hold and lifetime fences remain activation dependencies, recorded in
+UNRESOLVED_QUESTIONS.md. Section 7 specifies the target; this slice adds no
 provider implementation or deployed clock qualification. Policy option A/B here
 concerns time-source evidence, separately from §4.5 reconciliation option A/C.
 
-| Proposed local choice | Reason / content-review status |
+| Local choice | Reason / content-review status |
 | --- | --- |
-| Common protected delta_cap=1.5 seconds, enforced at every admission and both startup checks; provider reports delta_sample as offset magnitude plus root distance | Proposed for content review: both lifetimes must obey the same conservative bound. A new-only sample cannot establish the prior admission's error; T4/PT3 retain that counterexample. A cap above the policy bound is refused. |
-| Fixed monotonic hold 2*delta_cap+1=4 seconds; one whole second of additional margin | Proposed for content review: absorb both error bounds and make strict ordering explicit without carrying prior-process time state. Never shorten it from a small new sample. |
-| Fix start only after the hold and successful second provider check | Proposed for content review: preserve the floor(fixed start)+31 barrier while checking freshness/health at its derivation. The old process must stop admitting before launch. |
+| Common protected delta_cap=1.5 seconds, enforced at every admission and both startup checks; provider reports delta_sample as offset magnitude plus root distance | Accepted on 2026-10-23: both lifetimes must obey the same conservative bound. A new-only sample cannot establish the prior admission's error; T4/PT3 retain that counterexample. A cap above the policy bound is refused. |
+| Fixed monotonic hold 2*delta_cap+1=4 seconds; one whole second of additional margin | Accepted on 2026-10-23: absorb both error bounds and make strict ordering explicit without carrying prior-process time state. Never shorten it from a small new sample. |
+| Fix start only after the hold and successful second provider check | Accepted on 2026-10-23: preserve the floor(fixed start)+31 barrier while checking freshness/health at its derivation. The old process must stop admitting before launch. |
 | Reject variable hold delta_cap+delta_sample+1 | Rejected alternative: 2.6 seconds at sample=0.1, up to 4 at sample=1.5, versus fixed 4; it adds sample/hold/recheck coupling with no extra safety. New-sample-only 2*delta_sample+1 is unsafe, not an optimization. |
-| Any detected backward UTC step fences the registrar for its process lifetime | Proposed for content review: stricter than the shared >1-second incident/hold; health loss and authority expiry have the same permanent fence. |
+| Any detected backward UTC step fences the registrar for its process lifetime | Accepted on 2026-10-23: stricter than the shared >1-second incident/hold; health loss and authority expiry have the same permanent fence. |
 | Clock-fence exit code 75 and fixed `registrar: clock fenced` diagnostic after successful shutdown drain | Proposed dedicated type: distinct from configuration/non-clock startup/drain failures (currently generic exit 1). Drain failure retains its own failure and never becomes a successful clock-fence exit. Implementation belongs to the evidence-source slice. |
 | Supervisor example: Restart=on-failure, RestartSec=2s, StartLimitIntervalSec=60s, StartLimitBurst=5 | Recorded operating choice for deployment review: start only after old exit, bound restart loops, and require the operator after a limit stop. Values may be tuned with a finite rate budget; they never shorten the hold or waive other admission gates. |
-| Client horizon 4+61=65 seconds plus evidence/scheduling/transport margin | Proposed for content review: replace the former 61-second startup budget; Keymaker clients obtain a new proof/nonce and diagnose persistent refusal rather than replay indefinitely. |
+| Client horizon 4+61=65 seconds plus evidence/scheduling/transport margin | Accepted on 2026-10-23: replace the former 61-second startup budget; Keymaker clients obtain a new proof/nonce and diagnose persistent refusal rather than replay indefinitely. |
 | Preserve 310 legacy byte fixtures as abstract post-hold admission inputs | Explicitly approved fixture boundary: R125 is not a realizable new-start trace. B.3 alone plans real provider/hold lifecycle qualification. No vector bytes or row text change. |
 
 Option A still infers selected-source NTS status from configuration. Authenticated

@@ -58,7 +58,7 @@ unchanged (§4.4 and the documented `serve --reconcile` procedure):
 
 Appendix C.3 records the accepted directions and remaining activation work:
 
-- **WC1 — direction accepted, open for activation:** an independently administered append-only service outside the platform's failure domain with a separately retained trusted checkpoint; qualify restore/continuity and joint-loss bounds. Exact placement is an owner infrastructure decision and does not block this ruling.
+- **WC1 — direction accepted, open for activation:** placement decided on 2026-10-24: a separate trust-node VPS at a provider independent of the platform, administered only by the owner, with no agent or platform administrative access. The append-only witness and co-located owner registry use separate accounts, processes and streams; the registry writer cannot append to witness streams. The trusted checkpoint is retained off that VPS. Residual risk: loss of that VPS loses both services, fences the registrar and requires option A recovery. Option A remains in force until option C is deployed and qualified. Placement is settled; deployment and qualification of restore, continuity and joint-loss bounds remain open.
 - **WC2 — direction accepted, open for activation:** a typed witness stream over the §9 audit channel with challenge-bound linearizable latest-head reads; close transport, authentication, provisioning, rotation, limits and continuity-proof details.
 - **WC3 — direction accepted, open for activation:** separate consumer-bound streams on one external service with common registry/pin policy; qualify both consumers without defining Keymaker internals.
 - **WC4 — direction accepted, open for activation:** exclude the old serving instance before replacement and throughout authority use; qualify exclusion. Any distributed lease requires separate review of signing fences.
@@ -70,16 +70,19 @@ downgrade, empty-stream bootstrap or joint-rollback detection is claimed.
 
 ## Platform time policy publication and qualification
 
-The credential-broker project owns **Platform time policy**, intended for
-`docs/time-policy.md`, and one provider behind an evidence-source interface for
-all three services. The document is not published yet: its exact reviewed link
-is an open item, not an invented URL. Production provider integration and
-qualification of both startup checks, the fixed 4-second monotonic hold and
-lifetime fences remain required; this specification slice implements none.
+The credential-broker project owns [Platform time policy](https://github.com/relux-works/swarma-credential-broker/blob/191c0c35aa2f4e6a850246b26c05c0462ff96c41/docs/time-policy.md)
+and one provider behind an evidence-source interface for all three services.
+The document is published at the pinned revision; the publication/link item is
+closed. Production provider integration and qualification of both startup
+checks, the fixed 4-second monotonic hold and lifetime fences remain required;
+this specification slice implements none. The pinned policy differs from §7
+in the strict sync-age boundary, authority endpoint and conservative uncertainty
+calculation; alignment needs a separate ruling, without changing §7 in this
+documentation slice.
 
-Section 7 and Appendix C.4 propose the common protected 1.5-second error cap,
-one-second hold margin, fixed-start interpretation and stricter registrar
-backward-step fence for content review. Keymaker clients must align their retry
+Content review on 2026-10-23 accepted the §7 and Appendix C.4 common protected
+1.5-second error cap, one-second hold margin, fixed-start interpretation and
+stricter registrar backward-step fence. Keymaker clients must align their retry
 budget to 4+61=65 seconds plus evidence/scheduling/transport margin and acquire
 fresh proofs/nonces. B.3 plans startup qualification separately from the
 unchanged legacy byte fixtures. Option A infers NTS from configuration;
