@@ -710,17 +710,22 @@ evidence. The policy requires:
 
 - Every configured chrony source is marked `nts`; the selected tracking source
   matches an `nts` line by name or address. Otherwise evidence is unavailable.
-- Tracking leap status is `Normal`, and the last synchronization is no older
-  than 2048 seconds (equality permitted).
+- Tracking leap status is `Normal`, and synchronization age MUST be strictly
+  less than 2048 seconds; exactly 2048 seconds is unavailable.
   A ceiling of twice the maximum poll interval of `2^10` seconds accommodates
-  update jitter; age-related uncertainty is bounded separately through root
-  distance in `delta_sample`.
+  update jitter; the conservative `delta_sample` separately includes uncertainty
+  growth since the reference. The longer age ceiling never relaxes the error cap.
 - Offset magnitude is at most 0.5 seconds, and root distance is at most 1 second
   (both equalities permitted).
-- Authority expires at sample time plus 5 minutes (300 seconds); at expiry it
-  is no longer valid. Current health alone does not extend an expired sample.
-- The provider reports healthy/unavailable and a nonnegative error bound
-  `delta_sample = abs(offset) + root_distance`, without signed cancellation.
+- Authority ends at `min(sample time + 300 seconds, reference time + 2048 seconds)`;
+  the endpoint is excluded. Current health alone does not extend that authority.
+- The provider reports healthy/unavailable and a nonnegative conservative bound:
+  `delta_sample = max(abs(system_offset), abs(last_offset), RMS_offset) + root_delay / 2 + root_dispersion + age * skew`,
+  rounded upward to nanoseconds, without signed cancellation. Here `age` is time
+  since the tracking reference at the sample, and
+  `root_distance = root_delay / 2 + root_dispersion`.
+  `abs(offset) + root_distance`, with `offset` the measured system offset, is
+  only the lower bound, not a substitute for the reported conservative bound.
 - A backward UTC step relative to monotonic within one boot exceeding 1 second
   raises the shared incident and hold. The registrar is stricter, as below.
 
@@ -1677,14 +1682,14 @@ Source-selection negatives do not claim authenticated per-source NTS observation
 | T6 | Selected source must match NTS config | Selected source matches no configured nts line by name or address, even if another line is nts | Provider unavailable; startup fenced | PT2 |
 | T7 | Every configured source uses NTS | Selected source matches an nts line, but another configured source lacks nts | Provider unavailable; startup fenced | PT2 |
 | T8 | Leap status | Tracking leap is not Normal | Startup clock fence | PT2 |
-| T9 | Synchronization age | Last synchronization age is 2048.001 seconds at a startup check | Startup clock fence | PT2 |
+| T9 | Synchronization age | Last synchronization age is exactly 2048 seconds, or 2048.001 seconds, at a startup check | Startup clock fence; the equality endpoint is unavailable | PT2 |
 | T10 | Offset magnitude bound | Offset is +0.5001 or -0.5001 seconds, with other fields healthy | Startup clock fence; signed cancellation cannot admit the negative case | PT2 |
 | T11 | Root distance bound | Root distance is 1.0001 seconds, with other fields healthy | Startup clock fence | PT2 |
 | T12 | Reported error cap | Provider reports delta_sample above 1.5, negative or not a finite error bound, despite a healthy status | Startup fenced; healthy boolean cannot bypass the common bound | PT2 |
 | T13 | Protected policy cap | Configure delta_cap above 1.5 seconds | Startup configuration refused; no serving or JWT | PT1 |
 | T14 | Fixed-instant second check | First check passes and hold completes; at the proposed fixed instant independently inject unavailable health, expired authority or delta_sample above cap | No valid fixed start; process-lifetime fence; no reuse of the first check | PT1 |
 | T15 | Loss of provider health by stage | Independently inject unavailable health or delta_sample above cap: (a) during the startup hold, (b) at row 15 before reservation, (c) at row 20 after rows 18–19, (d) after the issued audit acknowledgement; then restore healthy evidence | No JWT; permanent clock fence. Cases (a,b): accounting (0,0,0); cases (c,d): retain (1,1,1). Request refusals record clock_skew with healthy audit; (d) keeps the acknowledged issued line and adds the refusal | PT4 |
-| T16 | Authority expiry equality by stage | Independently reach sample age=300 with healthy status and no replacement: (a) startup recheck, (b) row 15 before reservation, (c) row-20 revalidation after rows 18–19 passed with unexpired authority, (d) post-ack revalidation after an unexpired issued acknowledgement | No JWT; permanent expiry fence. Cases (a,b): accounting (0,0,0); cases (c,d): retain (1,1,1). Request refusals record clock_skew with healthy audit; (d) retains the issued line plus refusal. Healthy status cannot extend authority | PT5 |
+| T16 | Authority expiry equality by stage | Independently expire each endpoint with otherwise healthy status and no replacement: sample age=300 while reference age<2048, or reference age=2048 with sample age<300 (reference UTC=1000, sample UTC=3000, check UTC=3048 gives sample age=48). Exercise each at (a) startup recheck, (b) row 15 before reservation, (c) row-20 revalidation after rows 18–19 passed with unexpired authority, (d) post-ack revalidation after an unexpired issued acknowledgement | No JWT; permanent expiry fence at either excluded endpoint. Cases (a,b): accounting (0,0,0); cases (c,d): retain (1,1,1). Request refusals record clock_skew with healthy audit; (d) retains the issued line plus refusal. Healthy status cannot extend authority | PT5 |
 | T17 | Registrar stricter than shared step threshold | After healthy start, detect a -0.25-second UTC step relative to monotonic; provider has not raised the shared >1-second incident | Registrar clock_skew and permanent fence; no JWT despite shared health | PT6 |
 | T18 | No in-place clock recovery | After T5/T14/T15/T16/T17, restore good evidence, acknowledge and wait, but do not restart | Original process never reopens, resets its barrier or releases a JWT | PT4 |
 | T19 | Wall progress cannot complete hold | Advance UTC by 4 seconds while only 0.5 monotonic seconds elapse; attempt to fix start | Still no qualified start or admission; only monotonic elapsed time counts | PT1 |
@@ -1694,10 +1699,10 @@ Source-selection negatives do not claim authenticated per-source NTS observation
 | T23 | Drain failure cannot masquerade as a clock exit | After a clock fence, independently inject a failed/timed-out handler join or detached-audit drain; attempt code 75 or sink closure with pending work | Existing shutdown failure remains non-zero (currently 1), with `registrar: shutdown failed`; no code 75 or premature sink closure, no JWT | PT8 |
 | T24 | Rate-limit stop requires operator recovery | Failed starts exhaust the configured start limit and stop the unit; restore provider health and wait past the limit interval without operator action | No automatic restart or admission after the limit stop; healthy evidence and elapsed time do not replace operator recovery | PT9 |
 | PT1 | Healthy fixed start and new barrier | Both provider checks healthy/unexpired within cap; hold exactly 4 monotonic seconds; fixed UTC=1004.3, barrier=1035; at now=1035 offer fresh iat=1035 and nonce | Admit otherwise valid proof once; one reservation/debit per budget, one JWT | PR1 |
-| PT2 | Inclusive provider boundaries | At fixed-instant check all sources nts, selected name or address matches; leap Normal, sync age=2048, offset=+0.5 or -0.5, root distance=1, delta_sample=1.5; authority fresh; initial check also passed, full hold completed | Provider gates and startup pass at inclusive bounds; fresh proof at the barrier admits | PT1 |
+| PT2 | Provider boundaries and conservative error | (a) At fixed-instant check all sources nts, selected name or address matches; leap Normal, sync age=2047.999, offset=+0.5 or -0.5, root distance=1, last/RMS magnitudes at most 0.5, skew=0, delta_sample=1.5; initial check also passed, full hold completed. Refresh sample and reference before the excluded reference endpoint, then use fresh evidence/proof at the barrier. (b) Independently pass both checks/full hold with system offset=0.1, last offset=0.3, RMS offset=0.2, root distance=0.2, skew=0 and fresh authority: reported delta_sample=0.5 exceeds the 0.3 lower bound but remains below the cap; admit a fresh proof at the barrier with current evidence | (a) Strict age and other inclusive bounds pass; (b) the conservative reported bound is accepted, not replaced by its lower bound. Each control admits once with one reservation/debit per budget; T12 still fences any reported bound above 1.5 | PT1 |
 | PT3 | Small new sample retains common hold | T4 old process/launch readings; new delta_sample=0.1 but hold=4, fixed UTC=1004.61, barrier=1035; at now=1035 replay old iat=1032 then use fresh iat=1035 and nonce | Old proof clock_skew without reservation/debit; fresh control admits once | PT1 |
 | PT4 | New process recovers, old process stays fenced | After a clock fence, exclude old process; new process independently passes both provider checks, holds 4 seconds and fixes a new barrier | Fresh proof at the new barrier admits only in the new process; old remains fenced | PT1 |
-| PT5 | Authority not yet expired: separate startup/admission controls | (a) Sample UTC=1000; first check UTC=1295.999 (age=295.999); hold 4; fixed recheck UTC=1299.999 (age=299.999), barrier=1330. Refresh authority before UTC=1300; later at UTC=1330 use fresh iat=1330 and nonce. (b) Already-qualified process fixed at UTC=1000, barrier=1031, sample UTC=1000; at UTC=1299.999 (age=299.999) offer fresh iat=1299 and nonce, finish release before UTC=1300, then refresh before age=300 | (a) Near-expiry startup check passes with no immediate JWT; later proof admits under refreshed authority. (b) Barrier/skew and unexpired authority hold throughout issuance; one JWT. Each issuance reserves/debits once; all other provider gates healthy | PT1 |
+| PT5 | Authority not yet expired: both endpoints | For (a,b), reference UTC=1000. (a) Sample UTC=1000; first check UTC=1295.999 (age=295.999); hold 4; fixed recheck UTC=1299.999 (age=299.999), barrier=1330. Refresh authority before UTC=1300; later at UTC=1330 use fresh iat=1330 and nonce. (b) Already-qualified process fixed at UTC=1000, barrier=1031, sample UTC=1000; at UTC=1299.999 (age=299.999) offer fresh iat=1299 and nonce, finish release before UTC=1300, then refresh before age=300. (c) Already-qualified process fixed at UTC=1000, barrier=1031; sample UTC=3000, reference UTC=1000, so authority ends at UTC=3048 rather than UTC=3300. At UTC=3047.999 (sample age=47.999, reference age=2047.999) offer fresh iat=3047 and nonce, finish release before UTC=3048, then refresh sample/reference before that endpoint | (a) Near-expiry startup check passes with no immediate JWT; later proof admits under refreshed authority. (b,c) Barrier/skew and unexpired authority hold throughout issuance; one JWT per independent control. Each issuance reserves/debits once; all other provider gates healthy | PT1 |
 | PT6 | Normal monotonic progression | Qualified process, healthy fresh provider evidence; UTC advances continuously with monotonic, including repeated floored integer readings | No false backward-step fence; fresh proof at/after barrier admits | PT1 |
 | PT7 | Client backoff includes hold | Healthy fixed start after H=4; client is 30 seconds behind; by fixed instant+61 seconds (initial check+65, ignoring added latency) request new proof and nonce | Fresh proof satisfies barrier/skew; old proof is not rehabilitated; extras require stated margin, not indefinite proof replay | PT1 |
 | PT8 | Supervised clock recovery | Fence -> stop admission -> join pending handlers and detached audit -> close sink -> exit 75 with `registrar: clock fenced` -> supervisor restart after old exit within the start budget. New initial UTC=1000; both checks pass, hold=4 monotonic seconds, fixed UTC=1004, barrier=1035; at UTC=1035 use fresh iat=1035 and nonce, all other gates valid | No operator needed for this clock restart; no old/new overlap, no JWT before the new barrier; the new proof admits once, with one reservation/debit per budget | PT1 |
@@ -1833,7 +1838,9 @@ network-registry API or deployment change is included in this specification slic
 The 2026-10-23 platform trusted-time ruling uses one shared policy/provider,
 owned by the credential-broker project. [Platform time policy](https://github.com/relux-works/swarma-credential-broker/blob/191c0c35aa2f4e6a850246b26c05c0462ff96c41/docs/time-policy.md)
 is published at the pinned revision; the publication/link item is closed.
-Content review on 2026-10-23 accepted the §7 local choices below. Production
+Content review on 2026-10-23 accepted the §7 local choices below. Alignment of
+the strict sync-age boundary, exclusive authority endpoint and conservative
+error bound with the published policy was accepted on 2026-10-24. Production
 provider integration and qualification of both startup checks, the fixed
 4-second hold and lifetime fences remain activation dependencies, recorded in
 UNRESOLVED_QUESTIONS.md. Section 7 specifies the target; this slice adds no
@@ -1842,7 +1849,7 @@ concerns time-source evidence, separately from §4.5 reconciliation option A/C.
 
 | Local choice | Reason / content-review status |
 | --- | --- |
-| Common protected delta_cap=1.5 seconds, enforced at every admission and both startup checks; provider reports delta_sample as offset magnitude plus root distance | Accepted on 2026-10-23: both lifetimes must obey the same conservative bound. A new-only sample cannot establish the prior admission's error; T4/PT3 retain that counterexample. A cap above the policy bound is refused. |
+| Common protected delta_cap=1.5 seconds, enforced at every admission and both startup checks; provider reports the conservative nanosecond-rounded delta_sample of §7, with offset magnitude plus root distance only its lower bound | Accepted on 2026-10-23: both lifetimes must obey the same conservative bound. A new-only sample cannot establish the prior admission's error; T4/PT3 retain that counterexample. A cap above the policy bound is refused. |
 | Fixed monotonic hold 2*delta_cap+1=4 seconds; one whole second of additional margin | Accepted on 2026-10-23: absorb both error bounds and make strict ordering explicit without carrying prior-process time state. Never shorten it from a small new sample. |
 | Fix start only after the hold and successful second provider check | Accepted on 2026-10-23: preserve the floor(fixed start)+31 barrier while checking freshness/health at its derivation. The old process must stop admitting before launch. |
 | Reject variable hold delta_cap+delta_sample+1 | Rejected alternative: 2.6 seconds at sample=0.1, up to 4 at sample=1.5, versus fixed 4; it adds sample/hold/recheck coupling with no extra safety. New-sample-only 2*delta_sample+1 is unsafe, not an optimization. |

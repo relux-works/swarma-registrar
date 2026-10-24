@@ -75,10 +75,10 @@ and one provider behind an evidence-source interface for all three services.
 The document is published at the pinned revision; the publication/link item is
 closed. Production provider integration and qualification of both startup
 checks, the fixed 4-second monotonic hold and lifetime fences remain required;
-this specification slice implements none. The pinned policy differs from §7
-in the strict sync-age boundary, authority endpoint and conservative uncertainty
-calculation; alignment needs a separate ruling, without changing §7 in this
-documentation slice.
+this specification slice implements none. The three policy differences are
+resolved: alignment of §7's strict sync-age boundary, exclusive authority endpoint
+and conservative uncertainty calculation was accepted on 2026-10-24. This
+specification alignment does not qualify the provider or its integration.
 
 Content review on 2026-10-23 accepted the §7 and Appendix C.4 common protected
 1.5-second error cap, one-second hold margin, fixed-start interpretation and
