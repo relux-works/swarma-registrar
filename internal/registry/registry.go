@@ -10,6 +10,7 @@ import (
 	"github.com/relux-works/swarma-registrar/internal/enrollment"
 	"github.com/relux-works/swarma-registrar/internal/refusal"
 	"github.com/relux-works/swarma-registrar/internal/registration"
+	"github.com/relux-works/swarma-registrar/internal/revision"
 )
 
 const MaxEntries = 10000
@@ -118,9 +119,11 @@ type Input struct {
 	FirstUse, Reconciled bool
 }
 type Loader struct {
-	Policy   *enrollment.Policy
-	Verifier Verifier
-	Store    Store
+	// ObjectFormat is the protected repository profile: exactly "sha1" or "sha256".
+	ObjectFormat string
+	Policy       *enrollment.Policy
+	Verifier     Verifier
+	Store        Store
 }
 
 // Diagnostic keeps the stable refusal separate from restricted Git-path context.
@@ -172,14 +175,14 @@ func (s *Snapshot) Authorize(host, name string) error {
 // the supplied entries, retained state or previously returned snapshots.
 func (l Loader) Load(in Input) (*Snapshot, *HighWater, error) {
 	fail := func(err error) (*Snapshot, *HighWater, error) { return nil, nil, err }
-	if l.Policy == nil || l.Verifier == nil || l.Store == nil || !validRevision(in.Revision) {
+	if l.Policy == nil || l.Verifier == nil || l.Store == nil || !revision.Valid(l.ObjectFormat, in.Revision) {
 		return fail(diagnostic(refusal.RegistryUnavailable, ""))
 	}
 	if in.FirstUse {
 		if in.Retained != nil {
 			return fail(diagnostic(refusal.RegistryUnavailable, ""))
 		}
-	} else if in.Retained == nil || !in.Reconciled || !validRetained(in.Retained) {
+	} else if in.Retained == nil || !in.Reconciled || !validRetained(in.Retained, l.ObjectFormat) {
 		return fail(diagnostic(refusal.RegistryUnavailable, ""))
 	}
 	previous := in.Retained.Clone()
@@ -278,12 +281,10 @@ func cloneEntries(in []Entry) []Entry {
 	return out
 }
 
-var revisionPattern = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
 var idPattern = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 
-func validRevision(revision string) bool { return revisionPattern.MatchString(revision) }
-func validRetained(h *HighWater) bool {
-	if !validRevision(h.Revision) || h.Hosts == nil || h.KeyOwners == nil || h.NameOwners == nil {
+func validRetained(h *HighWater, objectFormat string) bool {
+	if !revision.Valid(objectFormat, h.Revision) || h.Hosts == nil || h.KeyOwners == nil || h.NameOwners == nil {
 		return false
 	}
 	for host, w := range h.Hosts {

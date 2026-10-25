@@ -40,7 +40,7 @@ func testDependencies(t *testing.T, f *fixtureData, noClock, noRemote bool) depe
 			if noRemote {
 				remote = nil
 			}
-			audit, err := adapters.NewAudit(ctx, c.AuditFile, remote)
+			audit, err := adapters.NewAudit(ctx, c.AuditFile, remote, "sha1")
 			if err != nil {
 				return nil, err
 			}

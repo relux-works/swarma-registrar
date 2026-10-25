@@ -200,7 +200,7 @@ func snapshotFixture(t *testing.T, key, state string) *registry.Snapshot {
 		t.Fatal(err)
 	}
 	raw := signed(t, envelope.Enrollment, map[string]any{"type": "enrollment/1", "host": "host-a", "seq": int64(1), "state": state, "keys": []any{map[string]any{"key": key, "not_before": "2029-01-01T00:00:00Z", "not_after": "2031-01-01T00:00:00Z"}}, "names": map[string]any{"prefix": "host-a_", "explicit": []any{}}}, 1)
-	snapshot, _, err := (registry.Loader{Policy: policy, Verifier: verifierFixture{}, Store: storeFixture{}}).Load(registry.Input{Revision: strings.Repeat("1", 40), FirstUse: true, Entries: []registry.Entry{{Path: "enrollments/a.json", Bytes: raw}}})
+	snapshot, _, err := (registry.Loader{ObjectFormat: "sha1", Policy: policy, Verifier: verifierFixture{}, Store: storeFixture{}}).Load(registry.Input{Revision: strings.Repeat("1", 40), FirstUse: true, Entries: []registry.Entry{{Path: "enrollments/a.json", Bytes: raw}}})
 	if err != nil {
 		t.Fatal(err)
 	}

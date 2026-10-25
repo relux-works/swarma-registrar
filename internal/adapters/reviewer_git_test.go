@@ -32,7 +32,7 @@ func TestReviewGitGrafts(t *testing.T) {
 	}
 	store, _ := newStore(t)
 	counted := &countStore{Store: store}
-	loader := registry.Loader{Policy: policy, Verifier: g, Store: counted}
+	loader := registry.Loader{ObjectFormat: "sha1", Policy: policy, Verifier: g, Store: counted}
 	_, retained, err := loader.Load(registry.Input{Revision: old, Entries: entries, FirstUse: true})
 	if err != nil {
 		t.Fatal("bootstrap control")
@@ -113,7 +113,7 @@ func TestReviewGitIsolation(t *testing.T) {
 	_, err = g.Read(context.Background())
 	wantCode(t, err, registry.RegistryUnavailable)
 	for _, pin := range []string{"--help", "-c", strings.Repeat("a", 40) + "^{tree}", "main", "HEAD\n"} {
-		if _, err = newGit(f.dir, pin, f.allowed, rootFixture); err == nil {
+		if _, err = newGit(f.dir, pin, f.allowed, "sha1", rootFixture); err == nil {
 			t.Fatal("nonliteral revision accepted")
 		}
 	}

@@ -54,6 +54,38 @@ class CheckerRegressions(unittest.TestCase):
                 except check.Rejected as exc:
                     self.fail(f'{row}: {exc}')
 
+    # These exact witnesses isolate the protected profile from Git trust booleans;
+    # each refusal is checked alongside its own-format publication control.
+    def test_planned_revision_profiles(self):
+        rows = ['PE16', 'PE17'] + [f'E{i}' for i in range(115, 131)]
+        self.verify_rows(*rows)
+        for control, first, width, other in [('PE16', 115, 40, 64), ('PE17', 121, 64, 40)]:
+            base = check.parse((self.vector_root / 'enrollment-1/1-positive' / (control+'.json')).read_bytes())
+            rg = base['fixture']['registry']
+            self.assertEqual(rg['object_format'], 'sha1' if width == 40 else 'sha256')
+            self.assertEqual(rg['revision'], 'a'*width)
+            expected = ['a'*other, 'a'*(width-1), 'a'*(width+1), 'A'*width, 'abcdef1', 'main']
+            for offset, revision in enumerate(expected):
+                row = f'E{first+offset}'
+                vector = check.parse((self.vector_root / 'enrollment-1/0-negative' / (row+'.json')).read_bytes())
+                candidate = vector['fixture']['registry']
+                self.assertEqual(candidate['revision'], revision)
+                self.assertEqual(candidate['object_format'], rg['object_format'])
+                self.assertTrue(all(candidate[k] for k in ('approved','commit_signature_valid','available','pin_is_exact')))
+                self.assertEqual(vector['positive_control'], control)
+                self.assertEqual(check.registry_verdict(vector['fixture'])[0], 'registry_unavailable')
+            for defect in ('', 'SHA1', 'sha512', None, [], {}):
+                broken = copy.deepcopy(base['fixture'])
+                broken['registry']['object_format'] = defect
+                self.assertEqual(check.registry_verdict(broken)[0], 'registry_unavailable')
+            # Retained revisions obey the same pin before record/history checks.
+            retained = copy.deepcopy(base['fixture'])
+            retained['registry']['previous_files'] = copy.deepcopy(rg['files'])
+            retained['registry']['previous_revision'] = rg['revision']
+            self.assertEqual(check.registry_verdict(retained)[0], 'accept')
+            retained['registry']['previous_revision'] = 'a'*other
+            self.assertEqual(check.registry_verdict(retained)[0], 'registry_unavailable')
+
     # These rows retain their deciding nonce/budget rule while legitimate signed
     # prefixes build both kinds of accounting; no private state is installed.
     def test_reachable_accounting_traces(self):

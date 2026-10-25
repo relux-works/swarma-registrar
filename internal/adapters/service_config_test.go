@@ -56,7 +56,7 @@ func TestServiceConfigFields(t *testing.T) {
 func TestStoreInspectionNeverAttestsFreshness(t *testing.T) {
 	dir := tempDir(t)
 	path := filepath.Join(dir, "water")
-	s, err := NewFileStore(path)
+	s, err := NewFileStore(path, "sha1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestStoreInspectionNeverAttestsFreshness(t *testing.T) {
 	if err != nil || w != nil {
 		t.Fatal("absence inspection")
 	}
-	if _, err := HighWaterDigest(nil); err == nil {
+	if _, err := HighWaterDigest(nil, "sha1"); err == nil {
 		t.Fatal("absent state had digest")
 	}
 	w = &registry.HighWater{Revision: strings.Repeat("1", 40), Hosts: map[string]registry.HostWater{}, KeyOwners: map[string]string{}, NameOwners: map[string]string{}}
@@ -75,12 +75,12 @@ func TestStoreInspectionNeverAttestsFreshness(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	digest, err := HighWaterDigest(inspected)
+	digest, err := HighWaterDigest(inspected, "sha1")
 	if err != nil || len(digest) != 71 {
 		t.Fatal("digest control")
 	}
 	inspected.Revision = strings.Repeat("2", 40)
-	other, err := HighWaterDigest(inspected)
+	other, err := HighWaterDigest(inspected, "sha1")
 	if err != nil || other == digest {
 		t.Fatal("digest ignored state")
 	}

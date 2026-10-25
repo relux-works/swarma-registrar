@@ -13,6 +13,7 @@ import (
 
 	"github.com/relux-works/swarma-registrar/ccj"
 	"github.com/relux-works/swarma-registrar/internal/enrollment"
+	"github.com/relux-works/swarma-registrar/internal/revision"
 	"github.com/relux-works/swarma-registrar/registry"
 )
 
@@ -29,8 +30,8 @@ type diskWater struct {
 	Water   registry.HighWater `json:"high_water"`
 }
 
-func waterBytes(w *registry.HighWater) ([]byte, error) {
-	if w == nil || !fullRevision(w.Revision) || w.Hosts == nil || w.KeyOwners == nil || w.NameOwners == nil {
+func waterBytes(w *registry.HighWater, objectFormat string) ([]byte, error) {
+	if w == nil || !revision.Valid(objectFormat, w.Revision) || w.Hosts == nil || w.KeyOwners == nil || w.NameOwners == nil {
 		return nil, failure(registry.RegistryUnavailable)
 	}
 	for host, h := range w.Hosts {
@@ -64,7 +65,7 @@ func waterBytes(w *registry.HighWater) ([]byte, error) {
 	}
 	return encoded, nil
 }
-func decodeWater(raw []byte) (*registry.HighWater, error) {
+func decodeWater(raw []byte, objectFormat string) (*registry.HighWater, error) {
 	parsed, err := ccj.Parse(raw, registry.RegistryUnavailable)
 	if err != nil {
 		return nil, err
@@ -77,7 +78,7 @@ func decodeWater(raw []byte) (*registry.HighWater, error) {
 	if err = json.Unmarshal(canonical, &disk); err != nil || disk.Version != 1 {
 		return nil, failure(registry.RegistryUnavailable)
 	}
-	expected, err := waterBytes(&disk.Water)
+	expected, err := waterBytes(&disk.Water, objectFormat)
 	// Re-encoding requires every field, exact field case, no unknown members or
 	// ambiguous null maps; the codec never silently drops durable evidence.
 	if err != nil || !bytes.Equal(expected, canonical) || !bytes.Equal(raw, canonical) {
@@ -90,16 +91,17 @@ func decodeWater(raw []byte) (*registry.HighWater, error) {
 // Any failure leaves durability indeterminate; no compensating rename is tried.
 // Callers fence admission. Load always returns unreconciled local evidence.
 type FileStore struct {
-	mu     sync.Mutex
-	path   string
-	before func(string) error
+	mu           sync.Mutex
+	path         string
+	objectFormat string
+	before       func(string) error
 }
 
-func NewFileStore(path string) (*FileStore, error) {
-	if !absolute(path) || !privateDirectory(filepath.Dir(path)) {
+func NewFileStore(path, objectFormat string) (*FileStore, error) {
+	if revision.Size(objectFormat) == 0 || !absolute(path) || !privateDirectory(filepath.Dir(path)) {
 		return nil, failure(registry.RegistryUnavailable)
 	}
-	return &FileStore{path: path}, nil
+	return &FileStore{path: path, objectFormat: objectFormat}, nil
 }
 func (s *FileStore) step(name string) error {
 	if s.before != nil {
@@ -130,7 +132,7 @@ func (s *FileStore) read() (*registry.HighWater, error) {
 	if err := f.Close(); err != nil || injected != nil {
 		return nil, failure(registry.RegistryUnavailable)
 	}
-	return decodeWater(raw)
+	return decodeWater(raw, s.objectFormat)
 }
 func (s *FileStore) Load() (Stored, error) {
 	s.mu.Lock()
@@ -152,8 +154,8 @@ func (s *FileStore) Inspect() (*registry.HighWater, error) {
 
 // HighWaterDigest identifies the exact canonical durable encoding, not its
 // freshness. An absent or invalid state has no high-water digest.
-func HighWaterDigest(w *registry.HighWater) (string, error) {
-	raw, err := waterBytes(w)
+func HighWaterDigest(w *registry.HighWater, objectFormat string) (string, error) {
+	raw, err := waterBytes(w, objectFormat)
 	if err != nil {
 		return "", err
 	}
@@ -201,16 +203,16 @@ func (s *FileStore) Commit(previous *registry.HighWater, next registry.HighWater
 		return bad()
 	}
 	if current != nil {
-		a, err := waterBytes(current)
+		a, err := waterBytes(current, s.objectFormat)
 		if err != nil {
 			return bad()
 		}
-		b, err := waterBytes(previous)
+		b, err := waterBytes(previous, s.objectFormat)
 		if err != nil || !bytes.Equal(a, b) {
 			return bad()
 		}
 	}
-	data, err := waterBytes(next.Clone())
+	data, err := waterBytes(next.Clone(), s.objectFormat)
 	if err != nil {
 		return bad()
 	}

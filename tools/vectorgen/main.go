@@ -244,7 +244,7 @@ func file(path string, env M) M {
 	return M{"path": path, "kind": "regular", "bytes_base64": enc(ccj(env)), "repeat": 1}
 }
 func registry() M {
-	return M{"available": true, "commit_signature_valid": true, "approved": true, "pin_is_exact": true, "revision": strings.Repeat("a", 40), "descendant": true, "rollback_state_available": true, "persist_available": true, "station_hosts": []any{"host-a", "host-b"}, "publisher_key": edpub(publisher), "files": []any{file("enrollments/a.json", record(enrollment("host-a", edpub(host), 1)))}, "previous_files": []any{}}
+	return M{"available": true, "commit_signature_valid": true, "approved": true, "pin_is_exact": true, "object_format": "sha1", "revision": strings.Repeat("a", 40), "descendant": true, "rollback_state_available": true, "persist_available": true, "station_hosts": []any{"host-a", "host-b"}, "publisher_key": edpub(publisher), "files": []any{file("enrollments/a.json", record(enrollment("host-a", edpub(host), 1)))}, "previous_files": []any{}}
 }
 func fixture() M {
 	return M{"now": epoch + 60, "monotonic_now": 60, "actual_start_millis": (epoch - 31) * 1000, "start_barrier": epoch, "startup_verified": true, "clock_healthy": true, "clock_fenced": false, "audience": "example.org", "registry": registry(), "nonce_cache": []any{}, "limiter_events": []any{}, "key_capacity": 10, "name_capacity": 3, "audit": M{"local_available": true, "remote_ack": true}, "signer_available": true, "signing_generation": "A", "http": M{"path": "/v1/registration", "method": "POST", "content_type": "application/json", "content_encoding": "identity"}}
@@ -1054,6 +1054,37 @@ func enrollmentCase(r row) M {
 	case "E79":
 		rg["pin_is_exact"] = false
 		rg["revision"] = "main"
+	case "E115", "E116", "E117", "E118", "E119", "E120", "E121", "E122", "E123", "E124", "E125", "E126", "E127", "E128", "E129", "E130", "PE16", "PE17":
+		rg["first_use"] = true
+		width := 40
+		rg["object_format"] = "sha1"
+		if r.ID == "PE17" || r.ID == "E130" || r.ID >= "E121" && r.ID <= "E126" {
+			width = 64
+			rg["object_format"] = "sha256"
+		}
+		rg["revision"] = strings.Repeat("a", width)
+		switch r.ID {
+		case "E115":
+			rg["revision"] = strings.Repeat("a", 64)
+		case "E121":
+			rg["revision"] = strings.Repeat("a", 40)
+		case "E116", "E122":
+			rg["revision"] = strings.Repeat("a", width-1)
+		case "E117", "E123":
+			rg["revision"] = strings.Repeat("a", width+1)
+		case "E118", "E124":
+			rg["revision"] = strings.Repeat("A", width)
+		case "E119", "E125":
+			rg["revision"] = "abcdef1"
+		case "E120", "E126":
+			rg["revision"] = "main"
+		case "E127":
+			delete(rg, "object_format")
+		case "E128":
+			rg["object_format"] = "sha512"
+		case "E129", "E130":
+			rg["revision"] = strings.Repeat("a", width-1) + "g"
+		}
 	case "E80":
 		invalid := clone(body)
 		invalid["seq"] = 2

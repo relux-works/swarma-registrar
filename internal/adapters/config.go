@@ -8,11 +8,13 @@ import (
 	"github.com/relux-works/swarma-registrar/ccj"
 	"github.com/relux-works/swarma-registrar/enrollment"
 	internalEnrollment "github.com/relux-works/swarma-registrar/internal/enrollment"
+	"github.com/relux-works/swarma-registrar/internal/revision"
 )
 
 // Config is immutable startup configuration. Paths are absolute; no environment
 // expansion, branch following, remote sink or healthy-clock switch is supported.
 type Config struct {
+	ObjectFormat                                                 string
 	Audience, Repository, Revision, AllowedSigners, PublisherKey string
 	HighWater, SigningKey, AuditFile                             string
 	Stations                                                     map[string]bool
@@ -51,7 +53,7 @@ func ParseConfig(raw []byte) (Config, error) {
 	if !ok {
 		return bad()
 	}
-	required := []string{"v", "audience", "repository", "revision", "allowed_signers", "publisher_key", "stations", "high_water", "signing_key", "audit_file"}
+	required := []string{"v", "audience", "repository", "revision", "object_format", "allowed_signers", "publisher_key", "stations", "high_water", "signing_key", "audit_file"}
 	if len(obj) < len(required) || len(obj) > len(required)+6 {
 		return bad()
 	}
@@ -71,13 +73,13 @@ func ParseConfig(raw []byte) (Config, error) {
 		return bad()
 	}
 	str := func(name string) string { s, _ := obj[name].(string); return s }
-	c := Config{Audience: str("audience"), Repository: str("repository"), Revision: str("revision"), AllowedSigners: str("allowed_signers"), PublisherKey: str("publisher_key"), HighWater: str("high_water"), SigningKey: str("signing_key"), AuditFile: str("audit_file"), Stations: map[string]bool{}, PerKey: 10, PerName: 3}
+	c := Config{ObjectFormat: str("object_format"), Audience: str("audience"), Repository: str("repository"), Revision: str("revision"), AllowedSigners: str("allowed_signers"), PublisherKey: str("publisher_key"), HighWater: str("high_water"), SigningKey: str("signing_key"), AuditFile: str("audit_file"), Stations: map[string]bool{}, PerKey: 10, PerName: 3}
 	for _, path := range []string{c.Repository, c.AllowedSigners, c.HighWater, c.SigningKey, c.AuditFile} {
 		if !absolute(path) {
 			return bad()
 		}
 	}
-	if !fullRevision(c.Revision) || !serverName(c.Audience) {
+	if !revision.Valid(c.ObjectFormat, c.Revision) || !serverName(c.Audience) {
 		return bad()
 	}
 	c.Listen = "127.0.0.1:8443"

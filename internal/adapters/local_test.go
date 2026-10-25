@@ -232,7 +232,7 @@ func water(rev byte) *registry.HighWater {
 func newStore(t *testing.T) (*FileStore, string) {
 	t.Helper()
 	path := filepath.Join(tempDir(t), "water")
-	store, err := NewFileStore(path)
+	store, err := NewFileStore(path, "sha1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -282,7 +282,7 @@ func TestStoreFailureEveryStep(t *testing.T) {
 				return nil
 			}
 			wantCode(t, store.Commit(old, *next), registry.RegistryUnavailable)
-			restarted, err := NewFileStore(path)
+			restarted, err := NewFileStore(path, "sha1")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -313,7 +313,7 @@ func TestStoreConcurrentAndCorrupt(t *testing.T) {
 	if err := store.Commit(nil, *old); err != nil {
 		t.Fatal(err)
 	}
-	other, err := NewFileStore(path)
+	other, err := NewFileStore(path, "sha1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -380,7 +380,7 @@ func TestGitStoreLoader(t *testing.T) {
 		t.Fatal(err)
 	}
 	store, _ := newStore(t)
-	loader := registry.Loader{Policy: policy, Verifier: git, Store: store}
+	loader := registry.Loader{ObjectFormat: "sha1", Policy: policy, Verifier: git, Store: store}
 	in := registry.Input{Revision: fixture.pin, Entries: entries, FirstUse: true}
 	store.before = func(step string) error {
 		if step == "directory_sync" {

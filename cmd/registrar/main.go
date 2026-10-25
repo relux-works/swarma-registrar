@@ -220,11 +220,11 @@ func wire(c adapters.Config, snapshot *registry.Snapshot, clock admission.Clock,
 }
 
 func openProduction(ctx context.Context, c adapters.Config, start time.Time, confirm bool, terminal terminalOpener, out io.Writer) (*runtime, error) {
-	source, err := adapters.NewGit(c.Repository, c.Revision, c.AllowedSigners)
+	source, err := adapters.NewGit(c.Repository, c.Revision, c.AllowedSigners, c.ObjectFormat)
 	if err != nil {
 		return nil, err
 	}
-	store, err := adapters.NewFileStore(c.HighWater)
+	store, err := adapters.NewFileStore(c.HighWater, c.ObjectFormat)
 	if err != nil {
 		return nil, err
 	}
@@ -232,7 +232,7 @@ func openProduction(ctx context.Context, c adapters.Config, start time.Time, con
 	if err != nil {
 		return nil, err
 	}
-	audit, err := adapters.NewAudit(ctx, c.AuditFile, nil)
+	audit, err := adapters.NewAudit(ctx, c.AuditFile, nil, c.ObjectFormat)
 	if err != nil {
 		return nil, err
 	}

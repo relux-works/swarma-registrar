@@ -75,23 +75,23 @@ func reconcile(ctx context.Context, c adapters.Config, source registrySource, st
 		return nil, registryFailure()
 	}
 	gate := confirmingStore{store: store, approve: func(next registry.HighWater) error {
-		return confirmEvidence(ctx, c.Revision, previous, next, terminal, out)
+		return confirmEvidence(ctx, c.ObjectFormat, c.Revision, previous, next, terminal, out)
 	}}
 	// The loader may validate retained evidence provisionally, but its Store cannot
 	// commit or return any snapshot until the operator supplies freshness evidence.
-	snapshot, _, err := (registry.Loader{Policy: policy, Verifier: source, Store: gate}).Load(registry.Input{Revision: c.Revision, Entries: entries, Retained: previous, FirstUse: firstUse, Reconciled: previous != nil})
+	snapshot, _, err := (registry.Loader{ObjectFormat: c.ObjectFormat, Policy: policy, Verifier: source, Store: gate}).Load(registry.Input{Revision: c.Revision, Entries: entries, Retained: previous, FirstUse: firstUse, Reconciled: previous != nil})
 	if err != nil {
 		return nil, registryFailure()
 	}
 	return snapshot, nil
 }
 
-func confirmEvidence(ctx context.Context, pin string, previous *registry.HighWater, next registry.HighWater, terminal terminalOpener, out io.Writer) error {
+func confirmEvidence(ctx context.Context, objectFormat, pin string, previous *registry.HighWater, next registry.HighWater, terminal terminalOpener, out io.Writer) error {
 	var err error
 	confirmation := bootstrapDigest(pin)
 	highDigest := "absent (explicit configured first use)"
 	if previous != nil {
-		highDigest, err = adapters.HighWaterDigest(previous)
+		highDigest, err = adapters.HighWaterDigest(previous, objectFormat)
 		if err != nil {
 			return registryFailure()
 		}

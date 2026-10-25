@@ -27,7 +27,7 @@ transitional; the reusable core is key proof → enrollment → carrier credenti
 | --- | --- |
 | `spec/registrar.md` | Draft normative formats, HTTP API, registry rules, source findings and vector plan. |
 | `UNRESOLVED_QUESTIONS.md` | Remaining activation dependencies, proposed external-witness choices and settled media-type decisions. |
-| `vectors/` | 310 committed negative-first registration/enrollment fixtures and public test keys; all 310 Appendix B byte-vector rows are instantiated. The separate §B.2 witness and §B.3 time-provider/startup lifecycle plans have no fixtures. |
+| `vectors/` | 328 committed negative-first registration/enrollment fixtures and public test keys; all 328 Appendix B byte-vector rows are instantiated. The separate §B.2 witness and §B.3 time-provider/startup lifecycle plans have no fixtures. |
 | `internal/` | Go byte formats, strict signatures, registration/enrollment validation and in-memory registry snapshots. |
 | `internal/adapters/` | Offline pinned Git, durable local state/audit, file signer, clock evidence boundary and strict startup configuration. |
 | `cmd/registrar/` | HTTPS registrar binary with interactive, process-scoped rollback reconciliation. |
@@ -38,7 +38,7 @@ Service (in progress): the Go core implements CCJ-1, signed envelopes, strict
 key/signature checks, stateless registration/enrollment validation, in-memory
 registry snapshots, an internal admission core and a net/http handler with
 injected dependencies.
-The repository also contains 310 offline format vectors, with a Go generator
+The repository also contains 328 offline format vectors, with a Go generator
 and an independent Python checker. The first service binary wires the local
 adapters, HTTPS, admission and HTTP. It remains fenced without production clock
 evidence and cannot issue without an authenticated remote audit sink. Offline
@@ -130,9 +130,12 @@ required fields, coercions and invalid paths are rejected. The complete base
 schema, pin syntax and custody requirements are in the
 [adapter configuration reference](internal/adapters/README.md#startup-configuration).
 Required fields are `v` (integer 1), `audience`, `repository`, `revision`,
-`allowed_signers`, `publisher_key`, `stations`, `high_water`, `signing_key` and
+`object_format`, `allowed_signers`, `publisher_key`, `stations`, `high_water`, `signing_key` and
 `audit_file`. Optional `per_key`/`per_name` default to 10/3 and can only reduce
-those capacities. All configured file paths are absolute and clean, without
+those capacities. `object_format` is exactly `sha1` (40 lowercase hex revision
+characters) or `sha256` (64); there is no default, request selection or length
+inference. The same protected pin governs loading, Git, retained state and audit.
+All configured file paths are absolute and clean, without
 expansion; example paths here are operator-owned installation locations.
 
 The binary adds these optional fields to that same strict schema:
@@ -261,7 +264,7 @@ operator wording, remain abstract admission inputs; B.3 plans the real lifecycle
 | Go 1.26, Git and OpenSSH ssh-keygen | Check local adapters and internal packages; create disposable signed Git fixtures with generated test keys. | `GOMAXPROCS=2 go test ./internal/...`; `GOMAXPROCS=2 go vet ./...`; focused adapter checks: `go test ./internal/adapters` | Terminal verdicts; fixture files in Go's temporary directory (set `TMPDIR` to a scratch directory). No network. |
 | Go (standard library) | Regenerate vectors or check exact committed bytes and file set. | `GOMAXPROCS=2 go run ./tools/vectorgen`; `GOMAXPROCS=2 go run ./tools/vectorgen -check` | `vectors/registration-1/`, `vectors/enrollment-1/`, `vectors/keys/seeds.json`, `vectors/keys/public-keys.json`; check mode writes nothing. |
 | Python 3 with cryptography | Independently check CCJ-1, cryptography, ordered outcomes, JWT bytes and state. | `python3 tools/vectorcheck/check.py` (dependencies: `python3 -m pip install -r tools/vectorcheck/requirements.txt`) | Terminal verdicts; writes nothing. |
-| Python unittest | Check signed HTTP media-token, structured-name and reachable-accounting regressions against the independent checker. | `python3 -B -m unittest discover -s tools/vectorcheck -p test_regressions.py -v` | Terminal verdicts; fixtures under `tools/vectorcheck/fixtures/` stay separate from the 310 planned vectors. |
+| Python unittest | Check signed HTTP media-token, structured-name and reachable-accounting regressions against the independent checker. | `python3 -B -m unittest discover -s tools/vectorcheck -p test_regressions.py -v` | Terminal verdicts; fixtures under `tools/vectorcheck/fixtures/` stay separate from the 328 planned vectors. |
 | Git | Inspect scope and check documentation whitespace. | `git diff --check`; `git diff --stat`; `git diff -- spec/registrar.md README.md UNRESOLVED_QUESTIONS.md` | Terminal diagnostics and diff; no generated repository files. |
 | curl | Retrieve the pinned public validator source for inspection. | `mkdir -p .temp/spec-source-review` then `curl --fail --location https://raw.githubusercontent.com/Keats/jsonwebtoken/900010fb1be550ec2cfa8c32038eb154f9ef56d7/src/validation.rs --output .temp/spec-source-review/validation.rs` | Source in the created task-scoped scratch directory. |
 | Python 3 | Count the planned vector rows in the draft. | `python3 -c 'from pathlib import Path; s=Path("spec/registrar.md").read_text().split("## Appendix B.")[1].split("### B.1")[0]; print(sum(line.startswith("\u007c ") for line in s.splitlines())-2)'` | Terminal count only. |

@@ -150,7 +150,7 @@ class TimeDeclarationRegressions(unittest.TestCase):
     def test_cli_duplicate_marker_outside_appendix_a(self):
         self.assert_cli(self.spec + '\n' + self.marker_line() + '\n', 1,
                         'abstract post-hold declaration must occur exactly once globally')
-        self.assert_cli(self.spec, 0, 'PASS: 310 declared abstract post-hold rows')
+        self.assert_cli(self.spec, 0, 'PASS: 328 declared abstract post-hold rows')
 
     # Malformed extra names/JSON/comment syntax must be counted before validating shape.
     def test_cli_malformed_extra_marker(self):
@@ -165,7 +165,7 @@ class TimeDeclarationRegressions(unittest.TestCase):
             with self.subTest(extra=extra):
                 self.assert_cli(self.spec + '\n' + extra + '\n', 1,
                                 'abstract post-hold declaration must occur exactly once globally')
-        self.assert_cli(self.spec, 0, 'PASS: 310 declared abstract post-hold rows')
+        self.assert_cli(self.spec, 0, 'PASS: 328 declared abstract post-hold rows')
 
     # Indentation cannot hide a competing in-A marker, including Markdown code indentation.
     def test_cli_indented_duplicate_marker(self):
@@ -174,14 +174,14 @@ class TimeDeclarationRegressions(unittest.TestCase):
             with self.subTest(indentation=repr(indentation)):
                 self.assert_cli(self.spec.replace(line, line + '\n' + indentation + line), 1,
                                 'abstract post-hold declaration must occur exactly once globally')
-        self.assert_cli(self.spec, 0, 'PASS: 310 declared abstract post-hold rows')
+        self.assert_cli(self.spec, 0, 'PASS: 328 declared abstract post-hold rows')
 
     # Count occurrences, including multiple markers on one line; do not count matching lines.
     def test_cli_multiple_markers_on_one_line(self):
         line = self.marker_line()
         self.assert_cli(self.spec.replace(line, line + ' ' + line), 1,
                         'abstract post-hold declaration must occur exactly once globally')
-        self.assert_cli(self.spec, 0, 'PASS: 310 declared abstract post-hold rows')
+        self.assert_cli(self.spec, 0, 'PASS: 328 declared abstract post-hold rows')
 
     # A single candidate must be inside A and have the canonical line and valid JSON.
     def test_cli_single_marker_location_and_syntax(self):
@@ -198,7 +198,7 @@ class TimeDeclarationRegressions(unittest.TestCase):
                                 'malformed abstract post-hold declaration')
         self.assert_cli(self.spec.replace(line, '<!-- abstract-post-hold-rows-v1: [ -->'),
                         1, 'malformed abstract post-hold declaration JSON')
-        self.assert_cli(self.spec, 0, 'PASS: 310 declared abstract post-hold rows')
+        self.assert_cli(self.spec, 0, 'PASS: 328 declared abstract post-hold rows')
 
     # Existing missing/in-A duplicate controls still fail through the CLI; clean stays green.
     def test_cli_missing_and_duplicate_marker_controls(self):
@@ -207,7 +207,7 @@ class TimeDeclarationRegressions(unittest.TestCase):
             with self.subTest(count='zero or two'):
                 self.assert_cli(spec, 1,
                                 'abstract post-hold declaration must occur exactly once globally')
-        self.assert_cli(self.spec, 0, 'PASS: 310 declared abstract post-hold rows')
+        self.assert_cli(self.spec, 0, 'PASS: 328 declared abstract post-hold rows')
 
     # Prose can appear before, inside or after A without declaring a second inventory.
     def test_cli_ordinary_prose_is_not_a_declaration(self):
@@ -217,8 +217,8 @@ class TimeDeclarationRegressions(unittest.TestCase):
                          self.spec.replace(self.marker_line(), text + '\n' + self.marker_line()),
                          self.spec + '\n' + text + '\n'):
                 with self.subTest(text=text, position=spec.index(text)):
-                    self.assert_cli(spec, 0, 'PASS: 310 declared abstract post-hold rows')
-        self.assert_cli(self.spec, 0, 'PASS: 310 declared abstract post-hold rows')
+                    self.assert_cli(spec, 0, 'PASS: 328 declared abstract post-hold rows')
+        self.assert_cli(self.spec, 0, 'PASS: 328 declared abstract post-hold rows')
 
     # Word fragments inside longer identifiers never become reserved identifiers.
     def test_cli_longer_identifiers_are_not_declarations(self):
@@ -228,15 +228,15 @@ class TimeDeclarationRegressions(unittest.TestCase):
                          self.spec.replace(self.marker_line(), text + '\n' + self.marker_line()),
                          self.spec + '\n' + text + '\n'):
                 with self.subTest(name=name, position=spec.index(text)):
-                    self.assert_cli(spec, 0, 'PASS: 310 declared abstract post-hold rows')
-        self.assert_cli(self.spec, 0, 'PASS: 310 declared abstract post-hold rows')
+                    self.assert_cli(spec, 0, 'PASS: 328 declared abstract post-hold rows')
+        self.assert_cli(self.spec, 0, 'PASS: 328 declared abstract post-hold rows')
 
     # A bounded marker remains a candidate even in a Markdown fenced example.
     def test_cli_code_block_duplicate_marker(self):
         spec = self.spec + '\n```text\n' + self.marker_line() + '\n```\n'
         self.assert_cli(spec, 1,
                         'abstract post-hold declaration must occur exactly once globally')
-        self.assert_cli(self.spec, 0, 'PASS: 310 declared abstract post-hold rows')
+        self.assert_cli(self.spec, 0, 'PASS: 328 declared abstract post-hold rows')
 
     # Comment context permits fuzzy separators/case and multiline bodies, unlike prose.
     def test_cli_comment_form_variant(self):
@@ -246,7 +246,7 @@ class TimeDeclarationRegressions(unittest.TestCase):
             with self.subTest(extra=extra):
                 self.assert_cli(self.spec + '\n' + extra + '\n', 1,
                                 'abstract post-hold declaration must occur exactly once globally')
-        self.assert_cli(self.spec, 0, 'PASS: 310 declared abstract post-hold rows')
+        self.assert_cli(self.spec, 0, 'PASS: 328 declared abstract post-hold rows')
 
     # The explicit grammar admits bounded names/comments, excluding prose and near names.
     # A canonical header matching both alternatives denotes one candidate, not two.

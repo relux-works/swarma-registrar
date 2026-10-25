@@ -70,7 +70,7 @@ func ExampleLoader_Load() {
 	revision := "1111111111111111111111111111111111111111"
 	entries := []registry.Entry{sign("enrollments/a.json", int64(1), 2), sign("enrollments/b.json", int64(2), 3)}
 	store := &fixtureStore{}
-	loader := registry.Loader{Policy: policy, Verifier: fixtureVerifier{revision, entries}, Store: store}
+	loader := registry.Loader{ObjectFormat: "sha1", Policy: policy, Verifier: fixtureVerifier{revision, entries}, Store: store}
 	snapshot, high, err := loader.Load(registry.Input{Revision: revision, Entries: entries, FirstUse: true})
 	if err != nil {
 		panic(err)

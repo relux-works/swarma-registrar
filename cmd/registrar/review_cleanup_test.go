@@ -47,7 +47,7 @@ func TestReviewShutdownWaitsForPendingAuditCleanup(t *testing.T) {
 			address := make(chan net.Addr, 1)
 			d := dependencies{loadConfig: func(string) (adapters.Config, error) { return f.config, nil }, terminal: func() (io.ReadCloser, error) { return nil, registryFailure() }, listening: func(a net.Addr) { address <- a }}
 			d.open = func(ctx context.Context, c adapters.Config, start time.Time, confirm bool, terminal terminalOpener, out io.Writer) (*runtime, error) {
-				a, err := adapters.NewAudit(ctx, c.AuditFile, nil)
+				a, err := adapters.NewAudit(ctx, c.AuditFile, nil, "sha1")
 				if err != nil {
 					return nil, err
 				}

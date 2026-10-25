@@ -29,7 +29,7 @@ func withKeys(t *testing.T, explicit []any, seeds ...byte) *registry.Snapshot {
 		list[i] = map[string]any{"key": public(seed), "not_before": "2029-01-01T00:00:00Z", "not_after": "2031-01-01T00:00:00Z"}
 	}
 	raw := signed(t, envelope.Enrollment, map[string]any{"type": "enrollment/1", "host": "host-a", "seq": int64(1), "state": "active", "keys": list, "names": map[string]any{"prefix": "host-a_", "explicit": explicit}}, 1)
-	s, _, err := (registry.Loader{Policy: p, Verifier: trust{}, Store: waterStore{}}).Load(registry.Input{Revision: strings.Repeat("2", 40), FirstUse: true, Entries: []registry.Entry{{Path: "enrollments/a.json", Bytes: raw}}})
+	s, _, err := (registry.Loader{ObjectFormat: "sha1", Policy: p, Verifier: trust{}, Store: waterStore{}}).Load(registry.Input{Revision: strings.Repeat("2", 40), FirstUse: true, Entries: []registry.Entry{{Path: "enrollments/a.json", Bytes: raw}}})
 	if err != nil {
 		t.Fatal(err)
 	}

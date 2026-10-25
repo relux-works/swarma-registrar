@@ -47,7 +47,7 @@ func TestCurrentKeyLookupAndCopies(t *testing.T) {
 			entries := []registry.Entry{queryEntry(t, "enrollments/a.json", 1, 2, "active"), queryEntry(t, "enrollments/b.json", 2, 3, state)}
 			revision := "1111111111111111111111111111111111111111"
 			store := &fixtureStore{}
-			loader := registry.Loader{Policy: policy, Verifier: fixtureVerifier{revision, entries}, Store: store}
+			loader := registry.Loader{ObjectFormat: "sha1", Policy: policy, Verifier: fixtureVerifier{revision, entries}, Store: store}
 			snapshot, high, err := loader.Load(registry.Input{Revision: revision, Entries: entries, FirstUse: true})
 			if err != nil {
 				t.Fatal(err)
@@ -122,7 +122,7 @@ func TestMissingPolicyAndValidControl(t *testing.T) {
 	if r != nil || !errors.As(err, &refusal) || refusal.Code != enrollment.RegistryUnavailable {
 		t.Fatal(err)
 	}
-	loader := registry.Loader{Verifier: fixtureVerifier{}, Store: &fixtureStore{}}
+	loader := registry.Loader{ObjectFormat: "sha1", Verifier: fixtureVerifier{}, Store: &fixtureStore{}}
 	s, h, err := loader.Load(registry.Input{Revision: "1111111111111111111111111111111111111111", FirstUse: true})
 	if s != nil || h != nil || !errors.As(err, &refusal) || refusal.Code != registry.RegistryUnavailable {
 		t.Fatal(err)

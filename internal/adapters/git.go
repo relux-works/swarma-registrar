@@ -7,31 +7,27 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/relux-works/swarma-registrar/internal/revision"
 	"github.com/relux-works/swarma-registrar/registry"
 )
-
-var revisionPattern = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
-
-func fullRevision(s string) bool { return revisionPattern.MatchString(s) }
 
 // Git reads only immutable objects from one configured local repository/pin.
 // SSH signatures use a protected allowed-signers file, never repository trust
 // settings or a user keyring. Commands cannot fetch, prompt, invoke a shell,
 // use replace refs, grafts, shallow boundaries, commit graphs, or global/system
 // Git configuration as authority.
-type Git struct{ repository, pin, signers, git, ssh string }
+type Git struct{ repository, pin, signers, git, ssh, objectFormat string }
 
-func NewGit(repository, pin, allowedSigners string) (*Git, error) {
-	return newGit(repository, pin, allowedSigners, protected)
+func NewGit(repository, pin, allowedSigners, objectFormat string) (*Git, error) {
+	return newGit(repository, pin, allowedSigners, objectFormat, protected)
 }
-func newGit(repository, pin, allowedSigners string, guard func(os.FileInfo, int) bool) (*Git, error) {
-	if !absolute(repository) || !absolute(allowedSigners) || !fullRevision(pin) {
+func newGit(repository, pin, allowedSigners, objectFormat string, guard func(os.FileInfo, int) bool) (*Git, error) {
+	if !absolute(repository) || !absolute(allowedSigners) || !revision.Valid(objectFormat, pin) {
 		return nil, failure(registry.RegistryUnavailable)
 	}
 	if _, err := readProtectedWith(allowedSigners, 65536, guard); err != nil {
@@ -45,7 +41,7 @@ func newGit(repository, pin, allowedSigners string, guard func(os.FileInfo, int)
 	if err != nil {
 		return nil, failure(registry.RegistryUnavailable)
 	}
-	return &Git{repository, pin, allowedSigners, git, ssh}, nil
+	return &Git{repository, pin, allowedSigners, git, ssh, objectFormat}, nil
 }
 
 type boundedOutput struct {
@@ -120,7 +116,7 @@ func (g *Git) Read(parent context.Context) ([]registry.Entry, error) {
 		if !strings.HasPrefix(path, "enrollments/") || strings.Contains(strings.TrimPrefix(path, "enrollments/"), "/") || !strings.HasSuffix(path, ".json") {
 			continue
 		}
-		if (meta[0] != "100644" && meta[0] != "100755") || meta[1] != "blob" || !fullRevision(meta[2]) {
+		if (meta[0] != "100644" && meta[0] != "100755") || meta[1] != "blob" || !revision.Valid(g.objectFormat, meta[2]) {
 			return nil, failure(registry.RegistryUnavailable)
 		}
 		sizeRaw, err := g.run(ctx, 64, "cat-file", "-s", meta[2])
@@ -172,7 +168,7 @@ func (g *Git) Verify(revision string, entries []registry.Entry) error {
 	return nil
 }
 func (g *Git) Descends(candidate, previous string) (bool, error) {
-	if candidate != g.pin || !fullRevision(previous) {
+	if candidate != g.pin || !revision.Valid(g.objectFormat, previous) {
 		return false, failure(registry.RegistryUnavailable)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

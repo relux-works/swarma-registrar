@@ -70,6 +70,7 @@ type admissionRegistry struct {
 	RollbackStateAvailable          bool     `json:"rollback_state_available"`
 	PublisherKey                    string   `json:"publisher_key"`
 	StationHosts                    []string `json:"station_hosts"`
+	ObjectFormat                    string   `json:"object_format"`
 	Revision                        string
 	Files                           []struct {
 		Path, Kind string
@@ -476,7 +477,7 @@ func (r *admissionRun) load(t *testing.T, f admissionRegistry, initial bool) *re
 	// rollback-state evidence. Empty storage cannot grant that permission.
 	// Later publications are reloads even if an earlier load returned no state.
 	input := registry.Input{Revision: f.Revision, Entries: entries, Retained: r.store.water.Clone(), FirstUse: initial && f.RollbackStateAvailable, Reconciled: f.RollbackStateAvailable}
-	snapshot, water, err := (registry.Loader{Policy: policy, Verifier: admissionTrust{fixture: f, entries: entries}, Store: r.store}).Load(input)
+	snapshot, water, err := (registry.Loader{ObjectFormat: f.ObjectFormat, Policy: policy, Verifier: admissionTrust{fixture: f, entries: entries}, Store: r.store}).Load(input)
 	if err != nil {
 		if snapshot != nil || water != nil {
 			t.Fatal("refused registry published partial authority")

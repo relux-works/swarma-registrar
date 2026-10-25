@@ -2,6 +2,8 @@
 //
 // Callers supply complete in-memory entries, protected pin provenance, reconciled
 // rollback evidence, signed-commit/ancestry Verifier and durable atomic CAS Store.
+// Loader.ObjectFormat must be the protected "sha1" or "sha256" pin from §4.3;
+// missing/unknown profiles and cross-format IDs refuse as registry_unavailable.
 // Failed reloads require callers to fence admission.
 // The implementation stays internal. Registration-proof verification remains
 // internal and is not provided by these public format packages.

@@ -287,6 +287,11 @@ def registry_verdict(fixture):
     rg=fixture['registry']
     if not all(rg[k] for k in ('available','commit_signature_valid','approved','pin_is_exact','rollback_state_available')) or rg['publisher_key'] is None:
         return 'registry_unavailable',{}
+    object_format=rg.get('object_format')
+    width={'sha1':40,'sha256':64}.get(object_format) if isinstance(object_format,str) else None
+    valid_revision=lambda value: isinstance(value,str) and width is not None and len(value)==width and re.fullmatch(r'[0-9a-f]+',value) is not None
+    if not valid_revision(rg.get('revision')) or (rg['previous_files'] and not valid_revision(rg.get('previous_revision'))):
+        return 'registry_unavailable',{}
     entries=file_entries(rg)
     if rg['previous_files'] and rg['revision']==rg.get('previous_revision'):
         require(rg['descendant'] and entries==file_entries(rg,previous=True),'same revision must identify the same immutable snapshot')

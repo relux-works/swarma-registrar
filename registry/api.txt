@@ -32,6 +32,7 @@ field Input.FirstUse
 field Input.Reconciled
 field Input.Retained
 field Input.Revision
+field Loader.ObjectFormat
 field Loader.Policy
 field Loader.Store
 field Loader.Verifier

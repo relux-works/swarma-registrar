@@ -26,7 +26,7 @@ identifiers are excluded. It then requires exact set equality with rows carrying
 `actual_start_millis`, `start_barrier`, `startup_verified`, `clock_healthy` or
 `clock_fenced`. It checks field presence, including false/default values, in
 `fixture`, `before` and `after`; scheduled `clock` events carrying `healthy` also
-count. All 310 current vectors carry these inputs, including enrollment and
+count. All 328 current vectors carry these inputs, including enrollment and
 codec rows that inherit shared defaults. Duplicate declarations and rows,
 undeclared field-bearing rows and declared field-free rows fail.
 
@@ -53,7 +53,7 @@ The twenty static JSON fixtures under `fixtures/` exercise `check.verify`, inclu
 envelope ids, signatures, ordered verdicts, exact JWT bytes and resulting state.
 They retain the PR1 or PE1 base row metadata so the checker applies ordinary
 signature rules. They are neighbors of those rows, outside the Appendix B file
-inventory; neither the generator nor the 310-vector checker inventory includes
+inventory; neither the generator nor the 328-vector checker inventory includes
 them. The test requires every fixture to be exercised.
 
 Four named tests read the corresponding Appendix B media and name rows directly,
@@ -67,6 +67,7 @@ bytes were constructed independently of the checker. No operational key is used.
 
 | Named test | Required behavior and forbidden neighboring outcome |
 | --- | --- |
+| `test_planned_revision_profiles` | PE16/PE17 publish with their protected format; E115–E130 refuse cross-format, width, case, short, branch, non-hex and missing/unknown profile witnesses. Retained revisions obey the same rule. |
 | `test_media_type_token_boundaries` | `application/json`, `application/json;charset=utf-8` and `Application/JSON;Charset=UtF-8` accept; a space inside `application` refuses as `unsupported_media_type` without reservation. |
 | `test_media_subtype_token_boundaries` | The same valid controls accept; a space inside `json` refuses as `unsupported_media_type` without reservation. |
 | `test_signed_enrollment_structured_union` | A signed structured UID-map name with a leading-hyphen host accepts; putting that name in the legacy-only explicit list or exceeding the mxid byte cap refuses as `enrollment_malformed`, preserving prior authority. |

@@ -52,6 +52,7 @@
           "repeat": 1
         }
       ],
+      "object_format": "sha1",
       "persist_available": true,
       "pin_is_exact": true,
       "previous_files": [],

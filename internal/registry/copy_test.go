@@ -78,7 +78,7 @@ func TestSnapshotCurrentKeyCopyIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	loader := registry.Loader{Policy: policy, Verifier: copyVerifier{bytes.Clone(raw)}, Store: copyStore{}}
+	loader := registry.Loader{ObjectFormat: "sha1", Policy: policy, Verifier: copyVerifier{bytes.Clone(raw)}, Store: copyStore{}}
 	snapshot, _, err := loader.Load(registry.Input{Revision: copyRevision, Entries: []registry.Entry{{Path: "enrollments/host-a.json", Bytes: raw}}, FirstUse: true})
 	if err != nil {
 		t.Fatal("signed-load positive control", err)

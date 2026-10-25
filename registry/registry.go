@@ -35,7 +35,8 @@ type HostWater = core.HostWater
 // HighWater retains the approved revision, historical IDs and permanent ownership attribution.
 type HighWater = core.HighWater
 
-// Loader validates with caller-supplied Policy, Verifier and Store.
+// Loader validates with a protected ObjectFormat ("sha1" or "sha256") and
+// caller-supplied Policy, Verifier and Store. Missing/unknown formats refuse.
 type Loader = library.Loader
 
 // Snapshot provides read-only current records, exact key lookup and name authorization.

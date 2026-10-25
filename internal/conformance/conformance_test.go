@@ -56,6 +56,7 @@ type registryFixture struct {
 	PreviousPublisherKey   string   `json:"previous_publisher_key"`
 	StationHosts           []string `json:"station_hosts"`
 	NonstationHosts        []string `json:"nonstation_hosts"`
+	ObjectFormat           string   `json:"object_format"`
 	Revision               string
 	PreviousRevision       string `json:"previous_revision"`
 	FirstUse               *bool  `json:"first_use"`
@@ -277,6 +278,24 @@ var executedRows = map[string]string{
 	"E114": "registry-bootstrap",
 	"PE14": "registry-bootstrap",
 	"PE15": "registry-bootstrap",
+	"E115": "registry-bootstrap",
+	"E116": "registry-bootstrap",
+	"E117": "registry-bootstrap",
+	"E118": "registry-bootstrap",
+	"E119": "registry-bootstrap",
+	"E120": "registry-bootstrap",
+	"E121": "registry-bootstrap",
+	"E122": "registry-bootstrap",
+	"E123": "registry-bootstrap",
+	"E124": "registry-bootstrap",
+	"E125": "registry-bootstrap",
+	"E126": "registry-bootstrap",
+	"E127": "registry-bootstrap",
+	"E128": "registry-bootstrap",
+	"E129": "registry-bootstrap",
+	"E130": "registry-bootstrap",
+	"PE16": "registry-bootstrap",
+	"PE17": "registry-bootstrap",
 	"E01":  "envelope",
 	"E02":  "envelope",
 	"E03":  "envelope",

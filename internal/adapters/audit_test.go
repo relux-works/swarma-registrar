@@ -40,7 +40,7 @@ func editAudit(t *testing.T, line []byte, edit func(map[string]any)) []byte {
 func auditFixture(t *testing.T, remote Remote) (*Audit, string) {
 	t.Helper()
 	path := filepath.Join(tempDir(t), "audit")
-	a, err := NewAudit(context.Background(), path, remote)
+	a, err := NewAudit(context.Background(), path, remote, "sha1")
 	if err != nil {
 		t.Fatal("audit fixture")
 	}
@@ -171,14 +171,14 @@ func TestAuditCorruptStartupAndProbe(t *testing.T) {
 	path := filepath.Join(tempDir(t), "audit")
 	line := auditLine(t, 1, strings.Repeat("0", 64))
 	write(t, path, line[:len(line)-1], 0600)
-	_, err := NewAudit(context.Background(), path, nil)
+	_, err := NewAudit(context.Background(), path, nil, "sha1")
 	wantCode(t, err, auditUnavailable)
 	raw, _ := os.ReadFile(path)
 	if !bytes.Equal(raw, line[:len(line)-1]) {
 		t.Fatal("torn record rewritten")
 	}
 	write(t, path, line, 0600)
-	a, err := NewAudit(context.Background(), path, nil)
+	a, err := NewAudit(context.Background(), path, nil, "sha1")
 	if err != nil {
 		t.Fatal("valid retained control")
 	}
@@ -187,7 +187,7 @@ func TestAuditCorruptStartupAndProbe(t *testing.T) {
 	if err = a.Probe(context.Background(), a.Head()); err != nil {
 		t.Fatal("exact tip control")
 	}
-	_, err = NewAudit(context.Background(), path, nil)
+	_, err = NewAudit(context.Background(), path, nil, "sha1")
 	wantCode(t, err, auditUnavailable)
 }
 
@@ -287,7 +287,7 @@ func TestAuditFilesystemFailures(t *testing.T) {
 	wantCode(t, a.Probe(context.Background(), a.Head()), auditUnavailable)
 	link := filepath.Join(tempDir(t), "link")
 	os.Symlink(replacement, link)
-	_, err := NewAudit(context.Background(), link, nil)
+	_, err := NewAudit(context.Background(), link, nil, "sha1")
 	wantCode(t, err, auditUnavailable)
 	a.file.Close()
 	wantCode(t, a.Probe(context.Background(), a.Head()), auditUnavailable)

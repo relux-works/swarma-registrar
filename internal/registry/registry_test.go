@@ -94,7 +94,7 @@ func loader(t *testing.T) (Loader, *verifier, *store) {
 	}
 	v := &verifier{descendant: true}
 	s := &store{}
-	return Loader{Policy: p, Verifier: v, Store: s}, v, s
+	return Loader{ObjectFormat: "sha1", Policy: p, Verifier: v, Store: s}, v, s
 }
 func bootstrap(t *testing.T, l Loader, entries ...Entry) (*Snapshot, *HighWater) {
 	t.Helper()

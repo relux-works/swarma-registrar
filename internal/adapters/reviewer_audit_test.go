@@ -82,7 +82,7 @@ func TestReviewAuditReplay(t *testing.T) {
 		t.Fatal("close fixture")
 	}
 	freshRemote := &remoteFixture{}
-	fresh, err := NewAudit(context.Background(), path, freshRemote)
+	fresh, err := NewAudit(context.Background(), path, freshRemote, "sha1")
 	if err != nil {
 		t.Fatal("valid restart")
 	}

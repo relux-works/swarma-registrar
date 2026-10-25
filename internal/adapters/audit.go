@@ -20,6 +20,7 @@ import (
 	"github.com/relux-works/swarma-registrar/internal/envelope"
 	"github.com/relux-works/swarma-registrar/internal/refusal"
 	"github.com/relux-works/swarma-registrar/internal/registration"
+	"github.com/relux-works/swarma-registrar/internal/revision"
 )
 
 var auditID = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
@@ -46,22 +47,23 @@ type Remote interface {
 // Audit holds one exclusive local writer and validates the complete retained
 // chain. Local recording is usable without Remote; Acknowledge then fails closed.
 type Audit struct {
-	mu          sync.Mutex
-	file        *os.File
-	path        string
-	head        Head
-	size        int64
-	bad, closed bool
-	remote      Remote
-	remoteGate  chan struct{}
-	acked       Head
-	ackOffset   int64
+	mu           sync.Mutex
+	file         *os.File
+	path         string
+	objectFormat string
+	head         Head
+	size         int64
+	bad, closed  bool
+	remote       Remote
+	remoteGate   chan struct{}
+	acked        Head
+	ackOffset    int64
 }
 
-func NewAudit(parent context.Context, path string, remote Remote) (*Audit, error) {
+func NewAudit(parent context.Context, path string, remote Remote, objectFormat string) (*Audit, error) {
 	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
-	if !absolute(path) || !privateDirectory(filepath.Dir(path)) {
+	if revision.Size(objectFormat) == 0 || !absolute(path) || !privateDirectory(filepath.Dir(path)) {
 		return nil, failure(auditUnavailable)
 	}
 	f, err := nofollow(path, syscall.O_RDWR|syscall.O_APPEND|syscall.O_CREAT, 0600)
@@ -76,7 +78,7 @@ func NewAudit(parent context.Context, path string, remote Remote) (*Audit, error
 	if err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		return fail()
 	}
-	a := &Audit{file: f, path: path, head: firstHead(), remote: remote, remoteGate: make(chan struct{}, 1), acked: firstHead()}
+	a := &Audit{file: f, path: path, objectFormat: objectFormat, head: firstHead(), remote: remote, remoteGate: make(chan struct{}, 1), acked: firstHead()}
 	a.remoteGate <- struct{}{}
 	head, size, err := a.scan(ctx)
 	if err != nil {
@@ -99,7 +101,7 @@ func NewAudit(parent context.Context, path string, remote Remote) (*Audit, error
 	return a, nil
 }
 func (a *Audit) Head() Head { a.mu.Lock(); defer a.mu.Unlock(); return a.head }
-func inspectLine(line []byte) (map[string]any, error) {
+func inspectLine(line []byte, objectFormat string) (map[string]any, error) {
 	bad := func() (map[string]any, error) { return nil, failure(auditUnavailable) }
 	if len(line) > maxAuditLine || len(line) < 2 || line[len(line)-1] != '\n' {
 		return bad()
@@ -162,7 +164,7 @@ func inspectLine(line []byte) (map[string]any, error) {
 	}
 	if obj["registry_revision"] != nil {
 		s, ok := obj["registry_revision"].(string)
-		if !ok || !fullRevision(s) {
+		if !ok || !revision.Valid(objectFormat, s) {
 			return bad()
 		}
 	}
@@ -257,7 +259,7 @@ func (a *Audit) scan(ctx context.Context) (Head, int64, error) {
 		if err != nil {
 			return Head{}, 0, err
 		}
-		obj, err := inspectLine(line)
+		obj, err := inspectLine(line, a.objectFormat)
 		if err != nil || obj["seq"] != head.Sequence+1 || obj["prev_hash"] != head.Hash {
 			return Head{}, 0, failure(auditUnavailable)
 		}
@@ -272,7 +274,7 @@ func (a *Audit) Append(ctx context.Context, line []byte) error {
 	if a.closed || a.bad || ctx.Err() != nil {
 		return failure(auditUnavailable)
 	}
-	obj, err := inspectLine(line)
+	obj, err := inspectLine(line, a.objectFormat)
 	if err != nil || obj["seq"] != a.head.Sequence+1 || obj["prev_hash"] != a.head.Hash {
 		return failure(auditUnavailable)
 	}
@@ -334,7 +336,7 @@ func (a *Audit) Acknowledge(ctx context.Context, line []byte) error {
 	case <-a.remoteGate:
 	}
 	defer func() { a.remoteGate <- struct{}{} }()
-	target, err := inspectLine(line)
+	target, err := inspectLine(line, a.objectFormat)
 	if err != nil {
 		return err
 	}
@@ -358,7 +360,7 @@ func (a *Audit) Acknowledge(ctx context.Context, line []byte) error {
 		if err != nil {
 			return failure(auditUnavailable)
 		}
-		obj, err := inspectLine(local)
+		obj, err := inspectLine(local, a.objectFormat)
 		if err != nil || obj["seq"] != cursor.Sequence+1 || obj["prev_hash"] != cursor.Hash {
 			return failure(auditUnavailable)
 		}

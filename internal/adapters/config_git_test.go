@@ -59,7 +59,7 @@ func wantCode(t *testing.T, err error, code refusal.Code) {
 }
 func configBytes(t *testing.T, root string) []byte {
 	t.Helper()
-	raw, err := json.Marshal(map[string]any{"v": 1, "audience": "example.org", "repository": root, "revision": strings.Repeat("1", 40), "allowed_signers": filepath.Join(root, "allowed"), "publisher_key": testPublic(1), "stations": map[string]bool{"host-a": false}, "high_water": filepath.Join(root, "water"), "signing_key": filepath.Join(root, "signer"), "audit_file": filepath.Join(root, "audit")})
+	raw, err := json.Marshal(map[string]any{"v": 1, "audience": "example.org", "repository": root, "revision": strings.Repeat("1", 40), "object_format": "sha1", "allowed_signers": filepath.Join(root, "allowed"), "publisher_key": testPublic(1), "stations": map[string]bool{"host-a": false}, "high_water": filepath.Join(root, "water"), "signing_key": filepath.Join(root, "signer"), "audit_file": filepath.Join(root, "audit")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +246,7 @@ func (f *gitFixture) commit(t *testing.T, signed bool) {
 }
 func (f *gitFixture) adapter(t *testing.T) *Git {
 	t.Helper()
-	g, err := newGit(f.dir, f.pin, f.allowed, rootFixture)
+	g, err := newGit(f.dir, f.pin, f.allowed, "sha1", rootFixture)
 	if err != nil {
 		t.Fatal("Git fixture adapter")
 	}
@@ -290,7 +290,7 @@ func TestGitEntryBinding(t *testing.T) {
 		wantCode(t, g.Verify(f.pin, bad), registry.RegistryUnavailable)
 	}
 	wantCode(t, g.Verify(strings.Repeat("a", 40), entries), registry.RegistryUnavailable)
-	if _, err = newGit(f.dir, "main", f.allowed, rootFixture); err == nil {
+	if _, err = newGit(f.dir, "main", f.allowed, "sha1", rootFixture); err == nil {
 		t.Fatal("symbolic pin accepted")
 	}
 	write(t, filepath.Join(f.dir, "enrollments/a.json"), []byte("dirty"), 0600)

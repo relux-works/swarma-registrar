@@ -1173,13 +1173,13 @@ These fixtures test barrier, skew and fence rules; they do not execute or qualif
 the provider checks/monotonic hold and are not production startup traces.
 R125 is the explicit example: its restart 0.2 seconds after the last old
 admission is not realizable under the 4-second hold with the common bound;
-it remains a correct isolated test of `iat = barrier - 1` refusal. All 310
+it remains a correct isolated test of `iat = barrier - 1` refusal. All 328
 existing rows and their vector bytes remain unchanged. The real startup
 protocol is planned separately in B.3.
 The machine-readable declaration below enumerates every legacy row carrying
 these inputs, including enrollment and codec rows with shared fixture defaults.
 
-<!-- abstract-post-hold-rows-v1: ["E01", "E02", "E03", "E04", "E05", "E06", "E07", "E08", "E09", "E10", "E100", "E101", "E102", "E103", "E104", "E105", "E106", "E107", "E108", "E109", "E11", "E110", "E111", "E112", "E113", "E114", "E12", "E13", "E14", "E15", "E16", "E17", "E18", "E19", "E20", "E21", "E22", "E23", "E24", "E25", "E26", "E27", "E28", "E29", "E30", "E31", "E32", "E33", "E34", "E35", "E36", "E37", "E38", "E39", "E40", "E41", "E42", "E43", "E44", "E45", "E46", "E47", "E48", "E49", "E50", "E51", "E52", "E53", "E54", "E55", "E56", "E57", "E58", "E59", "E60", "E61", "E62", "E63", "E64", "E65", "E66", "E67", "E68", "E69", "E70", "E71", "E72", "E73", "E74", "E75", "E76", "E77", "E78", "E79", "E80", "E81", "E82", "E83", "E84", "E85", "E86", "E87", "E88", "E89", "E90", "E91", "E92", "E93", "E94", "E95", "E96", "E97", "E98", "E99", "PC1", "PC10", "PC2", "PC3", "PC4", "PC5", "PC6", "PC7", "PC8", "PC9", "PE1", "PE10", "PE11", "PE12", "PE13", "PE14", "PE15", "PE2", "PE3", "PE4", "PE5", "PE6", "PE7", "PE8", "PE9", "PR1", "PR10", "PR11", "PR12", "PR13", "PR14", "PR15", "PR16", "PR17", "PR18", "PR19", "PR2", "PR20", "PR21", "PR22", "PR23", "PR24", "PR25", "PR26", "PR27", "PR28", "PR29", "PR3", "PR30", "PR31", "PR32", "PR33", "PR4", "PR5", "PR6", "PR7", "PR8", "PR9", "R01", "R02", "R03", "R04", "R05", "R06", "R07", "R08", "R09", "R10", "R100", "R101", "R102", "R103", "R104", "R105", "R106", "R107", "R108", "R109", "R11", "R110", "R111", "R112", "R114", "R115", "R116", "R117", "R118", "R119", "R12", "R120", "R121", "R122", "R123", "R124", "R125", "R126", "R127", "R128", "R129", "R13", "R130", "R131", "R132", "R133", "R134", "R135", "R136", "R137", "R138", "R139", "R14", "R15", "R16", "R17", "R18", "R19", "R20", "R21", "R22", "R23", "R24", "R25", "R26", "R27", "R28", "R29", "R30", "R31", "R32", "R33", "R34", "R35", "R36", "R37", "R38", "R39", "R40", "R41", "R42", "R43", "R44", "R45", "R46", "R47", "R48", "R49", "R50", "R51", "R52", "R53", "R54", "R55", "R56", "R57", "R58", "R59", "R60", "R61", "R62", "R63", "R64", "R65", "R66", "R67", "R68", "R69", "R70", "R71", "R72", "R73", "R74", "R75", "R76", "R77", "R78", "R79", "R80", "R81", "R82", "R83", "R84", "R85", "R86", "R87", "R88", "R89", "R90", "R91", "R92", "R93", "R94", "R95", "R96", "R97", "R98", "R99"] -->
+<!-- abstract-post-hold-rows-v1: ["E01", "E02", "E03", "E04", "E05", "E06", "E07", "E08", "E09", "E10", "E100", "E101", "E102", "E103", "E104", "E105", "E106", "E107", "E108", "E109", "E11", "E110", "E111", "E112", "E113", "E114", "E115", "E116", "E117", "E118", "E119", "E12", "E120", "E121", "E122", "E123", "E124", "E125", "E126", "E127", "E128", "E129", "E13", "E130", "E14", "E15", "E16", "E17", "E18", "E19", "E20", "E21", "E22", "E23", "E24", "E25", "E26", "E27", "E28", "E29", "E30", "E31", "E32", "E33", "E34", "E35", "E36", "E37", "E38", "E39", "E40", "E41", "E42", "E43", "E44", "E45", "E46", "E47", "E48", "E49", "E50", "E51", "E52", "E53", "E54", "E55", "E56", "E57", "E58", "E59", "E60", "E61", "E62", "E63", "E64", "E65", "E66", "E67", "E68", "E69", "E70", "E71", "E72", "E73", "E74", "E75", "E76", "E77", "E78", "E79", "E80", "E81", "E82", "E83", "E84", "E85", "E86", "E87", "E88", "E89", "E90", "E91", "E92", "E93", "E94", "E95", "E96", "E97", "E98", "E99", "PC1", "PC10", "PC2", "PC3", "PC4", "PC5", "PC6", "PC7", "PC8", "PC9", "PE1", "PE10", "PE11", "PE12", "PE13", "PE14", "PE15", "PE16", "PE17", "PE2", "PE3", "PE4", "PE5", "PE6", "PE7", "PE8", "PE9", "PR1", "PR10", "PR11", "PR12", "PR13", "PR14", "PR15", "PR16", "PR17", "PR18", "PR19", "PR2", "PR20", "PR21", "PR22", "PR23", "PR24", "PR25", "PR26", "PR27", "PR28", "PR29", "PR3", "PR30", "PR31", "PR32", "PR33", "PR4", "PR5", "PR6", "PR7", "PR8", "PR9", "R01", "R02", "R03", "R04", "R05", "R06", "R07", "R08", "R09", "R10", "R100", "R101", "R102", "R103", "R104", "R105", "R106", "R107", "R108", "R109", "R11", "R110", "R111", "R112", "R114", "R115", "R116", "R117", "R118", "R119", "R12", "R120", "R121", "R122", "R123", "R124", "R125", "R126", "R127", "R128", "R129", "R13", "R130", "R131", "R132", "R133", "R134", "R135", "R136", "R137", "R138", "R139", "R14", "R15", "R16", "R17", "R18", "R19", "R20", "R21", "R22", "R23", "R24", "R25", "R26", "R27", "R28", "R29", "R30", "R31", "R32", "R33", "R34", "R35", "R36", "R37", "R38", "R39", "R40", "R41", "R42", "R43", "R44", "R45", "R46", "R47", "R48", "R49", "R50", "R51", "R52", "R53", "R54", "R55", "R56", "R57", "R58", "R59", "R60", "R61", "R62", "R63", "R64", "R65", "R66", "R67", "R68", "R69", "R70", "R71", "R72", "R73", "R74", "R75", "R76", "R77", "R78", "R79", "R80", "R81", "R82", "R83", "R84", "R85", "R86", "R87", "R88", "R89", "R90", "R91", "R92", "R93", "R94", "R95", "R96", "R97", "R98", "R99"] -->
 
 For the legacy restart traces the prior process has injected start offset 0
 (old barrier 31), before the stated first proof. Unless a row explicitly injects
@@ -1231,7 +1231,7 @@ profile refines the general stage profile; unmentioned state stays unchanged:
 | Rows / reached stage | Authority | Nonce / limiter changes | Audit / readiness |
 | --- | --- | --- | --- |
 | All enrollment rejection rows | Accepted snapshot, pins and high-water stay unchanged. | Neither admission cache nor budgets change. | No admission-audit event; restricted loader diagnostic is permitted; admission fenced. |
-| All enrollment positive controls PE1–PE15 | Install only the exact validated candidate and its durable high-water. | Admission accounting unchanged. | No admission-audit event; readiness healthy. |
+| All enrollment positive controls PE1–PE17 | Install only the exact validated candidate and its durable high-water. | Admission accounting unchanged. | No admission-audit event; readiness healthy. |
 | Registration refusal before row 18, excluding R106 | Unchanged except explicit scheduled operator inputs. | No reservation or debit. | One refusal append/ack with healthy audit; R79/R80 require clock fencing, R94 requires registry fencing. |
 | R86/R87/R105/R111/R129, plus the final attempt in R88 | Unchanged. | Budget-full refusal debits neither and inserts no nonce; R111 checks release time is not extended. | One rate_limited refusal, healthy readiness. |
 | R83/R84, plus R99 retry | Unchanged. | One debit per budget; retained nonce unchanged. | One nonce_replayed refusal; no issued line for this attempt. |
@@ -1255,8 +1255,8 @@ Canonicalization-only rows test the CCJ-1 codec independently of the body
 schema; their success is `accept (codec)`. All other accepts mean admission,
 registry installation or the specified emission assertion, not just parsing.
 
-The two-domain byte-vector plan contains **310 rows**: registration/1 has 138 negative and 33 positive
-rows; enrollment/1 has 114 negative and 25 positive rows, including the ten
+The two-domain byte-vector plan contains **328 rows**: registration/1 has 138 negative and 33 positive
+rows; enrollment/1 has 130 negative and 27 positive rows, including the ten
 codec controls. These are planned rows, not a count of implemented fixtures.
 Section B.2 adds separate witness-lifecycle plans, not byte-vector files.
 
@@ -1468,6 +1468,22 @@ audience. All other prerequisites and healthy audit use Appendix A defaults.
 | E77 | enrollment/1 | Revision rollback | Candidate pin is ancestor of accepted revision | registry_rollback | PE6 |
 | E78 | enrollment/1 | Commit trust | Pinned commit has an invalid or unapproved signer | registry_unavailable | PE1 |
 | E79 | enrollment/1 | Commit pin | Mutable branch used instead of exact object id | registry_unavailable | PE1 |
+| E115 | enrollment/1 | Protected sha1 revision profile | 64 lowercase hex characters; protected `object_format=sha1`, otherwise PE16 | registry_unavailable | PE16 |
+| E116 | enrollment/1 | Protected sha1 revision profile | 39 lowercase hex characters; protected `object_format=sha1`, otherwise PE16 | registry_unavailable | PE16 |
+| E117 | enrollment/1 | Protected sha1 revision profile | 41 lowercase hex characters; protected `object_format=sha1`, otherwise PE16 | registry_unavailable | PE16 |
+| E118 | enrollment/1 | Protected sha1 revision profile | 40 uppercase hex characters; protected `object_format=sha1`, otherwise PE16 | registry_unavailable | PE16 |
+| E119 | enrollment/1 | Protected sha1 revision profile | Abbreviated id `abcdef1`; protected `object_format=sha1`, otherwise PE16 | registry_unavailable | PE16 |
+| E120 | enrollment/1 | Protected sha1 revision profile | Branch name `main`; protected `object_format=sha1`, otherwise PE16 | registry_unavailable | PE16 |
+| E121 | enrollment/1 | Protected sha256 revision profile | 40 lowercase hex characters; protected `object_format=sha256`, otherwise PE17 | registry_unavailable | PE17 |
+| E122 | enrollment/1 | Protected sha256 revision profile | 63 lowercase hex characters; protected `object_format=sha256`, otherwise PE17 | registry_unavailable | PE17 |
+| E123 | enrollment/1 | Protected sha256 revision profile | 65 lowercase hex characters; protected `object_format=sha256`, otherwise PE17 | registry_unavailable | PE17 |
+| E124 | enrollment/1 | Protected sha256 revision profile | 64 uppercase hex characters; protected `object_format=sha256`, otherwise PE17 | registry_unavailable | PE17 |
+| E125 | enrollment/1 | Protected sha256 revision profile | Abbreviated id `abcdef1`; protected `object_format=sha256`, otherwise PE17 | registry_unavailable | PE17 |
+| E126 | enrollment/1 | Protected sha256 revision profile | Branch name `main`; protected `object_format=sha256`, otherwise PE17 | registry_unavailable | PE17 |
+| E127 | enrollment/1 | Required object format | Omit protected `object_format`; otherwise PE16 | registry_unavailable | PE16 |
+| E128 | enrollment/1 | Closed object format | Protected `object_format=sha512`; otherwise PE16 | registry_unavailable | PE16 |
+| E129 | enrollment/1 | Non-hex sha1 revision | 39 lowercase hex characters followed by `g`; otherwise PE16 | registry_unavailable | PE16 |
+| E130 | enrollment/1 | Non-hex sha256 revision | 63 lowercase hex characters followed by `g`; otherwise PE17 | registry_unavailable | PE17 |
 | E80 | enrollment/1 | Snapshot atomicity | One malformed high-seq record beside valid older record | enrollment_malformed; no fallback | PE4 |
 | E81 | enrollment/1 | Restore freshness | High-water evidence lost after restoration | registry_unavailable; admission fenced | PE6 |
 | E82 | enrollment/1 | Enrollment byte cap | Envelope file is 65,537 bytes | enrollment_malformed | PE1 |
@@ -1577,6 +1593,8 @@ audience. All other prerequisites and healthy audit use Appendix A defaults.
 | PR33 | registration/1 | Complete field-value OWS | PR31 with Content-Type ` \tapplication/json;charset=utf-8\t `, where `\t` denotes HTAB | accept | PR31 |
 | PE14 | enrollment/1 | Leading-hyphen structured UID name | Valid publisher-signed station enrollment for host `-node`, prefix `-node_`, UID-map name `-node_project_role`, default audience | accept | PE1 |
 | PE15 | enrollment/1 | Leading-hyphen structured UID name at mxid cap | PE14 with the configured 235-byte audience above; UID-map name `-node_project_role` makes the mxid exactly 255 bytes | accept | PE14 |
+| PE16 | enrollment/1 | Protected sha1 revision control | Exact 40 lowercase hex characters with protected `object_format=sha1`; otherwise PE1 | accept | PE1 |
+| PE17 | enrollment/1 | Protected sha256 revision control | Exact 64 lowercase hex characters with protected `object_format=sha256`; otherwise PE1 | accept | PE1 |
 | PC1 | enrollment/1 | CCJ codec: Object order | Keys include a supplementary scalar and a BMP scalar; sort by scalar, not UTF-16 code unit | accept (codec) | PC1 |
 | PC2 | enrollment/1 | CCJ codec: Whitespace | No insignificant whitespace in canonical output | accept (codec) | PC2 |
 | PC3 | enrollment/1 | CCJ codec: Array order | Distinct array values retain input order | accept (codec) | PC3 |
@@ -1635,7 +1653,7 @@ These are planned gates, not passing implementation evidence.
 ### B.2 External-witness lifecycle (normative plan; no fixtures yet)
 
 These 37 additional rows plan §4.5 state transitions. W/PW identifiers are
-separate from the 310 byte-vector rows above; no witness fixture or executable
+separate from the 328 byte-vector rows above; no witness fixture or executable
 conformance is claimed. Each case starts with a valid signed registry and
 protected configuration. Unless changed below, local state L and latest durable
 witness resolved-commit state L have equal digest/revision at sequence n, with
@@ -1702,7 +1720,7 @@ not a negative test that can claim detection from equal hashes.
 
 ### B.3 Platform-time provider and startup lifecycle (normative plan; no fixtures yet)
 
-These 33 plans are separate from the 310 byte rows, B.1 integration
+These 33 plans are separate from the 328 byte rows, B.1 integration
 plans and B.2 witness plans. T/PT ids do not add vector files or claim executable
 startup qualification. Negative rows precede their resolving positive controls.
 Use one serving instance, an excluded prior instance, otherwise valid registry,
@@ -1762,35 +1780,6 @@ A future lifecycle harness must kill bounded controls that (a) skip/shorten the
 hold at T2/T3, (b) use only the new sample at T4, (c) ignore the second check at
 T14 and (d) ignore subsecond backward steps at T17, while PT controls remain
 green. These are planned requirements, not passing production-test evidence.
-
-### B.4 Revision-format vectors planned for the format-pin code change
-
-These 18 planned rows specify the protected profile in §4.3. They are outside
-both the current 310-row legacy byte inventory and its abstract post-hold
-declaration. Their vector files and executable checks arrive with the format-pin
-code change; until then the known divergence in §4.3 applies. Negative rows
-precede their positive controls.
-
-| Id | Domain | Rule | Defect / boundary | Expected outcome | Positive control |
-| --- | --- | --- | --- | --- | --- |
-| E115 | enrollment/1 | Protected sha1 revision profile | 64 lowercase hex characters; protected `object_format=sha1`, otherwise PE16 | registry_unavailable | PE16 |
-| E116 | enrollment/1 | Protected sha1 revision profile | 39 lowercase hex characters; protected `object_format=sha1`, otherwise PE16 | registry_unavailable | PE16 |
-| E117 | enrollment/1 | Protected sha1 revision profile | 41 lowercase hex characters; protected `object_format=sha1`, otherwise PE16 | registry_unavailable | PE16 |
-| E118 | enrollment/1 | Protected sha1 revision profile | 40 uppercase hex characters; protected `object_format=sha1`, otherwise PE16 | registry_unavailable | PE16 |
-| E119 | enrollment/1 | Protected sha1 revision profile | Abbreviated id `abcdef1`; protected `object_format=sha1`, otherwise PE16 | registry_unavailable | PE16 |
-| E120 | enrollment/1 | Protected sha1 revision profile | Branch name `main`; protected `object_format=sha1`, otherwise PE16 | registry_unavailable | PE16 |
-| E121 | enrollment/1 | Protected sha256 revision profile | 40 lowercase hex characters; protected `object_format=sha256`, otherwise PE17 | registry_unavailable | PE17 |
-| E122 | enrollment/1 | Protected sha256 revision profile | 63 lowercase hex characters; protected `object_format=sha256`, otherwise PE17 | registry_unavailable | PE17 |
-| E123 | enrollment/1 | Protected sha256 revision profile | 65 lowercase hex characters; protected `object_format=sha256`, otherwise PE17 | registry_unavailable | PE17 |
-| E124 | enrollment/1 | Protected sha256 revision profile | 64 uppercase hex characters; protected `object_format=sha256`, otherwise PE17 | registry_unavailable | PE17 |
-| E125 | enrollment/1 | Protected sha256 revision profile | Abbreviated id `abcdef1`; protected `object_format=sha256`, otherwise PE17 | registry_unavailable | PE17 |
-| E126 | enrollment/1 | Protected sha256 revision profile | Branch name `main`; protected `object_format=sha256`, otherwise PE17 | registry_unavailable | PE17 |
-| E127 | enrollment/1 | Required object format | Omit protected `object_format`; otherwise PE16 | registry_unavailable | PE16 |
-| E128 | enrollment/1 | Closed object format | Protected `object_format=sha512`; otherwise PE16 | registry_unavailable | PE16 |
-| E129 | enrollment/1 | Non-hex sha1 revision | 39 lowercase hex characters followed by `g`; otherwise PE16 | registry_unavailable | PE16 |
-| E130 | enrollment/1 | Non-hex sha256 revision | 63 lowercase hex characters followed by `g`; otherwise PE17 | registry_unavailable | PE17 |
-| PE16 | enrollment/1 | Protected sha1 revision control | Exact 40 lowercase hex characters with protected `object_format=sha1`; otherwise PE1 | accept | PE1 |
-| PE17 | enrollment/1 | Protected sha256 revision control | Exact 64 lowercase hex characters with protected `object_format=sha256`; otherwise PE1 | accept | PE1 |
 
 ## Appendix C. Decisions, open questions and source-gap choices (informative)
 

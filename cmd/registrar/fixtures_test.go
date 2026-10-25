@@ -83,14 +83,14 @@ type fixtureData struct {
 
 func fixture(t *testing.T) *fixtureData {
 	t.Helper()
-	c := adapters.Config{Audience: "example.org", Revision: strings.Repeat("1", 40), PublisherKey: public(1), Stations: map[string]bool{"host-a": false}, PerKey: 10, PerName: 3, Listen: "127.0.0.1:0"}
+	c := adapters.Config{ObjectFormat: "sha1", Audience: "example.org", Revision: strings.Repeat("1", 40), PublisherKey: public(1), Stations: map[string]bool{"host-a": false}, PerKey: 10, PerName: 3, Listen: "127.0.0.1:0"}
 	dir := privateDir(t)
 	c.HighWater = filepath.Join(dir, "water")
 	c.AuditFile = filepath.Join(dir, "audit")
 	c.SigningKey = filepath.Join(dir, "key")
 	raw, id := signed(t, envelope.Enrollment, map[string]any{"type": "enrollment/1", "host": "host-a", "seq": int64(1), "state": "active", "keys": []any{map[string]any{"key": public(2), "not_before": "2020-01-01T00:00:00Z", "not_after": "2040-01-01T00:00:00Z"}}, "names": map[string]any{"prefix": "host-a_", "explicit": []any{}}}, 1)
 	source := &testSource{entries: []registry.Entry{{Path: "enrollments/a.json", Bytes: raw}}, revision: c.Revision}
-	store, err := adapters.NewFileStore(c.HighWater)
+	store, err := adapters.NewFileStore(c.HighWater, "sha1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func fixture(t *testing.T) *fixtureData {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := (registry.Loader{Policy: policy, Verifier: source, Store: store}).Load(registry.Input{Revision: c.Revision, Entries: source.entries, FirstUse: true}); err != nil {
+	if _, _, err := (registry.Loader{ObjectFormat: "sha1", Policy: policy, Verifier: source, Store: store}).Load(registry.Input{Revision: c.Revision, Entries: source.entries, FirstUse: true}); err != nil {
 		t.Fatal(err)
 	}
 	key, err := x509.MarshalPKCS8PrivateKey(private(9))

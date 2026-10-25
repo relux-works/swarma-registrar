@@ -93,6 +93,7 @@
       ],
       "persist_available": true,
       "pin_is_exact": true,
+      "object_format": "sha1",
       "previous_files": [],
       "publisher_key": "ed25519:PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw",
       "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",

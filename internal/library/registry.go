@@ -10,9 +10,11 @@ import (
 // ancestry, and never follows a branch. Store atomically compares and durably
 // replaces high-water state before Load returns authority. See spec §§4.3–4.4.
 type Loader struct {
-	Policy   *Policy
-	Verifier core.Verifier
-	Store    core.Store
+	// ObjectFormat is a protected pin: exactly "sha1" or "sha256", never inferred.
+	ObjectFormat string
+	Policy       *Policy
+	Verifier     core.Verifier
+	Store        core.Store
 }
 
 // Load delegates all validation and persistence to the existing phased loader.
@@ -22,7 +24,7 @@ func (l Loader) Load(in core.Input) (*Snapshot, *core.HighWater, error) {
 	if l.Policy != nil {
 		policy = l.Policy.inner
 	}
-	s, h, err := (core.Loader{Policy: policy, Verifier: l.Verifier, Store: l.Store}).Load(in)
+	s, h, err := (core.Loader{ObjectFormat: l.ObjectFormat, Policy: policy, Verifier: l.Verifier, Store: l.Store}).Load(in)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -89,7 +89,7 @@ func TestReconcileMissingStateNeedsConfiguredPin(t *testing.T) {
 		t.Run(fmt.Sprint(firstUse), func(t *testing.T) {
 			f := fixture(t)
 			path := filepath.Join(privateDir(t), "water")
-			store, err := adapters.NewFileStore(path)
+			store, err := adapters.NewFileStore(path, "sha1")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -194,7 +194,7 @@ func digest(t *testing.T, s *adapters.FileStore) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d, err := adapters.HighWaterDigest(w)
+	d, err := adapters.HighWaterDigest(w, "sha1")
 	if err != nil {
 		t.Fatal(err)
 	}

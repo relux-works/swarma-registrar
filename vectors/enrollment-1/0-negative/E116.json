@@ -1,0 +1,77 @@
+{
+  "claim": "Protected sha1 revision profile: 39 lowercase hex characters; protected `object_format=sha1`, otherwise PE16",
+  "domain": "enrollment/1",
+  "expected": {
+    "code": "registry_unavailable",
+    "state": {
+      "admission_ready": false,
+      "audit_outcomes": [],
+      "authority": {
+        "record_ids": [],
+        "revision": null
+      },
+      "authority_installed": false,
+      "limiter_events": [],
+      "nonce_cache": [],
+      "prior_authority_preserved": true
+    }
+  },
+  "fixture": {
+    "actual_start_millis": 1893455969000,
+    "audience": "example.org",
+    "audit": {
+      "local_available": true,
+      "remote_ack": true
+    },
+    "clock_fenced": false,
+    "clock_healthy": true,
+    "http": {
+      "content_encoding": "identity",
+      "content_type": "application/json",
+      "method": "POST",
+      "path": "/v1/registration"
+    },
+    "key_capacity": 10,
+    "limiter_events": [],
+    "monotonic_now": 60,
+    "name_capacity": 3,
+    "nonce_cache": [],
+    "now": 1893456060,
+    "registry": {
+      "approved": true,
+      "available": true,
+      "commit_signature_valid": true,
+      "descendant": true,
+      "files": [
+        {
+          "bytes_base64": "eyJib2R5Ijp7Imhvc3QiOiJob3N0LWEiLCJrZXlzIjpbeyJrZXkiOiJlZDI1NTE5OjExcVlBWUt4Q3JmVlNfN1R5V1FIT2c3aGN2UGFwaU1scndJYWFQY0hVUm8iLCJub3RfYWZ0ZXIiOiIyMDMxLTAxLTAxVDAwOjAwOjAwWiIsIm5vdF9iZWZvcmUiOiIyMDMwLTAxLTAxVDAwOjAwOjAwWiJ9XSwibmFtZXMiOnsiZXhwbGljaXQiOlsibGVnYWN5LmRldiJdLCJwcmVmaXgiOiJob3N0LWFfIn0sInNlcSI6MSwic3RhdGUiOiJhY3RpdmUiLCJ0eXBlIjoiZW5yb2xsbWVudC8xIiwidWlkX21hcCI6W3sibmFtZXMiOlsiaG9zdC1hX3Byb2plY3RfZGV2Il0sInVpZCI6MTAwMX1dfSwiaWQiOiJzaGEyNTY6OGQ4OGUxM2Q2NGJkNzIyYzgzNWQyNWY5MTQ0OWFjN2VmNzU0MjVhNGY5NDU0ZDQxNzZkNGQ4NGQyOGUxNGQ0NyIsInNpZyI6IjZWWTR3OW1HWnZHUlVSUk52M2x6VTVZT0xETVNJQjRYR2JhQktsRk1XQ0VzVDBWOG0xX01DSGhwZkJlTlc5YmJGVmYtRXREcFF1amp5WmJxZzNjSUF3In0",
+          "kind": "regular",
+          "path": "enrollments/a.json",
+          "repeat": 1
+        }
+      ],
+      "first_use": true,
+      "object_format": "sha1",
+      "persist_available": true,
+      "pin_is_exact": true,
+      "previous_files": [],
+      "publisher_key": "ed25519:PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw",
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "rollback_state_available": true,
+      "station_hosts": [
+        "host-a",
+        "host-b"
+      ]
+    },
+    "signer_available": true,
+    "signing_generation": "A",
+    "start_barrier": 1893456000,
+    "startup_verified": true
+  },
+  "input": {
+    "bytes_base64": "eyJib2R5Ijp7Imhvc3QiOiJob3N0LWEiLCJrZXlzIjpbeyJrZXkiOiJlZDI1NTE5OjExcVlBWUt4Q3JmVlNfN1R5V1FIT2c3aGN2UGFwaU1scndJYWFQY0hVUm8iLCJub3RfYWZ0ZXIiOiIyMDMxLTAxLTAxVDAwOjAwOjAwWiIsIm5vdF9iZWZvcmUiOiIyMDMwLTAxLTAxVDAwOjAwOjAwWiJ9XSwibmFtZXMiOnsiZXhwbGljaXQiOlsibGVnYWN5LmRldiJdLCJwcmVmaXgiOiJob3N0LWFfIn0sInNlcSI6MSwic3RhdGUiOiJhY3RpdmUiLCJ0eXBlIjoiZW5yb2xsbWVudC8xIiwidWlkX21hcCI6W3sibmFtZXMiOlsiaG9zdC1hX3Byb2plY3RfZGV2Il0sInVpZCI6MTAwMX1dfSwiaWQiOiJzaGEyNTY6OGQ4OGUxM2Q2NGJkNzIyYzgzNWQyNWY5MTQ0OWFjN2VmNzU0MjVhNGY5NDU0ZDQxNzZkNGQ4NGQyOGUxNGQ0NyIsInNpZyI6IjZWWTR3OW1HWnZHUlVSUk52M2x6VTVZT0xETVNJQjRYR2JhQktsRk1XQ0VzVDBWOG0xX01DSGhwZkJlTlc5YmJGVmYtRXREcFF1amp5WmJxZzNjSUF3In0"
+  },
+  "mode": "registry",
+  "positive_control": "PE16",
+  "row": "E116"
+}

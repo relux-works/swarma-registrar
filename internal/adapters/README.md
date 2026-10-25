@@ -62,7 +62,8 @@ for bytes only and must not substitute for LoadConfig at startup.
 | `v` | Integer 1. |
 | `audience` | 1–255 ASCII bytes satisfying the [Matrix server-name grammar](https://spec.matrix.org/v1.17/appendices/#server-name), such as `example.org` or `[2001:db8::1]:8448`. No normalization, URL or DNS lookup. |
 | `repository` | Absolute clean local repository path, such as `/srv/registrar/registry`. |
-| `revision` | Full lowercase 40- or 64-hex commit ID. Not a branch, tag or abbreviated ID. |
+| `object_format` | Required protected repository profile: exactly `sha1` or `sha256`. No default or inference from revision length. Passed unchanged to the loader, Git, store/digest and audit constructors. |
+| `revision` | Exactly 40 lowercase hex characters for `sha1`, or 64 for `sha256`, as selected by protected `object_format`. Not a branch, tag, abbreviated or cross-format ID. |
 | `allowed_signers` | Absolute clean path to protected OpenSSH allowed-signers material for approved registry maintainers. |
 | `publisher_key` | Strict canonical enrollment-publisher public-key string accepted by enrollment.NewPolicy. The containing configuration protects this pin. |
 | `stations` | Object mapping valid host labels to booleans, for example `{"host-a":false}`. |

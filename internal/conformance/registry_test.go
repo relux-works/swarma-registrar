@@ -137,7 +137,7 @@ func exerciseRegistry(v vector, raw []byte, firstUse bool) observation {
 		}
 		store := &fixtureStore{available: true}
 		verifier := fixtureVerifier{revision: f.PreviousRevision, entries: priorEntries, approved: true}
-		previous, retained, err = (registry.Loader{Policy: policy, Verifier: verifier, Store: store}).Load(registry.Input{
+		previous, retained, err = (registry.Loader{ObjectFormat: f.ObjectFormat, Policy: policy, Verifier: verifier, Store: store}).Load(registry.Input{
 			Revision: f.PreviousRevision, Entries: priorEntries, FirstUse: true,
 		})
 		if err != nil || previous == nil || retained == nil || store.calls != 1 || !reflect.DeepEqual(store.state, retained) {
@@ -162,7 +162,7 @@ func exerciseRegistry(v vector, raw []byte, firstUse bool) observation {
 	}
 	verifier := fixtureVerifier{revision: f.Revision, previous: f.PreviousRevision, entries: entries,
 		approved: f.Available && f.Approved && f.CommitSignatureValid && f.PinIsExact, descendant: f.Descendant}
-	out.snapshot, out.water, out.err = (registry.Loader{Policy: policy, Verifier: verifier, Store: store}).Load(in)
+	out.snapshot, out.water, out.err = (registry.Loader{ObjectFormat: f.ObjectFormat, Policy: policy, Verifier: verifier, Store: store}).Load(in)
 	out.persisted, out.commits = store.state, store.calls
 	return out
 }

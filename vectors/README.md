@@ -1,8 +1,8 @@
 # Offline format vectors
 
-The 310 cases instantiate the two-domain table in specification Appendix B.
-Registration has 138 negative and 33 positive cases. Enrollment has 114 negative
-and 25 positive cases, including ten independent codec controls. Appendix B.1
+The 328 cases instantiate the two-domain table in specification Appendix B.
+Registration has 138 negative and 33 positive cases. Enrollment has 130 negative
+and 27 positive cases, including ten independent codec controls. Appendix B.1
 homeserver integration plans remain separate qualification requirements; these
 files do not simulate successful live logins.
 
@@ -56,7 +56,9 @@ checked at the applicable earlier gate.
 Registry `files` entries supply signed envelope bytes, paths and entry kinds.
 A `repeat` plus `path_template` is an explicit compact fixture for aggregate
 bounds: expand actual bytes under distinct paths before counting. No count or
-size assertion replaces the underlying byte lengths. `previous_files` and
+size assertion replaces the underlying byte lengths. Protected `object_format` is explicit (`sha1` or `sha256`); it is never inferred
+from `revision`. E115–E130 cover cross-format, width, spelling and configuration
+refusals; PE16/PE17 install valid per-format snapshots. `previous_files` and
 `previous_revision` fix the last accepted authority for rollback tests.
 
 The independent checker implements strict point/subgroup checks as well as
