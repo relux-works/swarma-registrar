@@ -94,7 +94,8 @@ automatically.
 
 ## Run the registrar
 
-Build from the module root with Go 1.26.0, Git and OpenSSH installed:
+Use Go 1.26.10 (module language version 1.26.0), Git and OpenSSH.
+Build from the module root:
 
 ```sh
 go build ./cmd/registrar
@@ -257,7 +258,8 @@ operator wording, remain abstract admission inputs; B.3 plans the real lifecycle
 ## Continuous integration
 
 [Linux Go CI](.github/workflows/linux-ci.yml) runs the `go` job for pull requests
-and pushes to `main`, on `ubuntu-26.04` with Go **1.26.0**, matching `go.mod`.
+and pushes to `main`, on `ubuntu-26.04` with Go **1.26.10**
+(module language version 1.26.0).
 It uses `GOTOOLCHAIN=local`, `GOMAXPROCS=2` and `GOFLAGS=-trimpath`.
 The job has read-only repository permissions, pinned action revisions and no
 persisted checkout credentials. Its commands, from the module root, are:
@@ -289,10 +291,10 @@ job log; the workflow uploads no artifacts.
 
 | Tool | Purpose | Exact entry point | Output |
 | --- | --- | --- | --- |
-| Go 1.26.0 | Test the module, examples and public API inventories; run static validation. | `go test ./...`; `go test ./internal/...`; `go test -race ./internal/admission/...`; `go vet ./...` | Terminal diagnostics and Go build cache; no generated repository files. |
+| Go 1.26.10 (module language version 1.26.0) | Test the module, examples and public API inventories; run static validation. | `go test ./...`; `go test ./internal/...`; `go test -race ./internal/admission/...`; `go vet ./...` | Terminal diagnostics and Go build cache; no generated repository files. |
 | Registrar command | Build and run the HTTPS service; confirm rollback evidence interactively. | `go build ./cmd/registrar`; `./registrar serve --config /etc/registrar/config.json --reconcile`; command checks: `go test ./cmd/registrar` | The build writes `registrar` in the current directory; service writes protected high-water/audit files configured below. Terminal diagnostics contain no key paths. |
 | Go conformance harness | Compare committed vectors against landed code and report pass/fail/pending counts per domain. | `go test -v ./internal/conformance`; narrow internal validation: `go test ./internal/...` | Terminal diagnostics; `CONFORMANCE_VECTORS` optionally selects a scratch vector copy. |
-| Go 1.26.0, Git and OpenSSH ssh-keygen | Check local adapters and internal packages; create disposable signed Git fixtures with generated test keys. | `GOMAXPROCS=2 go test ./internal/...`; `GOMAXPROCS=2 go vet ./...`; focused adapter checks: `go test ./internal/adapters` | Terminal verdicts; fixture files in Go's temporary directory (set `TMPDIR` to a scratch directory). No network. |
+| Go 1.26.10, Git and OpenSSH ssh-keygen | Check local adapters and internal packages; create disposable signed Git fixtures with generated test keys. | `GOMAXPROCS=2 go test ./internal/...`; `GOMAXPROCS=2 go vet ./...`; focused adapter checks: `go test ./internal/adapters` | Terminal verdicts; fixture files in Go's temporary directory (set `TMPDIR` to a scratch directory). No network. |
 | Go (standard library) | Regenerate vectors or check exact committed bytes and file set. | `GOMAXPROCS=2 go run ./tools/vectorgen`; `GOMAXPROCS=2 go run ./tools/vectorgen -check` | `vectors/registration-1/`, `vectors/enrollment-1/`, `vectors/keys/seeds.json`, `vectors/keys/public-keys.json`; check mode writes nothing. |
 | Python 3 with cryptography | Independently check CCJ-1, cryptography, ordered outcomes, JWT bytes and state. | `python3 tools/vectorcheck/check.py` (dependencies: `python3 -m pip install -r tools/vectorcheck/requirements.txt`) | Terminal verdicts; writes nothing. |
 | Python unittest | Check signed HTTP media-token, structured-name and reachable-accounting regressions against the independent checker. | `python3 -B -m unittest discover -s tools/vectorcheck -p test_regressions.py -v` | Terminal verdicts; fixtures under `tools/vectorcheck/fixtures/` stay separate from the 328 planned vectors. |
