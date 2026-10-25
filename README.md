@@ -361,3 +361,7 @@ loads must match the full historical ID oracle, permanent ownership, revision
 and exact highest-sequence current bodies. The adapter does not implement loader
 validation or qualify real Git verification, storage durability or admission
 fencing.
+
+## License
+
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE).
