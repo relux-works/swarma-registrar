@@ -1,0 +1,47 @@
+# Template for public Go modules.
+# Repository-specific: runner, toolchain, timeout and dependency-policy gate.
+name: Linux Go CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    env:
+      GOTOOLCHAIN: local
+      GOMAXPROCS: '2'
+      GOFLAGS: -trimpath
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: '1.26.0'
+      - name: Verify modules
+        run: go mod verify
+      - name: Check module tidiness
+        run: go mod tidy -diff
+      - name: Build
+        run: go build ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Check formatting
+        shell: bash
+        run: |
+          out="$(gofmt -l .)"
+          test -z "$out"
+      - name: Check public hygiene
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: python3 .scripts/check-hygiene.py --base "$BASE_SHA"
+      - name: Test
+        run: go test ./... -count=1 -v -timeout=5m
