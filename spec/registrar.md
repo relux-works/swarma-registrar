@@ -236,11 +236,27 @@ The registry MUST be read from a configured local, non-agent-writable path at
 an explicitly configured full Git commit object id. Registrar and Keymaker
 MUST use the same configured revision, audience, pins and verification rule.
 The pin configuration (registry-maintainer verification-key allowlist, approved
-registry revision and enrollment-publisher public key) MUST be root-owned and
+registry revision, repository object format and enrollment-publisher public key)
+MUST be root-owned and
 MUST NOT be writable by agent accounts. Both services MUST verify the signed
 commit and the envelope signature with these same pins and the same rule.
 Location and transport of that registry are deployment matters. Neither service
 follows a mutable branch, fetches implicitly, or treats a working tree as authority.
+
+The protected profile MUST set `object_format` to exactly `sha1` or `sha256`;
+this is a required member of the root-owned configuration beside the other pins.
+A revision id MUST contain exactly 40 lowercase hexadecimal characters for
+`sha1`, or exactly 64 for `sha256`. The algorithm MUST NOT be inferred from the
+supplied length or selected by a request. Missing or unknown object formats,
+short ids, uppercase, the other format's length, lengths one below or above the
+configured width, branch names and all other non-hex spellings MUST refuse as
+`registry_unavailable`. Startup configuration parsing MUST refuse a missing or
+unknown format with its existing configuration refusal. The same protected
+profile MUST govern candidate revisions, retained high-water revisions and all
+other revision validation, including Git objects, stored state and audit lines.
+
+Implementations before the format-pin code change accept 40 or 64 lowercase hex;
+this is a known divergence, closed by the code change.
 
 Informative ruling (2026-10-24): a future owner registry may serve as this
 registry only through the existing pinned signed-commit model of §4.3/§4.4.
@@ -360,7 +376,7 @@ The latter MUST contain exactly these members:
 
 | Member | Required value |
 | --- | --- |
-| `Revision` | The candidate's full lowercase Git commit id. |
+| `Revision` | The candidate's full lowercase Git commit id, validated against the protected `object_format` and exact-width rule in §4.3. |
 | `Hosts` | Object keyed by exact host label. Each value has exactly `Seq`, `ID`, `Revoked` and `History`: highest positive safe-integer sequence, its body id, boolean tombstone flag, and complete sequence-to-body-id object. History keys are shortest positive decimal sequence strings; aliases such as `01` are forbidden. |
 | `KeyOwners` | Complete retained canonical-public-key-string to host-label object, including historical ownership. |
 | `NameOwners` | Complete retained explicit-name to host-label object, including removed claims. |
@@ -1139,6 +1155,8 @@ Unless a row says otherwise, use audience `example.org`, host `host-a`, name
 `now=2030-01-01T00:01:00Z`, and
 `start_barrier=2030-01-01T00:00:00Z`. The key window is
 `[2030-01-01T00:00:00Z,2031-01-01T00:00:00Z)`.
+Unless a row overrides it, the protected repository profile is `object_format=sha1`
+and revisions contain exactly 40 lowercase hexadecimal characters.
 An active host's sequence is 1, its prefix is `host-a_`, its explicit list
 contains `legacy.dev`, and its UID map is `[{"uid":1001,"names":["host-a_project_dev"]}]`.
 It is a configured station host. Registry/publisher pins and audit are healthy;
@@ -1684,7 +1702,7 @@ not a negative test that can claim detection from equal hashes.
 
 ### B.3 Platform-time provider and startup lifecycle (normative plan; no fixtures yet)
 
-These 33 plans are separate from the unchanged 310 byte rows, B.1 integration
+These 33 plans are separate from the 310 byte rows, B.1 integration
 plans and B.2 witness plans. T/PT ids do not add vector files or claim executable
 startup qualification. Negative rows precede their resolving positive controls.
 Use one serving instance, an excluded prior instance, otherwise valid registry,
@@ -1745,6 +1763,35 @@ hold at T2/T3, (b) use only the new sample at T4, (c) ignore the second check at
 T14 and (d) ignore subsecond backward steps at T17, while PT controls remain
 green. These are planned requirements, not passing production-test evidence.
 
+### B.4 Revision-format vectors planned for the format-pin code change
+
+These 18 planned rows specify the protected profile in §4.3. They are outside
+both the current 310-row legacy byte inventory and its abstract post-hold
+declaration. Their vector files and executable checks arrive with the format-pin
+code change; until then the known divergence in §4.3 applies. Negative rows
+precede their positive controls.
+
+| Id | Domain | Rule | Defect / boundary | Expected outcome | Positive control |
+| --- | --- | --- | --- | --- | --- |
+| E115 | enrollment/1 | Protected sha1 revision profile | 64 lowercase hex characters; protected `object_format=sha1`, otherwise PE16 | registry_unavailable | PE16 |
+| E116 | enrollment/1 | Protected sha1 revision profile | 39 lowercase hex characters; protected `object_format=sha1`, otherwise PE16 | registry_unavailable | PE16 |
+| E117 | enrollment/1 | Protected sha1 revision profile | 41 lowercase hex characters; protected `object_format=sha1`, otherwise PE16 | registry_unavailable | PE16 |
+| E118 | enrollment/1 | Protected sha1 revision profile | 40 uppercase hex characters; protected `object_format=sha1`, otherwise PE16 | registry_unavailable | PE16 |
+| E119 | enrollment/1 | Protected sha1 revision profile | Abbreviated id `abcdef1`; protected `object_format=sha1`, otherwise PE16 | registry_unavailable | PE16 |
+| E120 | enrollment/1 | Protected sha1 revision profile | Branch name `main`; protected `object_format=sha1`, otherwise PE16 | registry_unavailable | PE16 |
+| E121 | enrollment/1 | Protected sha256 revision profile | 40 lowercase hex characters; protected `object_format=sha256`, otherwise PE17 | registry_unavailable | PE17 |
+| E122 | enrollment/1 | Protected sha256 revision profile | 63 lowercase hex characters; protected `object_format=sha256`, otherwise PE17 | registry_unavailable | PE17 |
+| E123 | enrollment/1 | Protected sha256 revision profile | 65 lowercase hex characters; protected `object_format=sha256`, otherwise PE17 | registry_unavailable | PE17 |
+| E124 | enrollment/1 | Protected sha256 revision profile | 64 uppercase hex characters; protected `object_format=sha256`, otherwise PE17 | registry_unavailable | PE17 |
+| E125 | enrollment/1 | Protected sha256 revision profile | Abbreviated id `abcdef1`; protected `object_format=sha256`, otherwise PE17 | registry_unavailable | PE17 |
+| E126 | enrollment/1 | Protected sha256 revision profile | Branch name `main`; protected `object_format=sha256`, otherwise PE17 | registry_unavailable | PE17 |
+| E127 | enrollment/1 | Required object format | Omit protected `object_format`; otherwise PE16 | registry_unavailable | PE16 |
+| E128 | enrollment/1 | Closed object format | Protected `object_format=sha512`; otherwise PE16 | registry_unavailable | PE16 |
+| E129 | enrollment/1 | Non-hex sha1 revision | 39 lowercase hex characters followed by `g`; otherwise PE16 | registry_unavailable | PE16 |
+| E130 | enrollment/1 | Non-hex sha256 revision | 63 lowercase hex characters followed by `g`; otherwise PE17 | registry_unavailable | PE17 |
+| PE16 | enrollment/1 | Protected sha1 revision control | Exact 40 lowercase hex characters with protected `object_format=sha1`; otherwise PE1 | accept | PE1 |
+| PE17 | enrollment/1 | Protected sha256 revision control | Exact 64 lowercase hex characters with protected `object_format=sha256`; otherwise PE1 | accept | PE1 |
+
 ## Appendix C. Decisions, open questions and source-gap choices (informative)
 
 ### C.1 Decisions (informative)
@@ -1756,6 +1803,7 @@ These decisions are settled and normative in the defining sections.
 | P2 | `uid_map` is required on every station host. Group-only mode is removed entirely; there is no legacy flag. | Per-station OS accounts must define the helper authorization boundary. |
 | P3 | Phase 0 trusts a pinned, verified signed-commit registry revision; any `sigs` member is refused. The target is per-record owner-device signing. | Publish a verifiable phase-0 authority while keeping future owner-signature semantics explicit. |
 | P5 | Registrar and Keymaker read the same pinned revision from configured local paths, with the same verification rule; location is deployment-owned. | Do not bake registry placement or mutable fetching into the admission protocol. |
+| Git object format | Root-owned `object_format` selects exactly `sha1` (40 lowercase hex) or `sha256` (64 lowercase hex); never infer from length (§4.3). E115–E130 refuse neighboring formats/spellings and missing/unknown profiles; PE16/PE17 are the per-format controls. | Bind all revision consumers to one protected repository profile. |
 | E1 | Phase 0 requires one offline Ed25519 enrollment-publisher signature; the owner holds the key offline. Root-owned, non-agent-writable configuration pins the publisher key out of band, the maintainer allowlist and approved revision; both services verify commit and envelope with the same pins and rule (§4.3). | Accepted by the content review; preserve signed envelopes alongside signed-commit authority. |
 | HS2 / HS4 | A reviewed change to the operated homeserver must provide access-token expiry without refresh-token issuance and refuse JWT login for deactivated accounts. Deployment is blocked until that change is qualified; specification, vectors and service code continue. | The pinned stock login path does not meet these requirements; the homeserver change is the chosen path. |
 | HS3 | Accept the stock 60-second JWT leeway, including equality; revocation accounts for `exp + 60`. | The accepted bearer exposure matches the inspected validator. |
@@ -1889,7 +1937,7 @@ concerns time-source evidence, separately from §4.5 reconciliation option A/C.
 | Clock-fence exit code 75 and fixed `registrar: clock fenced` diagnostic after successful shutdown drain | Proposed dedicated type: distinct from configuration/non-clock startup/drain failures (currently generic exit 1). Drain failure retains its own failure and never becomes a successful clock-fence exit. Implementation belongs to the evidence-source slice. |
 | Supervisor example: Restart=on-failure, RestartSec=2s, StartLimitIntervalSec=60s, StartLimitBurst=5 | Recorded operating choice for deployment review: start only after old exit, bound restart loops, and require the operator after a limit stop. Values may be tuned with a finite rate budget; they never shorten the hold or waive other admission gates. |
 | Client horizon 4+61=65 seconds plus evidence/scheduling/transport margin | Accepted on 2026-10-23: replace the former 61-second startup budget; Keymaker clients obtain a new proof/nonce and diagnose persistent refusal rather than replay indefinitely. |
-| Preserve 310 legacy byte fixtures as abstract post-hold admission inputs | Explicitly approved fixture boundary: R125 is not a realizable new-start trace. B.3 alone plans real provider/hold lifecycle qualification. No vector bytes or row text change. |
+| Preserve the 310 legacy envelope-byte fixtures as abstract post-hold admission inputs | Explicitly approved fixture boundary: R125 is not a realizable new-start trace. B.3 alone plans real provider/hold lifecycle qualification. The object-format profile adds protected fixture metadata and new revision rows; legacy envelope bytes and row text remain unchanged. |
 
 Option A still infers selected-source NTS status from configuration. Authenticated
 per-source evidence needs option B's separately qualified root-granted data.
