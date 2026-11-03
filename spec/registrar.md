@@ -15,7 +15,7 @@ to perform work. Humans use a separate identity-provider login path.
 | --- | --- |
 | Registrar | Owns `registration/1`, `enrollment/1`, their envelopes, name and `uid_map` semantics, registry validation, HTTPS admission, JWT issuance and audit. Its only private key is its JWT signing key; the §9.1 audit access token is a bearer credential, not a private key. |
 | Keymaker | Separate host-helper module. Owns host-key custody, kernel peer-UID checks, helper socket framing, negotiation, operations and refusal codes. |
-| Homeserver | Trusts the registrar public key; validates login JWTs and creates local accounts. It never trusts host keys directly. |
+| Homeserver | Trusts the registrar public key; validates login JWTs and creates local accounts. It never trusts host keys directly. The §9.1 off-host audit sink MAY use this same server, provided its dedicated audit account cannot use JWT login (HR10); served audit history remains inside the homeserver administrative trust boundary. |
 | a2a CLI | Carries helper proof to registrar and login JWT to homeserver. Holds its resulting access token, never the host or registrar private key. |
 | Enrollment publisher | Offline authority that signs records; registry maintainers publish them through reviewed, signed commits. |
 
@@ -600,6 +600,13 @@ byte for byte; even equivalent DNS case/port spellings are unequal. Name
 length is evaluated against the configured audience before audience comparison,
 so an attacker cannot alter the name verdict by sending a short audience.
 
+When §9.1 is configured, the registrar MUST NOT issue a JWT for which
+`"@" + sub + ":" + aud` equals `audit_user`, even if enrollment explicitly
+permits that name. This reserved-identity refusal is `name_not_permitted` at
+row 19b, after nonce reservation, rather than an enrollment-name failure at
+row 13. Earlier failures retain their normal precedence and nonce effects.
+The homeserver MUST independently exclude that account from JWT login (HR10).
+
 ## 6. Registrar HTTP API and refusal precedence (normative)
 
 `POST /v1/registration` MUST run over HTTPS; plaintext MAY be used only in
@@ -656,6 +663,7 @@ MUST NOT attempt later checks merely to select a different refusal.
 | 17 | `now < request.exp + 30`. | `request_expired` | 403 |
 | 18 | Both per-key and per-name budgets have capacity (§7). | `rate_limited` | 429 |
 | 19 | `(key, nonce)` has not been consumed. Reserve it atomically. | `nonce_replayed` | 409 |
+| 19b | Candidate mxid differs from configured `audit_user` (§5); the nonce has already been reserved at row 19. | `name_not_permitted` | 403 |
 | 20 | Signer and service prerequisites work; all final authority/time checks still pass; signing-key generation remains current through release. | `service_unavailable` | 503 |
 | 21 | Audit commit and off-host acknowledgement succeed before releasing JWT (§9). | `audit_unavailable` | 503 |
 
@@ -692,6 +700,9 @@ codes cover contracts the CIP did not assign: `endpoint_not_found`,
 (bounded transport); `registry_unavailable` (fail-closed registry);
 `service_unavailable` (signer/runtime failure); `audit_unavailable` (issuance
 without an audit is forbidden). These are not helper refusal codes.
+`configuration_invalid` is startup-only; §9.1.5 defines the readiness-only
+`audit_room_policy_invalid`, `audit_room_head_mismatch` and
+`audit_room_unavailable`. None is an admission HTTP code.
 
 Loader-only diagnostics are `enrollment_malformed`,
 `enrollment_sigs_unsupported`, `enrollment_id_mismatch`,
@@ -979,8 +990,8 @@ Invalid configuration MUST refuse startup as `configuration_invalid`.
 
 | Field | Required value when this profile is enabled |
 | --- | --- |
-| `audit_homeserver` | Absolute HTTPS origin, such as `https://example.org`, with a nonempty valid host and optional numeric port in 1–65535; no path (including `/`), query (including an empty query), userinfo or fragment. HTTP, whitespace, controls, backslashes and percent-encoded authority components MUST be rejected. |
-| `audit_room` | Full Matrix room ID in `!opaque:server` form, such as `!audit:example.org`; both components MUST be nonempty and the server name valid. Room aliases, including `#audit:example.org`, MUST be rejected, never resolved. |
+| `audit_homeserver` | Absolute HTTPS origin, such as `https://example.org`, with an ASCII host using the §5 Matrix server-name grammar (no Unicode IDN; use ASCII A-labels) and optional numeric port in 1–65535; uppercase DNS, IPv6 literals and trailing-dot spellings follow that grammar and MUST NOT be normalized; no path (including `/`), query (including an empty query), userinfo or fragment. HTTP, whitespace, controls, backslashes and percent-encoded authority components MUST be rejected. |
+| `audit_room` | Full Matrix room ID in `!opaque:server` form, such as `!audit:example.org`; both components MUST be nonempty and the server name valid under §5 and byte-equal to the server part of `audit_user`. Room aliases, including `#audit:example.org`, MUST be rejected, never resolved. |
 | `audit_user` | Full valid Matrix user ID in `@localpart:server` form, such as `@registrar-audit:example.org`. It MUST identify the dedicated service identity, never an admission caller. |
 | `audit_token` | Absolute clean token-file path, with no expansion, NUL, empty, `.` or `..` components; MUST name a regular, service-UID-owned file of exactly mode 0600 in a service-UID-owned immediate directory of exactly mode 0700. |
 
@@ -997,7 +1008,9 @@ unreadable, oversized or malformed token material MUST yield
 TLS MUST be version 1.2 or later with hostname and certificate-chain validation
 against system trust roots. This profile MUST NOT add a pinned-CA configuration
 field, disable certificate verification or use discovery to replace the
-configured origin. All requests MUST target that origin directly; redirects
+configured origin. Environment proxy settings, including `HTTPS_PROXY`,
+`HTTP_PROXY`, `ALL_PROXY` and `NO_PROXY`, MUST be ignored; this profile uses no proxy.
+All requests MUST target that origin directly; redirects
 of every status, including same-origin redirects, MUST be refused. The token
 MUST occur only in `Authorization: Bearer <token>`, never in a URL, query,
 request content or proxy credential. TLS failure MUST count as no acknowledgement.
@@ -1005,7 +1018,7 @@ request content or proxy credential. TLS failure MUST count as no acknowledgemen
 #### 9.1.2 Event mapping and exact-line acknowledgement (normative)
 
 Each complete local audit line MUST produce one non-state event of type
-`org.relux.registrar.audit.v0`, using
+`works.relux.registrar.audit.v0`, using
 `PUT /_matrix/client/v3/rooms/{room}/send/{type}/{txnId}`. Each path component
 MUST be percent-encoded as a single component. The content MUST contain exactly:
 
@@ -1024,19 +1037,32 @@ client from displaying unknown events.
 `txnId` MUST be ASCII `audit-v0-` followed by `sha256`. It MUST be derived from
 persisted original bytes, including their original `instance`, never the
 current process identifier, clock or retry counter. Every retry MUST use the
-same origin, room, type, device and `txnId`. The homeserver MUST retain the
-transaction-to-event mapping durably for the lifetime of this audit chain,
-including across homeserver restarts; this is an operator qualification
-requirement, not a guarantee inferred from an ordinary Matrix installation.
+same origin, room, type, device and `txnId` within an in-flight delivery.
+HR12 requires durable deduplication for the in-flight retry window, not for
+the lifetime of the chain. The verified remote prefix, not receipt persistence,
+MUST determine the replay start (§9.1.4).
 Before the first send, the registrar MUST durably bind the configured origin,
 room, user and authenticated device ID to its local delivery state under the
 same ownership and mode protections as local audit state. Subsequent startup
 MUST compare this binding before replay; mismatch or missing binding for a
-nonempty chain MUST yield `audit_room_unavailable`. The dedicated device and
-credential MUST survive registrar restart. Device replacement, loss of deduplication state or migration MUST fence issuance and
-replay until the operator establishes continuity; replay under a new device
-MUST NOT be used as recovery. Credential rotation MUST preserve the same device
-and deduplication scope and MUST NOT occur during pending delivery.
+nonempty chain MUST yield `audit_room_unavailable`. The dedicated device MUST
+survive restart. Device replacement or lost deduplication state during an
+unresolved in-flight send MUST fence delivery until the operator verifies the
+remote prefix; a new device MUST NOT blindly retry an uncertain PUT.
+
+The audit credential MUST remain valid throughout each delivery/recovery
+window (HR13). The registrar MUST load the token only at startup. Rotation
+MUST stop admission and drain delivery, or preserve an uncertain suffix for
+prefix reconciliation, before an operator atomically replaces the protected
+file and restarts the registrar. Operator re-login MUST use the same
+`device_id`; HR13 qualification MUST establish the actual transaction scope
+across token changes. Rotation MUST NOT be inferred from a failed request.
+An expired/revoked token, including `M_UNKNOWN_TOKEN`, MUST yield
+`audit_unavailable` during delivery and close readiness, or
+`audit_room_unavailable` during startup/recovery. The registrar MUST NOT log in
+automatically. HR5/HS2's 86,400-second JWT-token expiry MUST remain unchanged;
+the non-JWT audit credential requires a separately qualified lifetime and
+rotation schedule, not an assumed exemption from server-wide expiry.
 
 The PUT response MUST have a successful 2xx status and a JSON object containing
 a valid `event_id`. For this profile's room version 11, an event ID MUST be `$`
@@ -1050,7 +1076,7 @@ matching the exact schema above. Decoded `line` bytes MUST compare byte for byte
 string escaping in the outer response MUST NOT affect that comparison.
 
 The PUT, read-back, any retry and final release MUST share the existing total
-5-second monotonic request budget; no step MUST reset or extend it. Successful
+5-second monotonic request budget; steps MUST NOT reset or extend it. Successful
 read-back and release MUST occur strictly before the deadline. A response at
 the deadline MUST be rejected. A PUT at deadline minus epsilon without enough
 time to complete read-back MUST NOT acknowledge. Any non-2xx status, redirect,
@@ -1059,7 +1085,7 @@ MUST mean no acknowledgement and `503 audit_unavailable`. Each response body
 MUST be bounded to 64 KiB while streaming and parsed with duplicate-key and
 UTF-8 checks; response bodies MUST NOT be propagated to diagnostics. Unknown
 outer Matrix metadata MAY be ignored; unknown content members MUST be refused.
-The server MUST durably store an event before acknowledging its PUT. Read-back
+The server MUST meet HR11 durable-before-ack storage. Read-back
 binds the server's returned identifier to the bytes it serves; it MUST NOT be
 represented as independent proof against a lying or subsequently purging server.
 
@@ -1067,17 +1093,20 @@ represented as independent proof against a lying or subsequently purging server.
 
 At every startup, before any replay or issuance, the registrar MUST authenticate
 with `GET /_matrix/client/v3/account/whoami` and require `user_id = audit_user`
-and a device ID. It MUST read the complete current room state using
+and a device ID. A missing device ID MUST yield `audit_room_unavailable`.
+It MUST read the complete current room state using
 `GET /_matrix/client/v3/rooms/{room}/state`, including create, power-level and
 membership events, and require all of the following:
 
 - The immutable `m.room.create` event MUST have `room_version = "11"`,
   `m.federate = false`, empty state key and sender equal to `audit_user`.
-  The room MUST NOT be a replacement/upgrade room. Other room versions MUST
-  be refused by this profile. The creator and all joined/invited members MUST
-  belong to the same Matrix server as `audit_user`.
+  Version 11 is pinned because version 12 gives creators unbounded power and
+  removes the server part from room IDs. The room MUST NOT be a replacement
+  or upgrade room; create content MUST NOT contain `predecessor`. Other room
+  versions MUST be refused by this profile. The creator and all joined/invited
+  members MUST belong to the same Matrix server as `audit_user`.
 - `audit_user` MUST be joined. `m.room.join_rules` MUST be `invite`,
-  `m.room.history_visibility` MUST be `joined`, `m.room.guest_access` MUST
+  `m.room.history_visibility` MUST be `shared`, `m.room.guest_access` MUST
   explicitly be `forbidden`, and there MUST be no encryption or tombstone
   state. Read access MUST be
   limited to operator-approved room membership.
@@ -1085,7 +1114,7 @@ membership events, and require all of the following:
   `events_default = 101`, `state_default = 101`, and `invite`, `kick`, `ban`
   and `redact` to 101. `users` MUST give only `audit_user` level 100;
   any other explicit user entry MUST have level 0, including absent members.
-  `events` MUST contain exactly `org.relux.registrar.audit.v0: 100`.
+  `events` MUST contain exactly `works.relux.registrar.audit.v0: 100`.
   Missing fields, string-valued levels or extra event overrides MUST fail.
 
 These checks MUST exclude other members from sending audit or other timeline
@@ -1093,63 +1122,142 @@ events, power-level changes and redaction events, including redactions of their
 own events. The registrar identity MUST also lack redaction permission. Ordinary
 Matrix self-membership transitions MUST NOT be described as audit-write rights;
 power levels do not prohibit a reader from leaving or updating its membership.
-Provisioning MUST finish before this locked policy is installed. The operator
-MUST provision the creator with sufficient temporary power (at least 101) to
-install the final thresholds while reducing its own level to 100; a creator
-already limited to 100 MUST NOT be assumed able to raise thresholds to 101.
-The registrar MUST NOT weaken the locked policy to add readers. A policy
-change or incomplete state MUST close readiness; startup checks MUST be
-repeated before resuming issuance.
+Provisioning MUST finish before this locked policy is installed:
+
+1. The administrative path MUST create only the dedicated audit account; it
+   MUST NOT create the audit room on that account's behalf.
+2. The operator MUST use the audit identity's OWN access token to call
+   `POST /_matrix/client/v3/createRoom`, explicitly selecting room version 11,
+   `creation_content` with `m.federate = false`, and
+   `power_level_content_override` with `users[audit_user] = 101`. This preserves
+   `m.room.create.sender = audit_user` and permits installing thresholds of 101.
+3. While the creator still has power 101, the operator MUST install the final
+   join/history/guest policy and invite all approved readers, including a
+   separate offline auditor identity. Every intended reader MUST join before
+   locking and before the first audit event. Readers MUST be on the same
+   server as `audit_user` in version 0.
+4. The operator MUST install all final power-level thresholds above while
+   retaining creator power 101, then send the final power-level event lowering
+   only the creator to 100. The registrar MUST check the final state; temporary
+   creator power 101 MUST fail readiness.
+
+The registrar MUST NOT weaken this policy to add readers. After locking,
+invite 101 prevents adding or re-inviting readers. With `shared`, the separate
+joined auditor can export history from creation; the audit token MUST NOT be
+shared or used for offline export. A departing auditor loses access to future
+history and cannot complete later terminal-head exports;
+a departing audit identity cannot be re-invited under this policy. These are
+availability limits, not automatic repair procedures.
+
+On every issuance, inside the same request's 5-second budget and under the
+separate audit-delivery lock, the registrar MUST re-read the complete current
+room state (including power levels and tombstone), validate every predicate
+above, and reconcile the remote head before appending the candidate issued
+line. After PUT and exact read-back, it MUST use the unfiltered
+`GET /_matrix/client/v3/rooms/{room}/context/{event_id}` response, paginating
+backwards with `/messages` when necessary, to verify the new event's immediate
+predecessor in the served timeline. For sequence N > 1 that predecessor MUST
+be the acknowledged event containing exact local line N-1 (ID, bytes, sequence
+and hash); an intervening event, including a membership event, MUST fence
+issuance. For N = 1, history through creation MUST contain no earlier audit
+event. The registrar MUST then re-read power levels and tombstone before
+release. Missing, stale, failed or incomplete evidence MUST fence issuance;
+previous successful checks MUST NOT be reused for a later request. All these
+round trips, queue waiting, PUT, read-back and final release MUST fit strictly
+inside the existing budget; inability to do so MUST fail closed, never extend
+it. No fixed-interval cached-policy alternative is authorized by this profile.
+Parsed policy violations MUST close readiness as `audit_room_policy_invalid`;
+predecessor/head conflicts as `audit_room_head_mismatch`; unavailable evidence
+as `audit_room_unavailable`. The in-request HTTP outcome is defined below.
+These checks establish observations, not an atomic server-side compare/append;
+an administrator can equivocate or change policy after the final observation.
 
 Startup checks MUST complete within a separate total 5-second monotonic budget,
-with bounded responses and pagination; exhaustion MUST fail closed. Room state
-and history responses MUST each be limited to 4 MiB and 1,024 events per page.
+with bounded responses and pagination; exhaustion MUST fail closed. Room state,
+context and history responses MUST each be limited to 4 MiB and 1,024 events per page.
 Unparseable or unavailable policy/identity evidence MUST yield
 `audit_room_unavailable`; a parsed policy or identity violation MUST yield
 `audit_room_policy_invalid`. Both are typed readiness failures, not new
-admission HTTP codes. Before startup succeeds no request MUST be admitted,
-no nonce reserved and no admission line fabricated for the readiness check.
+admission HTTP codes. Before startup succeeds requests MUST NOT be admitted,
+nonces MUST NOT be reserved and admission lines MUST NOT be fabricated for
+readiness probes.
+For row 20, audit-sink readiness MUST be evaluated only at row 21, never as a
+`service_unavailable` prerequisite. After successful startup, closed issuance
+readiness MUST NOT reject before row 19: new requests MUST run normal ordered admission. A request reaching
+row 21 while closed MUST receive `503 audit_unavailable`, retain its consumed
+nonce and append a durable refused line (no candidate issued line). Earlier
+refusals retain their code if durably spooled, subject to §9's local-recording
+failure override. Failure of in-request policy/head/predecessor checks MUST
+likewise return `503 audit_unavailable`, with the consumed nonce and a refused
+line; a candidate issued line exists only if already appended before failure.
+Readiness diagnostics MUST retain the specific readiness code independently
+of this HTTP outcome. Recovery MUST NOT start when local recording is broken;
+§9's stop-accepting rule still applies.
 
 #### 9.1.4 Chain reconciliation, spool replay and offline audit (normative)
 
-The registrar MUST serialize audit appends and delivery in local sequence order.
+The registrar MUST serialize audit appends and delivery in local sequence order
+using a dedicated audit-delivery lock, separate from admission/service-state
+serialization. It MUST NOT hold the latter across off-host I/O (§6.1).
+Waiting for the delivery lock MUST spend each request's own 5-second budget;
+a slow acknowledgement can exhaust all concurrent waiters. Deadline expiry
+MUST still prevent release and retain required local refusal/spool effects.
 It MUST validate its local chain before sending. Sequence MUST start at 1 and
 increase by exactly 1 across process restarts; `prev_hash` MUST match the
 previous complete line. The process `instance` MUST NOT reset the chain.
 
-At startup and again before the first issuance, before appending its candidate
-issued line and under audit-delivery serialization, the registrar MUST read the
-most recent audit event by backwards room-history pagination using
+At startup and again before every issuance (including the first), before
+appending its candidate issued line and under audit-delivery serialization,
+the registrar MUST read the most recent audit event by backwards room-history pagination using
 `GET /_matrix/client/v3/rooms/{room}/messages?dir=b`. It MUST validate that
 event's sender, type, content and hash, and require its bytes, sequence and hash
-to equal the durable local chain head. The empty room MUST match only an empty
-local chain. Missing, redacted, conflicting, remote-ahead or unequal heads MUST
+to equal the durable local chain head. Empty audit history in the room MUST
+match only an empty local chain. Enabling this profile MUST start a fresh chain and empty audit
+room; it MUST NOT attach an existing unrelated local audit history. Restart
+of an already bound profile MUST preserve its nonempty chain. Missing,
+redacted, conflicting, remote-ahead or unequal heads MUST
 produce typed readiness failure `audit_room_head_mismatch`; unavailable or
-incomplete history MUST produce `audit_room_unavailable`. No JWT MUST be issued
-while either failure persists; equality MUST NOT authorize truncating, resetting
+incomplete history MUST produce `audit_room_unavailable`. A JWT MUST NOT be
+issued while either failure persists; equality MUST NOT authorize truncating, resetting
 or replacing local history. Each pre-issuance reconciliation MUST fit within
 the request's remaining budget. These checks MUST NOT substitute for registry
 high-water reconciliation or the separately typed §4.5 witness.
 
 When queued lines make the local head newer, startup MUST report the same
-mismatch and keep issuance disabled. A recovery-only spool replay MAY proceed
-after policy checks only if the remote chain has been verified as an exact
-prefix of the retained local chain, walking history as needed. Replay MUST
-ship every remaining line, including committed issued lines with uncertain
-receipts and subsequent spooled refusals, in original sequence and exact bytes.
-It MUST complete read-back for each line before sending the next. Each replay
-attempt MUST have a total 5-second budget; timeout MUST leave the unacknowledged
-suffix queued. Repeating a PUT after a crash MUST return the original event ID
-and create no second event. Recovery MUST NOT reissue a JWT or restore a
-consumed nonce. Readiness MUST reopen only after replay and fresh policy/head
-checks succeed. A remote head that is not a verified local prefix MUST NOT be
-repaired by replay. Runtime delivery failure MUST close issuance readiness until
-these same checks succeed; requests already admitted MUST retain §9 failure
-records and consumed nonces.
+mismatch and keep issuance disabled. An automatic recovery worker MUST run
+on startup suffix mismatch and on runtime delivery/check failure. It MUST
+retry policy/head checks and eligible replay with exponential delays of 1, 2,
+4, 8, 16, then at most 30 seconds between attempts, with one worker and no
+overlapping attempts. Persistent policy or non-prefix conflicts MUST remain
+fenced pending operator correction; the worker MUST NOT mutate policy/history.
+Each check attempt MUST use a separate total 5-second budget. Recovery-only
+spool replay MUST proceed only after policy checks and verification that the
+remote chain is an exact prefix of the retained local chain, walking history
+as needed. The verified remote head MUST be authoritative for replay start:
+replay MUST begin strictly at the next local sequence and MUST NOT re-PUT any
+verified remote-prefix line, even if its receipt was lost or transaction
+retention expired. Each remaining line, including uncertain issued lines and
+spooled refusals, MUST be sent in original sequence and exact bytes. Each line
+MUST have its own total 5-second delivery budget, including fresh policy,
+predecessor and read-back checks, not one budget for the entire batch. For
+replay, the pre-send remote head MUST equal the last acknowledged local prefix
+line, rather than the newer full local head. Newly admitted requests MUST NOT
+bypass their own deadlines to wait for recovery.
+Timeout MUST retain the suffix and restart with prefix reconciliation; only
+in-flight retries within that budget MAY re-PUT the same `txnId`, returning
+the original event ID without duplication under HR12. Recovery MUST NOT
+reissue a JWT or restore a nonce. The worker MUST hold delivery serialization
+and reopen readiness only after replay and fresh policy/head checks succeed
+against a stable local head. Concurrent new refusals MUST join the ordered
+suffix; local/remote equality MUST be re-established before reopening.
+A remote head that is not a verified local prefix MUST NOT be repaired by
+replay. Runtime delivery/check failure MUST close issuance readiness until
+these checks succeed; admitted requests MUST retain §9 failure records and
+consumed nonces. A client MUST obtain a fresh proof/nonce after recovery.
 
-An offline auditor MUST export the complete room timeline from creation through
-a recorded terminal head, paginate to history exhaustion, and retain event IDs
-and original audit bytes. The auditor MUST reject incomplete pagination,
+A separate operator-approved, joined auditor identity MUST export the complete
+room timeline from creation through a recorded terminal head, paginate to
+history exhaustion, and retain event IDs and original audit bytes. The auditor MUST reject incomplete pagination,
 redacted/malformed audit events, wrong senders, wrong schema, hash mismatches,
 duplicate sequences or duplicate line hashes under different event IDs. It MUST
 verify a unique chain beginning at sequence 1 with zero `prev_hash`, successive
@@ -1162,6 +1270,14 @@ its changes. This procedure MUST NOT be claimed to provide online rejection by
 the homeserver. A homeserver administrator can purge or rewrite served history;
 head equality and TLS MUST NOT be represented as protection against that
 administrator, joint rollback or loss of all independent evidence.
+System-root TLS trusts every installed CA, including interception roots; a
+trusted CA can forge both PUT and read-back. Pinning is omitted in version 0
+to use the operated system trust lifecycle, not because system roots eliminate
+this risk. Audit lines have no registrar signature: a stolen audit token or an
+administrator-minted token can produce chain-valid-looking entries, and the
+administrator can purge/rewrite history. An audit-identity leave is an
+irrecoverable denial of service under the locked invite policy. Independent
+retained evidence and offline comparison remain necessary.
 
 #### 9.1.5 Failure codes and secrecy (normative)
 
@@ -1194,6 +1310,11 @@ Each requirement MUST pass its Appendix B.1 cases on an isolated test server.
 | HR7 | Password registration, registration-token registration, guest registration and shared-secret registration MUST all be disabled, leaving JWT provisioning as the only agent account-provisioning path. | I2 |
 | HR8 | The homeserver MUST use exactly one configured JWT verification key, refuse old-key signatures after a coordinated registrar/homeserver key switch and require separate logout to terminate existing access tokens. | I8 |
 | HR9 | Logout and device deletion MUST terminate the affected existing device sessions and invalidate their access tokens. | I3 |
+| HR10 | When §9.1 is enabled, the audit account MUST NOT be JWT-loginable, including with an otherwise valid registrar-signed token for an existing active account. The operator MUST create it through a separate administrative account-provisioning path and qualify server-side exclusion; a registrar-side name denial alone is insufficient. | I16 |
+| HR11 | The audit server MUST run off the registrar host and durably store each audit event before returning its PUT acknowledgement; qualification MUST test crash/restart retention of acknowledged events. Operator evidence MUST establish placement independently of DNS. | I17 |
+| HR12 | The audit server MUST durably retain transaction-to-event mappings across server restart throughout each 5-second in-flight retry window. Qualification MUST record token/device deduplication scope; replay after that window MUST use verified remote-prefix reconciliation, never assume lifetime retention. | I18 |
+| HR13 | The non-JWT audit credential MUST have a documented server-enforced lifetime and operator rotation schedule leaving enough time for delivery/recovery, with same-device rotation and qualified transaction scope. If HS2 expiry also covers this credential, rotation MUST precede that expiry; no indefinite token lifetime is assumed. | I19 |
+| HR14 | The audit identity MUST be exempt from homeserver message rate limits for audit writes. The operator MUST qualify this exemption with concurrent refusal traffic; ingress limits and storage capacity/alerts MUST bound flood exposure without dropping required local records. | I20 |
 
 For the pinned profile, HS3 accepts 60 seconds of leeway: `exp = now - 60`
 and `nbf = now + 60` pass; `exp < now - 60` and `nbf > now + 60` refuse.
@@ -1354,7 +1475,8 @@ out affected devices, inspect audit and secure the signer before resuming.
 | Proof replay/concurrent retries/restart | Atomic consumed nonces, expiry/skew bounds, start barrier and single replica. A captured JWT remains replayable within homeserver validity; `jti` is audit correlation only. |
 | Registry tampering/rollback | Reviewed signed pin, separate publisher pin, whole-snapshot validation, durable history/tombstones and restore fence. A compromised authorized publisher/maintainer or operator is outside this trust claim. |
 | Clock manipulation | Platform provider evidence, common 1.5-second error cap, 4-second monotonic pre-start hold, fixed barrier and permanent fence on any detected backward step or invalid/expired authority. Option A infers NTS from configuration, not authenticated per-source data; a compromised source can invalidate the error-bound premise. Concurrent instances are outside the proof (§7). |
-| DoS / audit exhaustion | Bounded request/registry/depth, authenticated sliding limits, independent ingress limits and finite audit deadlines. Audit unavailability deliberately denies issuance. |
+| DoS / audit exhaustion | Bounded request/registry/depth, authenticated sliding limits, independent ingress limits and finite audit deadlines. Audit unavailability deliberately denies issuance. Every routing/pre-auth refusal adds an event: unauthenticated floods can exhaust storage and deny issuance despite authenticated limits. HR14 requires audit rate-limit exemption, independent ingress controls and capacity monitoring; exemption does not bound room growth or permit dropping records. |
+| Audit-room administration / credential compromise | A homeserver administrator can purge/rewrite history or mint audit-user tokens; stolen tokens can append unsigned chain-valid-looking lines. System-root CAs, including interception roots, can forge PUT/read-back. A leave by the audit identity prevents re-invitation under invite 101 and denies service; readers who leave also lose access. Per-issuance policy/head/predecessor checks fence observed changes, but cannot defeat server equivocation, joint rollback or changes after observation. Retain independent evidence; HR10 excludes ordinary JWT login into the audit account. |
 | Bearer interception / retained sessions | TLS, no token logging, bounded JWT validity and explicit logout. Access-token expiry is an activation blocker on the pinned source; do not claim a bound before qualification. |
 
 ### 11.3 CLI and cutover guidance (informative)
@@ -1865,6 +1987,11 @@ client/helper/service qualification case:
 | I13 | HR4 | `second_login_has_same_mxid`: repeat the identical JWT under the pinned state below; assert `(second.status, second.user_id) == (200, first.user_id)`. | A signature-corrupted token is the separate invalid-token control from I1; no single-use jti guarantee is claimed. |
 | I14 | — | Configured limiter capacities of zero prevent admission startup as a configuration error. | Capacities of 1 start successfully and follow PR25/R129; no infinite Retry-After is issued. |
 | I15 | HR6 | An otherwise valid JWT for a deactivated or locked account refuses without a device or access token, and auto-provisioning never re-creates a deactivated account. | The same valid JWT for that account while active and unlocked succeeds; each refusal preserves account/deactivation state and creates no account, device or access token. |
+| I16 | HR10 | An otherwise valid registrar-signed JWT for the existing active audit account is refused with no new device/access token or account mutation. | An ordinary permitted account accepts an equivalent valid JWT; the audit credential obtained through the separate non-JWT path can send under final policy. |
+| I17 | HR11 | Independent operator evidence establishes off-host placement; an acknowledged event survives a forced isolated-server crash/restart. | A bounded deliberately non-durable fake acknowledges then loses an event and MUST fail the retention checker; ordinary durable storage passes. |
+| I18 | HR12 | Retry an identical transaction within the in-flight budget, including across a server restart: one event, one ID. Record token/device scope. | A fake that creates duplicates MUST fail the event-count assertion; after retention expiry, verified-prefix recovery sends no already-remote line. |
+| I19 | HR13 | Record actual audit-token expiry and qualify protected-file rotation/restart on the same device, including an uncertain suffix and prefix reconciliation. | Expired/revoked credential closes readiness with static diagnostics; valid replacement recovers without duplicate events or changes to HR5 JWT-token expiry. |
+| I20 | HR14 | Audit writes under otherwise rate-limited concurrent refusal load receive no homeserver rate-limit refusal; capacity alerts and ingress bounds operate. | Nonexempt test identity hits the configured limiter; removing the audit exemption MUST fail this qualification. A 429 still fences registrar issuance, never permits bypass. |
 
 I13 replaces the former R113 homeserver-replay row; it is an integration
 assertion, not a two-domain format verdict. Record and pin the operated
@@ -2034,8 +2161,8 @@ a live homeserver or change production trust roots. Controllable monotonic time
 MUST exercise deadline boundaries without sleep-based race assumptions. These
 plans MUST NOT be reported as implemented tests or deployment qualification.
 
-For delivery rows, seed a healthy policy and matching local/remote head, then
-admit one otherwise valid request through nonce reservation. Unless a row says
+For post-append delivery rows, seed a healthy policy and matching local/remote
+head, then admit one otherwise valid request through nonce reservation. Unless a row says
 otherwise, the expected effects MUST be: `503 audit_unavailable`, no JWT,
 nonce consumed, durable local issued line followed by refused line when local
 storage works, unchanged prior bytes, and issuance readiness closed. The fake
@@ -2056,13 +2183,47 @@ control so an implementation that refuses everything fails the plan.
 | Read-back differs by one line byte, LF/hash, seq, sender, type or room; extra content field or redaction | `audit_unavailable`; delivery effects; no semantic reserialization acceptance | Different outer JSON escapes/key order with identical decoded bytes acknowledges |
 | Room head differs from local head at startup, including empty/nonempty, remote-ahead or redacted head | `audit_room_head_mismatch`; startup effects; no truncation or implicit reset | Identical nonempty heads, or both empty, pass readiness |
 | Wrong power levels, another writer, redaction grant, missing create restriction, federation enabled or wrong room version | `audit_room_policy_invalid`; startup effects; zero policy mutations | Exact §9.1.3 policy passes readiness |
+| Startup: join rule is public instead of invite | `audit_room_policy_invalid`; startup effects, zero room mutations | Otherwise identical complete final policy with invite passes |
+| Startup: history visibility is joined instead of shared | `audit_room_policy_invalid`; startup effects, zero room mutations | Otherwise identical complete final policy with shared passes |
+| Startup: guest access allows guests instead of forbidden | `audit_room_policy_invalid`; startup effects, zero room mutations | Otherwise identical complete final policy with forbidden passes |
+| Startup: encryption state exists | `audit_room_policy_invalid`; startup effects, zero room mutations | Otherwise identical complete final policy with no encryption state passes |
+| Startup: tombstone state exists | `audit_room_policy_invalid`; startup effects, zero room mutations | Otherwise identical complete final policy with no tombstone passes |
+| Startup: create content has predecessor | `audit_room_policy_invalid`; startup effects, zero room mutations | Otherwise identical complete final policy with no predecessor passes |
+| Startup: joined member belongs to another server | `audit_room_policy_invalid`; startup effects, zero room mutations | Otherwise identical complete final policy with same-server joined reader passes |
+| Startup: invited member belongs to another server | `audit_room_policy_invalid`; startup effects, zero room mutations | Otherwise identical complete final policy with same-server invited reader during provisioning, joined before lock passes |
+| Startup: create sender differs from audit_user | `audit_room_policy_invalid`; startup effects, zero room mutations | Otherwise identical complete final policy with audit_user creator using its own token passes |
+| Startup: whoami user differs from audit_user | `audit_room_policy_invalid`; startup effects, zero room mutations | Otherwise identical complete final policy with matching user passes |
+| Startup: whoami device differs from persisted binding or is absent | `audit_room_unavailable`; startup effects, zero room mutations | Otherwise identical complete final policy with matching persistent device passes |
+| Startup: events has an extra override | `audit_room_policy_invalid`; startup effects, zero room mutations | Otherwise identical complete final policy with only the audit-type override passes |
+| Startup: a power level is string-valued | `audit_room_policy_invalid`; startup effects, zero room mutations | Otherwise identical complete final policy with integer-valued levels passes |
+| Startup: users_default differs from 0 | `audit_room_policy_invalid`; startup effects, zero room mutations | Otherwise identical complete final policy with users_default = 0 passes |
+| Startup: audit_user is not joined | `audit_room_policy_invalid`; startup effects, zero room mutations | Otherwise identical complete final policy with joined audit identity passes |
+| Startup: another explicit user has nonzero power | `audit_room_policy_invalid`; startup effects, zero room mutations | Otherwise identical complete final policy with reader power 0 passes |
+| Startup: events_default or state_default differs from 101 | `audit_room_policy_invalid`; startup effects, zero room mutations | Otherwise identical complete final policy with both defaults 101 passes |
+| Startup: invite, kick, ban or redact differs from 101 (separate fixtures) | `audit_room_policy_invalid`; startup effects, zero room mutations | Otherwise identical complete final policy with all four 101 passes |
+| Startup: audit event threshold differs from 100 | `audit_room_policy_invalid`; startup effects, zero room mutations | Otherwise identical complete final policy with audit threshold 100 passes |
+| Startup: audit_user power is 101 or below 100 | `audit_room_policy_invalid`; startup effects, zero room mutations | Otherwise identical complete final policy with audit_user power 100 passes |
 | Policy/history unavailable, TLS verification fails or startup budget exhausts | `audit_room_unavailable`; startup effects | Valid test trust chain and complete state/history pass |
 | `http://`, origin path/query/userinfo/fragment, alias, partial fields, duplicate/unknown key, null or wrong type | `configuration_invalid`; startup effects; no authenticated network call | All four strictly valid fields accepted |
+| Room/user server parts differ; Unicode origin host or invalid §5 server name | `configuration_invalid`; startup effects, no authenticated call or normalization | Matching valid ASCII server spellings, including supported IP/port forms, pass |
 | Token file mode 0644, final symlink, wrong owner, unsafe directory, missing or invalid token | `configuration_invalid`; startup effects; no repair and no authenticated network call | Regular service-owned 0600 token in service-owned 0700 directory accepted |
 | Token or its path in injected filesystem/network error strings or hostile response body | The applicable static `configuration_invalid`, readiness code or `audit_unavailable` only; zero secret/path/body matches across all errors, audit and logs; respective startup/delivery effects | Safe static diagnostic remains observable; inject a known leaking diagnostic into the test capture to verify the secrecy assertion fails |
-| Crash after remote append before receipt persistence; replay same `txnId` twice | No new refusal code on successful replay; exactly one remote event and same event ID, identical PUT content/path, original local bytes/order; no JWT replay or nonce restoration | Idempotent replay read-back acknowledges original event; fresh checks reopen readiness |
-| Change device or lose deduplication state with pending replay | `audit_room_unavailable`; readiness closed; zero recovery PUTs under a new device, no JWT or nonce restoration | Same persistent device and retained mapping deduplicate after server and registrar restart |
+| Crash after remote append before receipt persistence, with transaction retention expired | Successful prefix reconciliation; zero PUTs for the verified remote prefix, one remote event per line, original bytes/order and no JWT replay or nonce restoration | Verified remote head selects the next local sequence; fresh equality reopens readiness |
+| Retry same `txnId` twice inside one in-flight window, including server restart | One event and original event ID; same PUT bytes/path; planted duplicate creation fails the checker | Original PUT and retry both acknowledge the same event |
+| Device changes or deduplication state is lost during an unresolved send | `audit_room_unavailable`; readiness closed; zero blind recovery PUTs, no JWT or nonce restoration | Verified-prefix reconciliation with qualified same-device rotation recovers without re-PUTting remote lines |
 | Spool has multiple refusals after an uncertain issued line; remote history is not a local prefix | `audit_room_head_mismatch`; no replay writes or JWT; retained suffix unchanged | Verified prefix permits exact ordered replay; fresh equality required before new issuance |
+| Otherwise valid enrolled caller requests the audit localpart, including explicit enrollment permission | Row 19b `403 name_not_permitted`; no JWT, nonce consumed, durable acknowledged refused line, no new fake-server device, readiness healthy | Ordinary permitted name reaches acknowledged issuance and JWT login creates its device; neither path exposes the audit credential |
+| New otherwise valid request while runtime issuance readiness is closed | Row 21 `503 audit_unavailable`; consumed nonce, durable refused line spooled, no candidate issued line, readiness remains closed | After worker reconciliation, fresh proof/nonce reaches one acknowledged issued line and JWT |
+| First or later in-request reconciliation finds unequal head or unavailable history | HTTP `503 audit_unavailable`; respective `audit_room_head_mismatch` / `audit_room_unavailable` readiness diagnostic, consumed nonce, durable refused line, no candidate issued line | Matching fresh head within budget permits candidate append and issuance |
+| Remote head advances after startup but before first issuance | `503 audit_unavailable`, `audit_room_head_mismatch`; consumed nonce, refused line only, readiness closed, no truncation/replay into a non-prefix | Unchanged remote head passes the repeated pre-issuance check |
+| Policy changes after startup (creator restored to 101 or reader granted redaction), including between PUT and final check | `503 audit_unavailable`, `audit_room_policy_invalid`; consumed nonce, refused line, issued line only if already appended; readiness closed | Unchanged final policy passes fresh reads; planted omitted re-check MUST fail this case |
+| Event injected between two issuances, or between precheck and candidate PUT | `503 audit_unavailable`, `audit_room_head_mismatch`; no JWT, consumed nonce, refused line; issued line present only for post-append detection; readiness closed | Adjacent local N-1 event (ID/bytes/hash) passes context check; planted skipped predecessor assertion MUST fail |
+| Policy/context request fails, is incomplete, or finishes at/after deadline; cached old success exists | `503 audit_unavailable`; consumed nonce, refused line; candidate line only if appended; closed readiness, old evidence never reused | Complete fresh observations and release strictly within budget pass |
+| Slow first delivery exhausts a queued request's own budget | Queued request returns `503 audit_unavailable`, no JWT, consumed nonce and local refused line; no reset after lock acquisition | Queue wait plus all operations below 5 seconds permits issuance; admission lock remains available during network wait |
+| Token expired/revoked, including `M_UNKNOWN_TOKEN`, before precheck or after candidate append (separate fixtures) | `audit_unavailable`; consumed nonce, refused line, no JWT, readiness closed; issued line only for post-append fault; static secret-free diagnostics; startup/recovery instead gives `audit_room_unavailable` | Valid same-device credential after qualified operator rotation and restart permits prefix recovery |
+| Transient 429/5xx closes readiness, then worker timer fires | Current request has delivery effects; worker retries automatically at bounded delays; no JWT/nonce restoration or overlapping attempts; failed check stays closed | Restored server permits ordered suffix replay and fresh checks, then new issuance |
+| Persistent policy or non-prefix conflict during recovery | Respective readiness code remains; no repair, recovery PUTs or JWT, local evidence preserved | Operator-corrected policy and verified local prefix permit replay; check/line budgets are separate, each 5 seconds |
+| Proxy environment points to a credential-capturing fake proxy | Environment ignored: zero proxy connections or leaked headers; direct qualified origin still works | Direct TLS request acknowledges; a deliberately proxy-using adapter MUST fail the capture assertion |
 | Offline export has a missing middle line, duplicate seq/hash, wrong prev_hash or missing terminal suffix | Auditor reports chain failure, no acceptance verdict; no registrar state mutation | Complete unique chain and independently matching terminal head pass |
 
 All delivery tests MUST assert both the no-release failure path and the valid
@@ -2076,8 +2237,8 @@ adapter contract; live durability, off-host placement and retention remain
 operator qualification requirements.
 
 Informative protocol references for this profile: [Matrix transaction IDs and
-Client-Server API](https://spec.matrix.org/v1.16/client-server-api/#transaction-identifiers)
-and [room version 11](https://spec.matrix.org/v1.16/rooms/v11/).
+Client-Server API](https://spec.matrix.org/v1.17/client-server-api/#transaction-identifiers)
+and [room version 11](https://spec.matrix.org/v1.17/rooms/v11/).
 
 ## Appendix C. Decisions, open questions and source-gap choices (informative)
 
@@ -2094,9 +2255,13 @@ These decisions are settled and normative in the defining sections.
 | E1 | Phase 0 requires one offline Ed25519 enrollment-publisher signature; the owner holds the key offline. Root-owned, non-agent-writable configuration pins the publisher key out of band, the maintainer allowlist and approved revision; both services verify commit and envelope with the same pins and rule (§4.3). | Accepted by the content review; preserve signed envelopes alongside signed-commit authority. |
 | HS2 / HS4 | A reviewed change to the operated homeserver must provide access-token expiry without refresh-token issuance and refuse JWT login for deactivated accounts. Deployment is blocked until that change is qualified; specification, vectors and service code continue. | The pinned stock login path does not meet these requirements; the homeserver change is the chosen path. |
 | HS3 | Accept the stock 60-second JWT leeway, including equality; revocation accounts for `exp + 60`. | The accepted bearer exposure matches the inspected validator. |
-| Access-token lifetime | Accept 86,400 seconds without refresh-token issuance. | Use the accepted 24-hour target; deployment still requires the qualified homeserver change. |
+| Access-token lifetime | JWT login accepts 86,400 seconds without refresh-token issuance; the separate audit credential follows HR13. | Use the accepted 24-hour target; deployment still requires the qualified homeserver change. |
 | KM1 | Bind the Keymaker reference to landed main head `f5bbba2281c224c2c120cc422644cc8a1fda1bf8`, cited in §1. | Keep the helper contract in Keymaker; the landed reference has been verified. |
 | JWT | `nbf=iat` and `exp=iat+120` for every issued JWT. | Keep the issued lifetime fixed independently of proof lifetime. |
+| Audit transport | System-root TLS, no proxy or redirects; no pinned-CA field (§9.1.1). | Use the operated trust-store lifecycle, accepting trusted-CA interception as a residual. |
+| Audit room and identity | Version 11, create sender is the audit identity; `shared` history, `invite` join, operator-approved same-server readers, final 101 thresholds and creator 100. | Version 12 creator semantics and room IDs differ; frozen approved membership and a separate auditor bound read access. Cross-owner auditors remain open. |
+| Audit wire binding | `works.relux.registrar.audit.v0`, exact line bytes/hash with read-back and immediate predecessor verification inside each issuance budget. | A namespaced custom event preserves bytes and chain position in the served view; it is not a registrar signature or independent durability proof. |
+| Audit recovery | Remote verified prefix selects replay start; durable transaction mapping covers only in-flight retries. | Avoid lifetime-deduplication assumptions and duplicate sends after crash. |
 | Components | Registrar owns formats/data semantics; Keymaker owns the helper interface, peer enforcement and host key. | Each normative contract has one component owner. |
 
 ### C.2 Decision status and activation dependencies (informative)
@@ -2114,6 +2279,8 @@ Option C has additional proposed activation prerequisites in C.3.
 | HS2 | The reviewed homeserver change must provide 86,400-second access-token expiry without refresh-token issuance. | Decided; deployment blocked pending that change and its qualification. |
 | HS3 | Accept stock 60-second JWT leeway, including equality; revocation accounts for `exp + 60`. | Accepted; no remaining leeway choice. |
 | HS4 | The reviewed homeserver change must refuse JWT login for deactivated accounts. Keep §11's lock/containment and logout procedure. | Decided; deployment blocked pending that change and its qualification. |
+| Audit profile qualification | HR10–HR14 and B.1 I16–I20: server-side audit-account JWT exclusion, off-host/durable-before-ack storage, bounded durable transaction retention, actual token expiry/rotation and rate-limit exemption. | Open activation dependencies; tuwunel qualification evidence is absent. No passing source or plan substitutes for an operated-build result. |
+| Audit runtime budget | B.4 must qualify per-issuance full policy/head reads, exact read-back, predecessor and final power/tombstone checks within 5 seconds. | Open implementation/qualification dependency; no budget extension or stale-cache fallback accepted. |
 | KM1 | Use the Keymaker specification at landed main head `f5bbba2281c224c2c120cc422644cc8a1fda1bf8` in §1. | Bound; cited helper, peer-UID and enrollment contracts verified at the landed head. |
 | Access-token lifetime | 86,400 seconds without refresh-token issuance. | Accepted; deployment still gated by HS2 qualification. |
 

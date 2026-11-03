@@ -89,3 +89,37 @@ fresh proofs/nonces. B.3 plans startup qualification separately from the
 unchanged legacy byte fixtures. Option A infers NTS from configuration;
 authenticated per-source evidence remains option B work, not a claimed result.
 These time-policy option labels are separate from witness reconciliation modes.
+
+## Matrix audit-room profile qualification and readership
+
+The version 0 choices in §9.1 and C.1 are fixed: system roots without a pinned
+CA or proxy, room version 11, `shared` history and `invite` membership approved
+by the operator, the `works.relux.registrar.audit.v0` event type, exact-byte
+read-back and per-issuance policy/head/predecessor checks within 5 seconds.
+The administrative path creates only the account; the audit identity's own
+token creates the room with creator power 101 before final policy and lowering
+to 100. The registrar refuses the audit mxid and the server must independently
+exclude it from JWT login. These are contracts, not implementation evidence.
+
+Open activation dependencies (C.2, HR10–HR14, B.1 I16–I20 and B.4):
+
+- Qualify server-side JWT-login exclusion for the audit account, including an
+  otherwise valid signed JWT for an existing active account.
+- Qualify off-host placement and durable-before-ack storage on the operated
+  build, including crash/restart retention.
+- Qualify tuwunel transaction retention across restart within the in-flight
+  window and its device/token scope; replay uses verified-prefix start and
+  does not require chain-lifetime transaction retention.
+- Establish actual non-JWT audit-token lifetime against server-wide HS2 expiry,
+  same-device rotation and the operator schedule; no indefinite exemption is
+  assumed and JWT-token HR5 expiry remains 86,400 seconds.
+- Qualify the audit identity's rate-limit exemption, ingress bounds, capacity
+  alerts and flood behaviour; required refusal recording still grows storage.
+- Qualify all per-issuance checks and recovery under the existing budgets.
+
+Open design question: version 0 accepts same-server-only auditors. How should
+cross-owner auditors on another server gain independent read access without
+weakening the non-federated room boundary? No federation, bridge or credential
+sharing is authorized by this slice. Frozen membership also requires auditor
+provisioning before locking; later additions/re-invitations need a separate
+reviewed recovery design. No passing qualification is recorded here.
