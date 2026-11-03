@@ -13,7 +13,7 @@ to perform work. Humans use a separate identity-provider login path.
 
 | Component | Responsibility and trust boundary |
 | --- | --- |
-| Registrar | Owns `registration/1`, `enrollment/1`, their envelopes, name and `uid_map` semantics, registry validation, HTTPS admission, JWT issuance and audit. Its only private key is its JWT signing key. |
+| Registrar | Owns `registration/1`, `enrollment/1`, their envelopes, name and `uid_map` semantics, registry validation, HTTPS admission, JWT issuance and audit. Its only private key is its JWT signing key; the §9.1 audit access token is a bearer credential, not a private key. |
 | Keymaker | Separate host-helper module. Owns host-key custody, kernel peer-UID checks, helper socket framing, negotiation, operations and refusal codes. |
 | Homeserver | Trusts the registrar public key; validates login JWTs and creates local accounts. It never trusts host keys directly. |
 | a2a CLI | Carries helper proof to registrar and login JWT to homeserver. Holds its resulting access token, never the host or registrar private key. |
@@ -907,6 +907,8 @@ The registrar's protected signing file MUST hold a PKCS#8 PEM Ed25519 private
 key, mode 0600 under its non-agent service account, in a 0700 directory. The
 homeserver receives only the corresponding SubjectPublicKeyInfo PEM public key.
 No host, station or enrollment-publisher secret is held by the registrar.
+The §9.1 audit access token MUST be held separately as a bearer credential,
+not a private key; the only registrar private key remains the JWT signing key.
 Signer and homeserver verification key MUST switch together without overlapping
 verification keys; §10 explains the one-key implementation. On unknown/missing
 key material issuance fails closed. A rotation runbook MUST preserve audit and
@@ -931,7 +933,9 @@ input MUST NOT be copied into logs. Restrict audit reader access.
 Audit MUST NOT contain JWTs, access/refresh tokens, passwords, signatures,
 private keys, raw nonces, request bodies or arbitrary exception messages.
 A `jti` is a public request id, not a token. A sink MUST validate monotonic seq
-and hash-chain continuity; line hashing includes the terminating LF.
+and hash-chain continuity, except that the Matrix version 0 profile MUST use
+the registrar reconciliation and offline validation in §9.1 instead of
+sink-side rejection. Line hashing includes the terminating LF.
 
 Before returning a JWT, the service MUST durably append the issued entry locally
 and obtain durable acknowledgement of that exact line from an authenticated
@@ -951,6 +955,224 @@ itself: operators MUST see a readiness failure, never a false claim that an
 unwritten event was audited. Spool replay MUST preserve sequence and bytes.
 Admission and sink operations MUST have finite deadlines (default 5 seconds
 total per request); timeout obeys the same no-release rule.
+
+### 9.1 Matrix audit-room sink (version 0 profile) (normative)
+
+This profile MUST use one dedicated Matrix identity and one audit room for one
+local audit chain. The homeserver MUST run on a different host from the
+registrar. This deployment property MUST be verified by the operator; a URL or
+DNS lookup alone MUST NOT be treated as proof of off-host placement. The
+registrar MUST NOT create rooms, provision identities, change room policy or
+log in to obtain credentials. The audit identity MUST NOT be used by agents,
+interactive clients or another writer. The registrar MUST send only audit
+events with this identity and MUST NOT edit or redact events.
+
+#### 9.1.1 Startup configuration and transport (normative)
+
+The protected startup schema MUST accept the following optional string fields.
+If any is present, all four MUST be present and nonempty. All four MUST be
+required to enable this profile for issuance. Absence of all four MUST NOT
+imply a local-only sink or permit issuance without another qualified §9 sink.
+Parsing MUST retain the existing strict schema rules, including rejection of
+unknown fields, duplicate keys, wrong types, nulls and oversized configuration.
+Invalid configuration MUST refuse startup as `configuration_invalid`.
+
+| Field | Required value when this profile is enabled |
+| --- | --- |
+| `audit_homeserver` | Absolute HTTPS origin, such as `https://example.org`, with a nonempty valid host and optional numeric port in 1–65535; no path (including `/`), query (including an empty query), userinfo or fragment. HTTP, whitespace, controls, backslashes and percent-encoded authority components MUST be rejected. |
+| `audit_room` | Full Matrix room ID in `!opaque:server` form, such as `!audit:example.org`; both components MUST be nonempty and the server name valid. Room aliases, including `#audit:example.org`, MUST be rejected, never resolved. |
+| `audit_user` | Full valid Matrix user ID in `@localpart:server` form, such as `@registrar-audit:example.org`. It MUST identify the dedicated service identity, never an admission caller. |
+| `audit_token` | Absolute clean token-file path, with no expansion, NUL, empty, `.` or `..` components; MUST name a regular, service-UID-owned file of exactly mode 0600 in a service-UID-owned immediate directory of exactly mode 0700. |
+
+Token custody checks MUST match `signing_key`: final symlinks MUST be refused,
+opens MUST prevent symlink substitution, ownership/type/mode MUST be checked
+on the opened descriptor, and unsafe state MUST NOT be repaired implicitly.
+The operator MUST protect ancestor directories throughout service lifetime.
+The token file MUST contain 1–4096 visible ASCII bytes with no whitespace or
+line terminator. The registrar MUST NOT trim or normalize it, read it from an
+environment variable or keyring, or share it with agents. Unsafe, missing,
+unreadable, oversized or malformed token material MUST yield
+`configuration_invalid` before any authenticated request.
+
+TLS MUST be version 1.2 or later with hostname and certificate-chain validation
+against system trust roots. This profile MUST NOT add a pinned-CA configuration
+field, disable certificate verification or use discovery to replace the
+configured origin. All requests MUST target that origin directly; redirects
+of every status, including same-origin redirects, MUST be refused. The token
+MUST occur only in `Authorization: Bearer <token>`, never in a URL, query,
+request content or proxy credential. TLS failure MUST count as no acknowledgement.
+
+#### 9.1.2 Event mapping and exact-line acknowledgement (normative)
+
+Each complete local audit line MUST produce one non-state event of type
+`org.relux.registrar.audit.v0`, using
+`PUT /_matrix/client/v3/rooms/{room}/send/{type}/{txnId}`. Each path component
+MUST be percent-encoded as a single component. The content MUST contain exactly:
+
+| Member | Contract |
+| --- | --- |
+| `line` | JSON string whose decoded UTF-8 bytes equal the local CCJ-1 line without its final LF; reserialization of the embedded object MUST NOT substitute for these bytes. |
+| `seq` | Positive safe JSON integer equal to `seq` in `line`. |
+| `sha256` | Exactly 64 lowercase hexadecimal characters: SHA-256 of the complete original line including its single terminating LF. |
+
+The local audit schema MUST remain unchanged. Content MUST NOT contain `body`,
+`msgtype`, edit relations or additional metadata. Clients consuming this profile
+MUST treat events as immutable audit records, not renderable/editable chat
+messages; the custom type alone MUST NOT be claimed to prevent a generic
+client from displaying unknown events.
+
+`txnId` MUST be ASCII `audit-v0-` followed by `sha256`. It MUST be derived from
+persisted original bytes, including their original `instance`, never the
+current process identifier, clock or retry counter. Every retry MUST use the
+same origin, room, type, device and `txnId`. The homeserver MUST retain the
+transaction-to-event mapping durably for the lifetime of this audit chain,
+including across homeserver restarts; this is an operator qualification
+requirement, not a guarantee inferred from an ordinary Matrix installation.
+Before the first send, the registrar MUST durably bind the configured origin,
+room, user and authenticated device ID to its local delivery state under the
+same ownership and mode protections as local audit state. Subsequent startup
+MUST compare this binding before replay; mismatch or missing binding for a
+nonempty chain MUST yield `audit_room_unavailable`. The dedicated device and
+credential MUST survive registrar restart. Device replacement, loss of deduplication state or migration MUST fence issuance and
+replay until the operator establishes continuity; replay under a new device
+MUST NOT be used as recovery. Credential rotation MUST preserve the same device
+and deduplication scope and MUST NOT occur during pending delivery.
+
+The PUT response MUST have a successful 2xx status and a JSON object containing
+a valid `event_id`. For this profile's room version 11, an event ID MUST be `$`
+followed by canonical unpadded base64url encoding of a 32-byte reference hash.
+The registrar MUST then read
+`GET /_matrix/client/v3/rooms/{room}/event/{event_id}`. Acknowledgement MUST
+require a 2xx read-back with the same event ID, room ID, sender equal to
+`audit_user`, exact event type, no state key or redaction marker, and content
+matching the exact schema above. Decoded `line` bytes MUST compare byte for byte;
+`seq` and recomputed LF-inclusive hash MUST also agree. JSON key order and
+string escaping in the outer response MUST NOT affect that comparison.
+
+The PUT, read-back, any retry and final release MUST share the existing total
+5-second monotonic request budget; no step MUST reset or extend it. Successful
+read-back and release MUST occur strictly before the deadline. A response at
+the deadline MUST be rejected. A PUT at deadline minus epsilon without enough
+time to complete read-back MUST NOT acknowledge. Any non-2xx status, redirect,
+timeout, malformed/oversized response, malformed ID, missing event or mismatch
+MUST mean no acknowledgement and `503 audit_unavailable`. Each response body
+MUST be bounded to 64 KiB while streaming and parsed with duplicate-key and
+UTF-8 checks; response bodies MUST NOT be propagated to diagnostics. Unknown
+outer Matrix metadata MAY be ignored; unknown content members MUST be refused.
+The server MUST durably store an event before acknowledging its PUT. Read-back
+binds the server's returned identifier to the bytes it serves; it MUST NOT be
+represented as independent proof against a lying or subsequently purging server.
+
+#### 9.1.3 Room policy and readiness (normative)
+
+At every startup, before any replay or issuance, the registrar MUST authenticate
+with `GET /_matrix/client/v3/account/whoami` and require `user_id = audit_user`
+and a device ID. It MUST read the complete current room state using
+`GET /_matrix/client/v3/rooms/{room}/state`, including create, power-level and
+membership events, and require all of the following:
+
+- The immutable `m.room.create` event MUST have `room_version = "11"`,
+  `m.federate = false`, empty state key and sender equal to `audit_user`.
+  The room MUST NOT be a replacement/upgrade room. Other room versions MUST
+  be refused by this profile. The creator and all joined/invited members MUST
+  belong to the same Matrix server as `audit_user`.
+- `audit_user` MUST be joined. `m.room.join_rules` MUST be `invite`,
+  `m.room.history_visibility` MUST be `joined`, `m.room.guest_access` MUST
+  explicitly be `forbidden`, and there MUST be no encryption or tombstone
+  state. Read access MUST be
+  limited to operator-approved room membership.
+- `m.room.power_levels` MUST explicitly set `users_default = 0`,
+  `events_default = 101`, `state_default = 101`, and `invite`, `kick`, `ban`
+  and `redact` to 101. `users` MUST give only `audit_user` level 100;
+  any other explicit user entry MUST have level 0, including absent members.
+  `events` MUST contain exactly `org.relux.registrar.audit.v0: 100`.
+  Missing fields, string-valued levels or extra event overrides MUST fail.
+
+These checks MUST exclude other members from sending audit or other timeline
+events, power-level changes and redaction events, including redactions of their
+own events. The registrar identity MUST also lack redaction permission. Ordinary
+Matrix self-membership transitions MUST NOT be described as audit-write rights;
+power levels do not prohibit a reader from leaving or updating its membership.
+Provisioning MUST finish before this locked policy is installed. The operator
+MUST provision the creator with sufficient temporary power (at least 101) to
+install the final thresholds while reducing its own level to 100; a creator
+already limited to 100 MUST NOT be assumed able to raise thresholds to 101.
+The registrar MUST NOT weaken the locked policy to add readers. A policy
+change or incomplete state MUST close readiness; startup checks MUST be
+repeated before resuming issuance.
+
+Startup checks MUST complete within a separate total 5-second monotonic budget,
+with bounded responses and pagination; exhaustion MUST fail closed. Room state
+and history responses MUST each be limited to 4 MiB and 1,024 events per page.
+Unparseable or unavailable policy/identity evidence MUST yield
+`audit_room_unavailable`; a parsed policy or identity violation MUST yield
+`audit_room_policy_invalid`. Both are typed readiness failures, not new
+admission HTTP codes. Before startup succeeds no request MUST be admitted,
+no nonce reserved and no admission line fabricated for the readiness check.
+
+#### 9.1.4 Chain reconciliation, spool replay and offline audit (normative)
+
+The registrar MUST serialize audit appends and delivery in local sequence order.
+It MUST validate its local chain before sending. Sequence MUST start at 1 and
+increase by exactly 1 across process restarts; `prev_hash` MUST match the
+previous complete line. The process `instance` MUST NOT reset the chain.
+
+At startup and again before the first issuance, before appending its candidate
+issued line and under audit-delivery serialization, the registrar MUST read the
+most recent audit event by backwards room-history pagination using
+`GET /_matrix/client/v3/rooms/{room}/messages?dir=b`. It MUST validate that
+event's sender, type, content and hash, and require its bytes, sequence and hash
+to equal the durable local chain head. The empty room MUST match only an empty
+local chain. Missing, redacted, conflicting, remote-ahead or unequal heads MUST
+produce typed readiness failure `audit_room_head_mismatch`; unavailable or
+incomplete history MUST produce `audit_room_unavailable`. No JWT MUST be issued
+while either failure persists; equality MUST NOT authorize truncating, resetting
+or replacing local history. Each pre-issuance reconciliation MUST fit within
+the request's remaining budget. These checks MUST NOT substitute for registry
+high-water reconciliation or the separately typed §4.5 witness.
+
+When queued lines make the local head newer, startup MUST report the same
+mismatch and keep issuance disabled. A recovery-only spool replay MAY proceed
+after policy checks only if the remote chain has been verified as an exact
+prefix of the retained local chain, walking history as needed. Replay MUST
+ship every remaining line, including committed issued lines with uncertain
+receipts and subsequent spooled refusals, in original sequence and exact bytes.
+It MUST complete read-back for each line before sending the next. Each replay
+attempt MUST have a total 5-second budget; timeout MUST leave the unacknowledged
+suffix queued. Repeating a PUT after a crash MUST return the original event ID
+and create no second event. Recovery MUST NOT reissue a JWT or restore a
+consumed nonce. Readiness MUST reopen only after replay and fresh policy/head
+checks succeed. A remote head that is not a verified local prefix MUST NOT be
+repaired by replay. Runtime delivery failure MUST close issuance readiness until
+these same checks succeed; requests already admitted MUST retain §9 failure
+records and consumed nonces.
+
+An offline auditor MUST export the complete room timeline from creation through
+a recorded terminal head, paginate to history exhaustion, and retain event IDs
+and original audit bytes. The auditor MUST reject incomplete pagination,
+redacted/malformed audit events, wrong senders, wrong schema, hash mismatches,
+duplicate sequences or duplicate line hashes under different event IDs. It MUST
+verify a unique chain beginning at sequence 1 with zero `prev_hash`, successive
+sequences increasing by 1, and every LF-inclusive predecessor hash. It MUST
+compare the terminal head with independently retained local/off-host evidence
+and report any missing suffix, fork or disagreement; timestamps MUST NOT replace
+chain order. Repeated pagination of the same event ID MUST be deduplicated,
+not mistaken for two events. The auditor MUST verify the room policy and report
+its changes. This procedure MUST NOT be claimed to provide online rejection by
+the homeserver. A homeserver administrator can purge or rewrite served history;
+head equality and TLS MUST NOT be represented as protection against that
+administrator, joint rollback or loss of all independent evidence.
+
+#### 9.1.5 Failure codes and secrecy (normative)
+
+`configuration_invalid` MUST remain startup-only. `audit_room_policy_invalid`,
+`audit_room_head_mismatch` and `audit_room_unavailable` MUST be readiness-only
+codes. HTTP delivery failures MUST retain `audit_unavailable` and §9's terminal
+override, local append, spool and nonce rules. Diagnostics MUST expose only
+static codes. The token, its file path, Authorization headers and response
+bodies MUST NOT occur in errors, audit lines or logs, including wrapped network,
+filesystem and JSON errors. Transport/debug logging MUST obey the same rule.
+The bearer credential MUST NOT be treated as an additional private key under §8.
 
 ## 10. Homeserver operator contract (normative; source findings informative)
 
@@ -1803,6 +2025,59 @@ A future lifecycle harness must kill bounded controls that (a) skip/shorten the
 hold at T2/T3, (b) use only the new sample at T4, (c) ignore the second check at
 T14 and (d) ignore subsecond backward steps at T17, while PT controls remain
 green. These are planned requirements, not passing production-test evidence.
+
+### B.4 Matrix audit-room sink (normative test plan; no fixtures yet)
+
+These planned tests MUST use a local fake homeserver with `httptest` TLS and
+an isolated test trust store containing its certificate. They MUST NOT contact
+a live homeserver or change production trust roots. Controllable monotonic time
+MUST exercise deadline boundaries without sleep-based race assumptions. These
+plans MUST NOT be reported as implemented tests or deployment qualification.
+
+For delivery rows, seed a healthy policy and matching local/remote head, then
+admit one otherwise valid request through nonce reservation. Unless a row says
+otherwise, the expected effects MUST be: `503 audit_unavailable`, no JWT,
+nonce consumed, durable local issued line followed by refused line when local
+storage works, unchanged prior bytes, and issuance readiness closed. The fake
+server MAY retain the issued event despite a failed acknowledgement; tests MUST
+assert the local suffix remains replayable, not assume remote absence. Startup
+rows MUST admit no request: no JWT, no nonce change and no new local audit line,
+with readiness closed. Each negative case MUST have the stated adjacent valid
+control so an implementation that refuses everything fails the plan.
+
+| Negative case | Expected code and observable effects | Positive control |
+| --- | --- | --- |
+| PUT or read-back completes at the 5-second deadline | `audit_unavailable`; delivery effects; no late release | Complete PUT, read-back and final checks strictly before deadline: one JWT, consumed nonce, acknowledged local issued line, healthy readiness |
+| PUT completes at deadline minus epsilon; read-back cannot finish before deadline | `audit_unavailable`; delivery effects; the PUT alone is insufficient | Both complete at deadline minus epsilon with release before deadline: one JWT |
+| PUT or read-back returns 401, 403, 429 or any 5xx; repeat for other non-2xx | `audit_unavailable`; delivery effects; no retry extends budget or releases JWT | 2xx with valid ID and exact read-back releases one JWT |
+| Any redirect, including same-origin and a second TLS fake origin | `audit_unavailable`; delivery effects; zero redirected requests and no credential at redirect target | Direct origin receives Authorization only in header |
+| Malformed, missing or wrong-type event ID, including bad reference-hash base64url | `audit_unavailable`; delivery effects; no read-back for invalid ID | Valid room-version-11 ID and exact event content acknowledge |
+| Read-back missing (404), truncated, malformed or oversized | `audit_unavailable`; delivery effects | Bounded valid read-back acknowledges |
+| Read-back differs by one line byte, LF/hash, seq, sender, type or room; extra content field or redaction | `audit_unavailable`; delivery effects; no semantic reserialization acceptance | Different outer JSON escapes/key order with identical decoded bytes acknowledges |
+| Room head differs from local head at startup, including empty/nonempty, remote-ahead or redacted head | `audit_room_head_mismatch`; startup effects; no truncation or implicit reset | Identical nonempty heads, or both empty, pass readiness |
+| Wrong power levels, another writer, redaction grant, missing create restriction, federation enabled or wrong room version | `audit_room_policy_invalid`; startup effects; zero policy mutations | Exact §9.1.3 policy passes readiness |
+| Policy/history unavailable, TLS verification fails or startup budget exhausts | `audit_room_unavailable`; startup effects | Valid test trust chain and complete state/history pass |
+| `http://`, origin path/query/userinfo/fragment, alias, partial fields, duplicate/unknown key, null or wrong type | `configuration_invalid`; startup effects; no authenticated network call | All four strictly valid fields accepted |
+| Token file mode 0644, final symlink, wrong owner, unsafe directory, missing or invalid token | `configuration_invalid`; startup effects; no repair and no authenticated network call | Regular service-owned 0600 token in service-owned 0700 directory accepted |
+| Token or its path in injected filesystem/network error strings or hostile response body | The applicable static `configuration_invalid`, readiness code or `audit_unavailable` only; zero secret/path/body matches across all errors, audit and logs; respective startup/delivery effects | Safe static diagnostic remains observable; inject a known leaking diagnostic into the test capture to verify the secrecy assertion fails |
+| Crash after remote append before receipt persistence; replay same `txnId` twice | No new refusal code on successful replay; exactly one remote event and same event ID, identical PUT content/path, original local bytes/order; no JWT replay or nonce restoration | Idempotent replay read-back acknowledges original event; fresh checks reopen readiness |
+| Change device or lose deduplication state with pending replay | `audit_room_unavailable`; readiness closed; zero recovery PUTs under a new device, no JWT or nonce restoration | Same persistent device and retained mapping deduplicate after server and registrar restart |
+| Spool has multiple refusals after an uncertain issued line; remote history is not a local prefix | `audit_room_head_mismatch`; no replay writes or JWT; retained suffix unchanged | Verified prefix permits exact ordered replay; fresh equality required before new issuance |
+| Offline export has a missing middle line, duplicate seq/hash, wrong prev_hash or missing terminal suffix | Auditor reports chain failure, no acceptance verdict; no registrar state mutation | Complete unique chain and independently matching terminal head pass |
+
+All delivery tests MUST assert both the no-release failure path and the valid
+acknowledged issuance control through the same adapter boundary. Replay tests
+MUST check event count as well as request count and deterministic transaction
+identity after restart. Test harness controls MUST detect a planted duplicate
+creation and a planted byte mismatch rather than accepting unrelated failures.
+The fake server MUST enforce the selected room policy for other-member sends
+and redactions, with audit-user sends as the valid control. This tests the
+adapter contract; live durability, off-host placement and retention remain
+operator qualification requirements.
+
+Informative protocol references for this profile: [Matrix transaction IDs and
+Client-Server API](https://spec.matrix.org/v1.16/client-server-api/#transaction-identifiers)
+and [room version 11](https://spec.matrix.org/v1.16/rooms/v11/).
 
 ## Appendix C. Decisions, open questions and source-gap choices (informative)
 
