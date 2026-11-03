@@ -41,6 +41,7 @@ func TestAuditConfigInvalid(t *testing.T) {
 		value       any
 	}{
 		{"http", "audit_homeserver", "http://example.org"},
+		{"unicode-scheme", "audit_homeserver", "httpſ://example.org"},
 		{"slash", "audit_homeserver", "https://example.org/"},
 		{"path", "audit_homeserver", "https://example.org/path"},
 		{"query", "audit_homeserver", "https://example.org?x=y"},

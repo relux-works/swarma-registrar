@@ -78,7 +78,8 @@ func auditLocalpart(local, audience string) bool {
 // normalize the protected spelling or discard empty query/fragment delimiters.
 func auditOrigin(origin string) bool {
 	scheme, authority, ok := strings.Cut(origin, "://")
-	if !ok || !strings.EqualFold(scheme, "https") {
+	// URI schemes are ASCII; EqualFold alone also equates Unicode long s.
+	if !ok || len(scheme) != len("https") || !strings.EqualFold(scheme, "https") {
 		return false
 	}
 	if !serverName(authority) {
