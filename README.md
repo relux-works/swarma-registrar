@@ -411,3 +411,9 @@ Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) and [NOTI
 Production time evidence uses the pinned shared provider and protected
 `time_policy` file. See the [adapter runbook](internal/adapters/README.md#shared-option-a-policy-runbook)
 for policy contents, startup lifecycle, tool commands and qualification limits.
+
+The isolated [Matrix audit delivery primitive](internal/adapters/matrixaudit/README.md)
+provides transport, durable binding and verified append/read-back.
+A later change wires it into issuance and `Audit.Acknowledge`, with readiness,
+reconciliation, coverage and final-release checks. Its README lists
+package-specific validation commands and caller obligations.
