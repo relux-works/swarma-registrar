@@ -745,6 +745,17 @@ evidence. The policy requires:
 - A backward UTC step relative to monotonic within one boot exceeding 1 second
   raises the shared incident and hold. The registrar is stricter, as below.
 
+The registrar's protected `time_policy` MUST set `backward_tolerance_ns` to
+`1000000000` (1 second). A lower value MUST be refused as `configuration_invalid`
+at configuration load, before any provider start; the pinned provider's `Validate`
+already refuses values above its 1-second ceiling
+([`timeconf/policy.go:30`](https://github.com/relux-works/swarma-credential-broker/blob/e7619dfc4b2a6cf1696d8a21eff603bc80f147c7/timeconf/policy.go#L30),
+[`timeconf/policy.go:63`](https://github.com/relux-works/swarma-credential-broker/blob/e7619dfc4b2a6cf1696d8a21eff603bc80f147c7/timeconf/policy.go#L63)).
+Below 1 second, provider sampling jitter (BOOTTIME then REALTIME reads) is refused
+as a backward step and the service never becomes available, as measured on a real
+host. This sampling tolerance does not relax the registrar's independent
+interval-based backward-step fence below.
+
 The registrar MAY use stricter health thresholds. For version 0, the common
 protected bound is `delta_cap = 0.5 + 1 = 1.5 seconds`. Configuration MUST NOT
 raise it above the platform policy bound; such configuration MUST refuse startup.
@@ -1933,6 +1944,7 @@ concerns time-source evidence, separately from §4.5 reconciliation option A/C.
 | Fix start only after the hold and successful second provider check | Accepted on 2026-10-23: preserve the floor(fixed start)+31 barrier while checking freshness/health at its derivation. The old process must stop admitting before launch. |
 | Reject variable hold delta_cap+delta_sample+1 | Rejected alternative: 2.6 seconds at sample=0.1, up to 4 at sample=1.5, versus fixed 4; it adds sample/hold/recheck coupling with no extra safety. New-sample-only 2*delta_sample+1 is unsafe, not an optimization. |
 | Any detected backward UTC step fences the registrar for its process lifetime | Accepted on 2026-10-23: stricter than the shared >1-second incident/hold; health loss and authority expiry have the same permanent fence. |
+| Provider `backward_tolerance_ns=1000000000` (1 second); lower values refuse configuration load before provider start, and provider `Validate` enforces the ceiling | Lead decision: avoid sampling-jitter refusal measured on a real host; preserve the registrar's independent interval-based backward-step fence (§7). |
 | Clock-fence exit code 75 and fixed `registrar: clock fenced` diagnostic after successful shutdown drain | Implemented dedicated type, distinct from configuration/non-clock startup/drain failures (generic exit 1). Drain failure retains its own failure and never becomes a successful clock-fence exit. Deployment qualification remains open. |
 | Supervisor example: Restart=on-failure, RestartSec=2s, StartLimitIntervalSec=60s, StartLimitBurst=5 | Recorded operating choice for deployment review: start only after old exit, bound restart loops, and require the operator after a limit stop. Values may be tuned with a finite rate budget; they never shorten the hold or waive other admission gates. |
 | Client horizon 4+61=65 seconds plus evidence/scheduling/transport margin | Accepted on 2026-10-23: replace the former 61-second startup budget; Keymaker clients obtain a new proof/nonce and diagnose persistent refusal rather than replay indefinitely. |

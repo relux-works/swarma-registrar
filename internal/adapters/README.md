@@ -184,7 +184,7 @@ it does not call the provider's private-file `LoadPolicy`. Exact contents
   "max_offset_ns": 500000000,
   "max_root_distance_ns": 1000000000,
   "authority_window_ns": 300000000000,
-  "backward_tolerance_ns": 0,
+  "backward_tolerance_ns": 1000000000,
   "step_tolerance_ns": 60000000000,
   "timeout_ns": 1000000000,
   "max_output_bytes": 4096,
@@ -199,19 +199,23 @@ After preparing `policy.json`, install as root into the root-owned, non-writable
 install -o root -g root -m 0644 policy.json /etc/timeconf/policy.json
 ```
 
-Other consumers carry the same values under their own custody rules; this is
+Other consumers use their own policy and custody rules; this is
 not a shared-file installation contract. Keymaker nests `time_policy` in its own
 `config.json`. At provider pin
 [`e7619df`](https://github.com/relux-works/swarma-credential-broker/tree/e7619dfc4b2a6cf1696d8a21eff603bc80f147c7),
 `LoadPolicy` uses service-UID ownership and exact mode 0600
 ([`timeconf/collect_linux.go:99-136`](https://github.com/relux-works/swarma-credential-broker/blob/e7619dfc4b2a6cf1696d8a21eff603bc80f147c7/timeconf/collect_linux.go#L99-L136)).
-The example uses `backward_tolerance_ns: 0`: provider `Policy.Validate` permits
-zero through one second
-([`timeconf/policy.go:60`](https://github.com/relux-works/swarma-credential-broker/blob/e7619dfc4b2a6cf1696d8a21eff603bc80f147c7/timeconf/policy.go#L60)),
-but the broker's nested `time_confidence` requires exactly zero
-([`internal/policy/policy.go:60`](https://github.com/relux-works/swarma-credential-broker/blob/e7619dfc4b2a6cf1696d8a21eff603bc80f147c7/internal/policy/policy.go#L60)).
-Zero is valid for this registrar and preserves the same values across consumers;
-the registrar also independently fences detected backward interval discontinuities.
+The example uses `backward_tolerance_ns: 1000000000` (1 second), the provider's
+ceiling at broker `e7619df`
+([`timeconf/policy.go:30`](https://github.com/relux-works/swarma-credential-broker/blob/e7619dfc4b2a6cf1696d8a21eff603bc80f147c7/timeconf/policy.go#L30),
+[`timeconf/policy.go:63`](https://github.com/relux-works/swarma-credential-broker/blob/e7619dfc4b2a6cf1696d8a21eff603bc80f147c7/timeconf/policy.go#L63)).
+Below 1 second, the provider's sampling jitter (BOOTTIME then REALTIME reads) is
+refused as a backward step and the service never becomes available; this was
+measured on a real host.
+The registrar refuses a lower value as `configuration_invalid` at configuration
+load, before any provider start; the provider's `Validate` rejects values above
+the ceiling. The registrar also independently fences detected backward interval
+discontinuities.
 
 The closed configuration inventory must match the running chronyd configuration,
 including included files. A minimal protected `/etc/chrony/chrony.conf` source

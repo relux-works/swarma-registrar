@@ -4,6 +4,7 @@ import (
 	"net/netip"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/relux-works/swarma-credential-broker/timeconf"
 	"github.com/relux-works/swarma-registrar/ccj"
@@ -215,7 +216,7 @@ func loadTimePolicy(path string, guard func(os.FileInfo, int) bool) (timeconf.Po
 		return timeconf.Policy{}, failure(configurationInvalid)
 	}
 	p, err := timeconf.DecodePolicy(raw)
-	if err != nil || p.Source != timeconf.NTSConfig {
+	if err != nil || p.Source != timeconf.NTSConfig || p.BackwardTolerance < time.Second {
 		return timeconf.Policy{}, failure(configurationInvalid)
 	}
 	return p, nil
