@@ -95,7 +95,11 @@ These time-policy option labels are separate from witness reconciliation modes.
 The version 0 choices in §9.1 and C.1 are fixed: system roots without a pinned
 CA or proxy, room version 11, `shared` history and `invite` membership approved
 by the operator, the `works.relux.registrar.audit.v0` event type, exact-byte
-read-back and per-issuance policy/head/predecessor checks within 5 seconds.
+read-back and per-issuance policy/head/audit-type-predecessor checks within
+5 seconds. Reader receipts, typing and policy-valid membership interleaving
+do not fence issuance. Version 0 requires the parsed audit localpart to satisfy
+§5 and its server to byte-equal the configured audience; alternative spellings
+fail startup rather than bypassing the post-validation reserved-name refusal.
 The administrative path creates only the account; the audit identity's own
 token creates the room with creator power 101 before final policy and lowering
 to 100. The registrar refuses the audit mxid and the server must independently
@@ -120,6 +124,17 @@ Open activation dependencies (C.2, HR10–HR14, B.1 I16–I20 and B.4):
 Open design question: version 0 accepts same-server-only auditors. How should
 cross-owner auditors on another server gain independent read access without
 weakening the non-federated room boundary? No federation, bridge or credential
-sharing is authorized by this slice. Frozen membership also requires auditor
-provisioning before locking; later additions/re-invitations need a separate
-reviewed recovery design. No passing qualification is recorded here.
+sharing is authorized by this slice. Frozen invitations require approved
+readers to be invited before locking; those readers may join afterwards.
+The separate offline auditor joins before the first audit event. New invitations
+or re-invitations after locking remain outside version 0.
+
+Persistent non-prefix conflicts, unrecoverable device bindings and loss of
+locked audit membership use the §9.1.4 operator incident procedure: preserve
+the old local chain/suffix and available terminal room evidence, then explicitly
+provision a new dedicated audit account, room, binding and fresh chain, linked
+by a protected incident manifest.
+An unavailable remote export remains an evidence gap, not a complete archive.
+No in-place history repair or automatic rebind is claimed. Qualification of
+that evidence-preserving replacement remains open alongside B.4 recovery and
+budget cases. No passing qualification is recorded here.
