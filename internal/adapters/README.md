@@ -26,13 +26,29 @@ attestation from its controlling terminal for that starting process only and
 then uses the real CAS. No reconciliation marker is written; see the root
 README for `serve --reconcile`.
 
-There is **no production ClockEvidence implementation**. Capture actual process
-entry time with `time.Now()` and preserve its monotonic component when constructing
-Clock. Evidence must be trusted and nonblocking, attest ordering against every
-old admission and latch transient loss/backward steps between observations.
-Absent evidence reports unhealthy and faulted; waiting never clears that fence.
-The in-memory evidence implementation exists only in tests. Admission must map
-unhealthy/faulted readings to `clock_skew` and enforce its startup barrier.
+`NewProductionClock` consumes `github.com/relux-works/swarma-credential-broker/timeconf`
+at `e7619dfc4b2a6cf1696d8a21eff603bc80f147c7` (the policy documents use the
+same commit). Linux 5.11+ and proc access are required by its collector.
+`CollectorEntry` is the first statement in command main. No local chrony parser
+or second production profile exists. The provider preserves conservative
+nanosecond rounding; the adapter requires trusted, fresh, unexpired evidence,
+with nonnegative uncertainty at most 1.5 seconds and an excluded authority endpoint.
+
+Startup performs a provider start check, a full four-second monotonic hold with
+intermediate checks, then another start check before fixing UTC and the immutable
+`floor(fixed UTC)+31` barrier. Wall progress cannot shorten the hold. A monitor
+samples every 100 ms after each completed collection and admission also takes a
+fresh sample. Unavailable, unhealthy, expired, over-cap or backward-step evidence
+latches the process fence; health recovery never clears it. Any detected negative
+wall/monotonic discontinuity fences, including a shared incident over one second.
+Observation intervals cannot prove absence of an unobserved transient; smooth slew
+and measurement jitter require deployment qualification under §7.
+
+Admission maps faulted readings to typed `clock_skew`. The command stops serving,
+joins handlers and detached audit, closes the sink, then exits 75 with
+`registrar: clock fenced`. Failed drains retain shutdown failure and leave a live
+sink open. The supervisor must exclude the old process before restart and bound
+restart attempts. Test evidence remains injection only.
 
 There is **no production Remote implementation or network sink**. Without one,
 local recording works but Acknowledge returns `audit_unavailable`. A future
@@ -65,6 +81,7 @@ for bytes only and must not substitute for LoadConfig at startup.
 | `object_format` | Required protected repository profile: exactly `sha1` or `sha256`. No default or inference from revision length. Passed unchanged to the loader, Git, store/digest and audit constructors. |
 | `revision` | Exactly 40 lowercase hex characters for `sha1`, or 64 for `sha256`, as selected by protected `object_format`. Not a branch, tag, abbreviated or cross-format ID. |
 | `allowed_signers` | Absolute clean path to protected OpenSSH allowed-signers material for approved registry maintainers. |
+| `time_policy` | Absolute clean protected shared policy path, e.g. `/etc/timeconf/policy.json`. Required by `serve` except `--loopback-test-http`; if present, always validated. Root-owned regular file, no group/other write, no final symlink. Only option A; raised platform bounds refuse startup. |
 | `publisher_key` | Strict canonical enrollment-publisher public-key string accepted by enrollment.NewPolicy. The containing configuration protects this pin. |
 | `stations` | Object mapping valid host labels to booleans, for example `{"host-a":false}`. |
 | `high_water`, `signing_key`, `audit_file` | Absolute clean file paths without NUL or expansion. Use separate files/directories for state, audit and signing material. |
@@ -73,7 +90,7 @@ for bytes only and must not substitute for LoadConfig at startup.
 | `tls_certificate`, `tls_key` | Optional paired absolute clean paths; serve requires them except in explicit loopback HTTP test mode. Both require service-owned 0600 files in service-owned 0700 immediate directories. |
 | `first_use` | Optional exact full configured revision, never a boolean. Only explicit operator-confirmed bootstrap may use absent state. |
 
-Configuration and allowed-signers files must be root-owned, regular and have no
+Configuration, time-policy and allowed-signers files must be root-owned, regular and have no
 group/other write permission; running as root is refused. Final symlinks are
 refused. The operator must protect their directory namespace and maintain it
 throughout service lifetime: checking a file at startup does not secure writable
@@ -146,3 +163,61 @@ actual ownership/mode rejection and filesystem operations are separate real
 checks. No test establishes production clock trust, off-host durability,
 privileged configuration acceptance, bounded blocked-kernel I/O or deployment
 readiness. A subsequent service integration must qualify those properties.
+
+## Shared option-A policy runbook
+
+Both consumers can point at `/etc/timeconf/policy.json`. This service reads the
+shared JSON using its root-owned allowed-signers custody rule, then the provider's
+`DecodePolicy` and `Production`; it does not use the provider's service-owned
+private-file loader. There is no service override. Contents (durations are integer
+nanoseconds):
+
+```json
+{
+  "source": "chrony-nts-config",
+  "chronyc": "/usr/bin/chronyc",
+  "source_files": ["/etc/chrony/chrony.conf"],
+  "max_sync_age_ns": 2048000000000,
+  "max_uncertainty_ns": 1500000000,
+  "max_offset_ns": 500000000,
+  "max_root_distance_ns": 1000000000,
+  "authority_window_ns": 300000000000,
+  "backward_tolerance_ns": 1000000000,
+  "step_tolerance_ns": 60000000000,
+  "timeout_ns": 1000000000,
+  "max_output_bytes": 4096,
+  "resync": "new-authenticated-sync"
+}
+```
+
+After preparing `policy.json`, install as root into the root-owned, non-writable
+`/etc/timeconf` directory:
+
+```sh
+install -o root -g root -m 0644 policy.json /etc/timeconf/policy.json
+```
+
+The closed configuration inventory must match the running chronyd configuration,
+including included files. A minimal protected `/etc/chrony/chrony.conf` source
+example is:
+
+```conf
+server time-a.example.org iburst nts maxpoll 10
+server time-b.example.org iburst nts maxpoll 10
+```
+
+Replace example names with qualified NTS sources. Keep the source files and
+executable protected against untrusted writes. Option A infers NTS from this
+configuration and selected-source matching; it does not prove authenticated
+per-source operation. This runbook is a template, not installation evidence.
+
+Narrow validation for this adapter slice (Go 1.26.8, Linux):
+
+```sh
+GOTOOLCHAIN=local go test ./internal/adapters/... ./cmd/registrar/...
+GOTOOLCHAIN=local go vet ./internal/adapters/... ./cmd/registrar/...
+GOTOOLCHAIN=local go mod tidy -diff
+```
+
+Outputs and fixture scratch belong under `.temp/`. These commands supplement
+the broader repository checks; full and race review runs are separate.

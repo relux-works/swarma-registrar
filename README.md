@@ -57,9 +57,9 @@ contracts have been checked (KM1). See specification §1, §4.3, §10 and Append
 
 The [time-policy target](spec/registrar.md#7-time-replay-concurrency-and-limits-normative)
 requires the shared platform provider, a 4-second monotonic hold and two startup
-checks before fixing the replay barrier. Its provider/startup lifecycle plans
-remain uninstantiated; the existing binary does not yet implement this target
-and remains fenced without production clock evidence.
+checks before fixing the replay barrier. The binary implements this lifecycle
+using the pinned provider and requires a protected shared time policy. Injected
+tests cover adapter boundaries; live deployment qualification remains open.
 
 ## Library packages
 
@@ -206,10 +206,10 @@ commit. Missing or corrupt evidence is never silently treated as first use.
 | No confirmation, wrong/missing/nonterminal confirmation or unverified registry | No installed registry; readiness 503, admission `registry_unavailable`. |
 | Missing state without explicit configured first-use pin | No bootstrap or state write; registry remains fenced. |
 | Store commit failure or concurrent replacement | No authority returned; durability may be indeterminate. Reconcile again against surviving evidence in a new process. |
-| No production clock evidence source | Permanent process clock fence; readiness 503, valid enrolled requests refuse `clock_skew` (400). Waiting never reopens it. |
+| Missing or invalid production clock evidence | Startup refuses, or the running process permanently fences, drains and exits 75 after successful sink close. In-flight admission refuses `clock_skew` (400); waiting never reopens the process. The injected fenced-server control reports readiness 503. |
 | No authenticated remote audit sink | Local refusals can be durably spooled; an otherwise issuable request refuses `audit_unavailable` (503), with no JWT release. |
 
-The shipped binary has neither production clock evidence nor a remote sink.
+The shipped binary consumes shared production clock evidence; it has no remote sink.
 Successful reconciliation establishes registry authority only; it does not
 establish clock ordering, off-host durability or deployment readiness. The
 loopback issuance control injects trusted fixed-time evidence and an exact-hash
@@ -247,8 +247,8 @@ With prompt healthy checks each clock restart adds about 4 seconds of hold plus
 provider sampling; drain, the example 2-second backoff, scheduling and barrier
 waits are separate availability costs and do not weaken safety.
 
-The binary **does not yet implement the clock-fence exit** or this supervised
-recovery path; it belongs to the evidence-source implementation slice. The
+The binary implements the clock-fence exit and drain. This supervised recovery
+path still requires deployment qualification. The
 fragment does not establish deployment readiness: verified registry authority,
 signing and authenticated audit gates still apply. In particular, the current
 binary's interactive per-process reconciliation above is not supplied or bypassed
@@ -331,12 +331,12 @@ unquoted charset values. The HTTP layer enforces those boundaries before MIME
 normalization, retaining the raw unsupported-parameter guard. Tests use
 `httptest` without a listener. The binary adds HTTPS and bounded transport
 reads/writes; its integration tests listen only on loopback. Deployment still
-owns ingress policy, production clock evidence and authenticated off-host audit.
+owns ingress policy, protected time policy provisioning and authenticated off-host audit.
 Registration parsing verifies schema, id and signature in that
 order. Name syntax and audience checks are separate methods
 so admission can run enrollment checks first, as required by specification §6.1.
 The binary supplies admission/HTTP wiring and interactive operator
-reconciliation as described below. Production clock evidence and authenticated
+reconciliation as described below. Deployed clock qualification and authenticated
 off-host audit remain unconfigured; local adapters cannot establish those
 deployment facts.
 
@@ -399,3 +399,7 @@ fencing.
 ## License
 
 Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+Production time evidence uses the pinned shared provider and protected
+`time_policy` file. See the [adapter runbook](internal/adapters/README.md#shared-option-a-policy-runbook)
+for policy contents, startup lifecycle, tool commands and qualification limits.

@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/relux-works/swarma-credential-broker/timeconf"
 	"github.com/relux-works/swarma-registrar/ccj"
 	"github.com/relux-works/swarma-registrar/enrollment"
 	internalEnrollment "github.com/relux-works/swarma-registrar/internal/enrollment"
@@ -14,6 +15,7 @@ import (
 // Config is immutable startup configuration. Paths are absolute; no environment
 // expansion, branch following, remote sink or healthy-clock switch is supported.
 type Config struct {
+	TimePolicy                                                   string
 	ObjectFormat                                                 string
 	Audience, Repository, Revision, AllowedSigners, PublisherKey string
 	HighWater, SigningKey, AuditFile                             string
@@ -35,6 +37,11 @@ func loadConfig(path string, guard func(os.FileInfo, int) bool) (Config, error) 
 	if _, err = readProtectedWith(c.AllowedSigners, 65536, guard); err != nil {
 		return Config{}, failure(configurationInvalid)
 	}
+	if c.TimePolicy != "" {
+		if _, err := loadTimePolicy(c.TimePolicy, guard); err != nil {
+			return Config{}, err
+		}
+	}
 	return c, nil
 }
 
@@ -54,10 +61,10 @@ func ParseConfig(raw []byte) (Config, error) {
 		return bad()
 	}
 	required := []string{"v", "audience", "repository", "revision", "object_format", "allowed_signers", "publisher_key", "stations", "high_water", "signing_key", "audit_file"}
-	if len(obj) < len(required) || len(obj) > len(required)+6 {
+	if len(obj) < len(required) || len(obj) > len(required)+7 {
 		return bad()
 	}
-	allowed := map[string]bool{"per_key": true, "per_name": true, "listen": true, "tls_certificate": true, "tls_key": true, "first_use": true}
+	allowed := map[string]bool{"time_policy": true, "per_key": true, "per_name": true, "listen": true, "tls_certificate": true, "tls_key": true, "first_use": true}
 	for _, name := range required {
 		if _, ok := obj[name]; !ok {
 			return bad()
@@ -87,7 +94,7 @@ func ParseConfig(raw []byte) (Config, error) {
 		name   string
 		target *string
 	}{
-		{"listen", &c.Listen}, {"tls_certificate", &c.TLSCertificate},
+		{"time_policy", &c.TimePolicy}, {"listen", &c.Listen}, {"tls_certificate", &c.TLSCertificate},
 		{"tls_key", &c.TLSKey}, {"first_use", &c.FirstUse},
 	} {
 		if value, present := obj[field.name]; present {
@@ -105,6 +112,9 @@ func ParseConfig(raw []byte) (Config, error) {
 		return bad()
 	}
 	if c.TLSKey != "" && (!absolute(c.TLSKey) || !absolute(c.TLSCertificate)) {
+		return bad()
+	}
+	if c.TimePolicy != "" && !absolute(c.TimePolicy) {
 		return bad()
 	}
 	if c.FirstUse != "" && c.FirstUse != c.Revision {
@@ -195,4 +205,18 @@ func serverName(value string) bool {
 		}
 	}
 	return true
+}
+
+// loadTimePolicy applies the same root custody as allowed_signers before decoding
+// the shared schema. Only option A is enabled; platform ceilings cannot be raised.
+func loadTimePolicy(path string, guard func(os.FileInfo, int) bool) (timeconf.Policy, error) {
+	raw, err := readProtectedWith(path, 65536, guard)
+	if err != nil {
+		return timeconf.Policy{}, failure(configurationInvalid)
+	}
+	p, err := timeconf.DecodePolicy(raw)
+	if err != nil || p.Source != timeconf.NTSConfig {
+		return timeconf.Policy{}, failure(configurationInvalid)
+	}
+	return p, nil
 }

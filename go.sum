@@ -1,0 +1,4 @@
+github.com/relux-works/swarma-credential-broker v0.0.0-20261030053047-e7619dfc4b2a h1:V9UKLEqZffei3YKJFRXXjv5PuAgUQRvoZ/7C9V8/y0A=
+github.com/relux-works/swarma-credential-broker v0.0.0-20261030053047-e7619dfc4b2a/go.mod h1:5Gqu75cqNaYymPpS0dAczdgyaai88O1FKsFFasm4kds=
+golang.org/x/sys v0.38.0 h1:3yZWxaJjBmCWXqhN1qh02AkOnCQ1poK6oF+a7xWL6Gc=
+golang.org/x/sys v0.38.0/go.mod h1:OgkHotnGiDImocRcuBABYBEXf8A9a87e/uXjp9XT3ks=

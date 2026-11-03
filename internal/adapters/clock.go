@@ -18,10 +18,10 @@ type Startup struct {
 	Ordered bool
 }
 
-// ClockEvidence must be an explicit, trusted, nonblocking source. Startup must
+// ClockEvidence must be an explicit, trusted, bounded source. Startup must
 // attest actual healthy process-start UTC and ordering against ANY old admission;
 // Current must latch transient health loss/backward UTC even between observations.
-// No production implementation exists. Tests supply an in-memory implementation.
+// Production uses the shared timeconf provider; tests may inject evidence.
 type ClockEvidence interface {
 	Startup(time.Time) (healthy, ordered bool)
 	Current() (healthy, faulted bool)
@@ -36,8 +36,9 @@ type Clock struct {
 	now      func() time.Time
 }
 
-// NewClock takes actual process entry time captured with time.Now, preserving
-// its monotonic component; constructor-call time must not replace process start.
+// NewClock takes the fixed post-hold process-start time from specification §7,
+// preserving its monotonic component. Production uses NewProductionClock to
+// establish both provider checks and the full hold before fixing this instant.
 func NewClock(processStart time.Time, evidence ClockEvidence) *Clock {
 	healthy, ordered := false, false
 	if evidence != nil {
@@ -50,11 +51,11 @@ func (c *Clock) Startup() Startup { return c.startup }
 func (c *Clock) Now() Reading {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	t := c.now()
 	healthy, faulted := false, true
 	if c.evidence != nil {
 		healthy, faulted = c.evidence.Current()
 	}
+	t := c.now()
 	r := Reading{UTC: t.Unix(), Monotonic: t.Sub(c.start), Healthy: healthy}
 	if !healthy || faulted || r.UTC < c.last.UTC || r.Monotonic < c.last.Monotonic {
 		c.fenced = true

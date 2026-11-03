@@ -1,5 +1,5 @@
-// Command registrar serves the pinned registrar API. Production clock evidence
-// and authenticated remote audit remain unconfigured and therefore fail closed.
+// Command registrar serves the pinned registrar API. Authenticated remote audit
+// remains unconfigured and therefore fails closed.
 package main
 
 import (
@@ -18,21 +18,29 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/relux-works/swarma-credential-broker/timeconf"
 	"github.com/relux-works/swarma-registrar/internal/adapters"
 	"github.com/relux-works/swarma-registrar/internal/admission"
 	"github.com/relux-works/swarma-registrar/internal/httpapi"
+	"github.com/relux-works/swarma-registrar/internal/refusal"
 	"github.com/relux-works/swarma-registrar/registry"
 )
 
 type runtime struct {
+	fault   <-chan struct{}
 	handler http.Handler
 	drain   func(context.Context) error
 	close   func() error
 }
 
+var errClockFence = errors.New("clock_skew")
+
 var errShutdown = errors.New("shutdown unavailable")
 
 func diagnostic(err error) string {
+	if errors.Is(err, errClockFence) {
+		return "registrar: clock fenced"
+	}
 	if errors.Is(err, errShutdown) {
 		return "registrar: shutdown failed"
 	}
@@ -48,11 +56,15 @@ type dependencies struct {
 }
 
 func main() {
+	timeconf.CollectorEntry()
 	start := time.Now()
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 	if err := run(ctx, os.Args[1:], os.Stdout, os.Stderr, start, dependencies{loadConfig: adapters.LoadConfig, open: openProduction, terminal: openTerminal}); err != nil {
 		fmt.Fprintln(os.Stderr, diagnostic(err))
+		if errors.Is(err, errClockFence) {
+			os.Exit(75)
+		}
 		os.Exit(1)
 	}
 }
@@ -77,12 +89,21 @@ func run(ctx context.Context, args []string, out, _ io.Writer, start time.Time, 
 	if err != nil {
 		return errors.New("configuration invalid")
 	}
+	if !*plain && c.TimePolicy == "" {
+		return errors.New("configuration invalid")
+	}
 	tlsConfig, err := transport(c, *plain)
 	if err != nil {
 		return err
 	}
 	r, err := d.open(ctx, c, start, *confirm, d.terminal, out)
 	if err != nil {
+		if errors.Is(err, errShutdown) {
+			return errShutdown
+		}
+		if errors.Is(err, errClockFence) || refusal.Is(err, refusal.ClockSkew) {
+			return errClockFence
+		}
 		return errors.New("service unavailable")
 	}
 	handlersJoined := true // No handler exists on the early startup-failure paths.
@@ -99,6 +120,12 @@ func run(ctx context.Context, args []string, out, _ io.Writer, start time.Time, 
 		}
 		if err := r.close(); err != nil {
 			result = errShutdown
+			return
+		}
+		select {
+		case <-r.fault:
+			result = errClockFence
+		default:
 		}
 	}()
 	if ctx.Err() != nil {
@@ -118,11 +145,20 @@ func run(ctx context.Context, args []string, out, _ io.Writer, start time.Time, 
 	// net/http's default TLS/server diagnostics can contain paths or request text;
 	// retain static process diagnostics only.
 	server.ErrorLog = log.New(io.Discard, "", 0)
+	serveCtx, cancelServe := context.WithCancel(ctx)
+	defer cancelServe()
+	go func() {
+		select {
+		case <-r.fault:
+			cancelServe()
+		case <-serveCtx.Done():
+		}
+	}()
 	stopped := make(chan struct{})
 	shutdownDone := make(chan error, 1)
 	go func() {
 		select {
-		case <-ctx.Done():
+		case <-serveCtx.Done():
 			shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			err := server.Shutdown(shutdown)
@@ -220,6 +256,16 @@ func wire(c adapters.Config, snapshot *registry.Snapshot, clock admission.Clock,
 }
 
 func openProduction(ctx context.Context, c adapters.Config, start time.Time, confirm bool, terminal terminalOpener, out io.Writer) (*runtime, error) {
+	clock, fault, stopClock, err := adapters.NewProductionClock(ctx, c.TimePolicy)
+	if err != nil {
+		return nil, err
+	}
+	success := false
+	defer func() {
+		if !success {
+			stopClock()
+		}
+	}()
 	source, err := adapters.NewGit(c.Repository, c.Revision, c.AllowedSigners, c.ObjectFormat)
 	if err != nil {
 		return nil, err
@@ -236,7 +282,12 @@ func openProduction(ctx context.Context, c adapters.Config, start time.Time, con
 	if err != nil {
 		return nil, err
 	}
-	fail := func(err error) (*runtime, error) { _ = audit.Close(); return nil, err }
+	fail := func(err error) (*runtime, error) {
+		if audit.Close() != nil {
+			return nil, errShutdown
+		}
+		return nil, err
+	}
 	snapshot, err := startRegistry(ctx, c, source, store, confirm, terminal, out)
 	if err != nil {
 		if _, writeErr := fmt.Fprintln(out, "Registry fenced; reconciliation refused. Restart with --reconcile after verifying surviving evidence."); writeErr != nil {
@@ -244,12 +295,15 @@ func openProduction(ctx context.Context, c adapters.Config, start time.Time, con
 		}
 		snapshot = nil
 	}
-	clock := adapters.NewClock(start, nil)
+	if reading := clock.Now(); !reading.Healthy || reading.Faulted {
+		return fail(errClockFence)
+	}
 	s := clock.Startup()
 	h := audit.Head()
 	handler, err := wire(c, snapshot, clockBridge{clock}, admission.Startup{Reading: admission.Reading{UTC: s.Reading.UTC, Monotonic: s.Reading.Monotonic, Healthy: s.Reading.Healthy, Faulted: s.Reading.Faulted}, Ordered: s.Ordered}, signer, auditBridge{audit}, admission.AuditHead{Sequence: h.Sequence, Hash: h.Hash})
 	if err != nil {
 		return fail(err)
 	}
-	return &runtime{handler: handler, drain: handler.Drain, close: audit.Close}, nil
+	success = true
+	return &runtime{fault: fault, handler: handler, drain: handler.Drain, close: func() error { defer stopClock(); return audit.Close() }}, nil
 }

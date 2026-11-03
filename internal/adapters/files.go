@@ -1,6 +1,6 @@
 // Package adapters supplies offline registry and local service adapters.
-// Admission/HTTP wiring is deferred. No production clock evidence source or
-// authenticated remote audit sink is provided: their absence fails closed.
+// Production clock evidence uses the shared timeconf provider. Authenticated
+// remote audit remains unavailable and fails closed.
 package adapters
 
 import (

@@ -710,9 +710,10 @@ seconds: `now = floor(current UTC Unix time)` for one check pass. Clock evidence
 error bounds and monotonic holds MUST retain their required subsecond precision.
 
 The only production clock evidence source MUST be the shared provider for the
-[Platform time policy](https://github.com/relux-works/swarma-credential-broker/blob/191c0c35aa2f4e6a850246b26c05c0462ff96c41/docs/time-policy.md)
-and its [collection contract](https://github.com/relux-works/swarma-credential-broker/blob/191c0c35aa2f4e6a850246b26c05c0462ff96c41/docs/time-confidence.md#collection-and-samples),
-owned by the credential-broker project (Appendix C.4).
+[Platform time policy](https://github.com/relux-works/swarma-credential-broker/blob/e7619dfc4b2a6cf1696d8a21eff603bc80f147c7/docs/time-policy.md)
+and its [collection contract](https://github.com/relux-works/swarma-credential-broker/blob/e7619dfc4b2a6cf1696d8a21eff603bc80f147c7/docs/time-confidence.md#collection-and-samples),
+owned by the credential-broker project (Appendix C.4). The provider and both
+policy documents are pinned together at `e7619dfc4b2a6cf1696d8a21eff603bc80f147c7`.
 All three services use that provider through an evidence-source interface;
 this specification does not define a second provider or a chrony parser.
 Version 0 uses the policy's option A, requiring no root-granted per-source data.
@@ -1718,7 +1719,7 @@ an unrelated setup failure is not a detected violation. Restore of both host
 and witness with no independent surviving head is the explicit §4.5.3 limit,
 not a negative test that can claim detection from equal hashes.
 
-### B.3 Platform-time provider and startup lifecycle (normative plan; no fixtures yet)
+### B.3 Platform-time provider and startup lifecycle (normative qualification plan)
 
 These 33 plans are separate from the 328 byte rows, B.1 integration
 plans and B.2 witness plans. T/PT ids do not add vector files or claim executable
@@ -1902,18 +1903,27 @@ local file or an audit shipping adapter.
 No service code, socket implementation, vector files, live-account tests,
 network-registry API or deployment change is included in this specification slice.
 
+The injected adapter tests in `internal/adapters/timeconf_test.go` instantiate
+the unavailable, leap, sync-age, offset, root-distance, error-cap and expiry
+boundaries, incomplete holds, backward steps during the hold, second-check
+failure, permanent fencing and the healthy post-hold control. These are selected
+adapter/startup cases from this plan, rather than full admission-stage traces.
+They exercise the shared provider with injected tracking evidence, not a local
+chrony parser or the host clock. Command tests preserve loopback injection and
+require a production policy. The remaining full admission, supervisor and deployed
+smooth-slew/jitter qualification traces in this appendix remain open; these unit
+tests do not qualify a live host.
+
 ### C.4 Platform-time alignment and proposed local choices (informative)
 
 The 2026-10-23 platform trusted-time ruling uses one shared policy/provider,
-owned by the credential-broker project. [Platform time policy](https://github.com/relux-works/swarma-credential-broker/blob/191c0c35aa2f4e6a850246b26c05c0462ff96c41/docs/time-policy.md)
+owned by the credential-broker project. [Platform time policy](https://github.com/relux-works/swarma-credential-broker/blob/e7619dfc4b2a6cf1696d8a21eff603bc80f147c7/docs/time-policy.md)
 is published at the pinned revision; the publication/link item is closed.
 Content review on 2026-10-23 accepted the §7 local choices below. Alignment of
 the strict sync-age boundary, exclusive authority endpoint and conservative
-error bound with the published policy was accepted on 2026-10-24. Production
-provider integration and qualification of both startup checks, the fixed
-4-second hold and lifetime fences remain activation dependencies, recorded in
-UNRESOLVED_QUESTIONS.md. Section 7 specifies the target; this slice adds no
-provider implementation or deployed clock qualification. Policy option A/B here
+error bound with the published policy was accepted on 2026-10-24. The adapter consumes the pinned provider and implements both startup checks,
+the fixed 4-second hold and lifetime fences. Deployed qualification remains an
+activation dependency, recorded in UNRESOLVED_QUESTIONS.md. Policy option A/B here
 concerns time-source evidence, separately from §4.5 reconciliation option A/C.
 
 | Local choice | Reason / content-review status |
@@ -1923,7 +1933,7 @@ concerns time-source evidence, separately from §4.5 reconciliation option A/C.
 | Fix start only after the hold and successful second provider check | Accepted on 2026-10-23: preserve the floor(fixed start)+31 barrier while checking freshness/health at its derivation. The old process must stop admitting before launch. |
 | Reject variable hold delta_cap+delta_sample+1 | Rejected alternative: 2.6 seconds at sample=0.1, up to 4 at sample=1.5, versus fixed 4; it adds sample/hold/recheck coupling with no extra safety. New-sample-only 2*delta_sample+1 is unsafe, not an optimization. |
 | Any detected backward UTC step fences the registrar for its process lifetime | Accepted on 2026-10-23: stricter than the shared >1-second incident/hold; health loss and authority expiry have the same permanent fence. |
-| Clock-fence exit code 75 and fixed `registrar: clock fenced` diagnostic after successful shutdown drain | Proposed dedicated type: distinct from configuration/non-clock startup/drain failures (currently generic exit 1). Drain failure retains its own failure and never becomes a successful clock-fence exit. Implementation belongs to the evidence-source slice. |
+| Clock-fence exit code 75 and fixed `registrar: clock fenced` diagnostic after successful shutdown drain | Implemented dedicated type, distinct from configuration/non-clock startup/drain failures (generic exit 1). Drain failure retains its own failure and never becomes a successful clock-fence exit. Deployment qualification remains open. |
 | Supervisor example: Restart=on-failure, RestartSec=2s, StartLimitIntervalSec=60s, StartLimitBurst=5 | Recorded operating choice for deployment review: start only after old exit, bound restart loops, and require the operator after a limit stop. Values may be tuned with a finite rate budget; they never shorten the hold or waive other admission gates. |
 | Client horizon 4+61=65 seconds plus evidence/scheduling/transport margin | Accepted on 2026-10-23: replace the former 61-second startup budget; Keymaker clients obtain a new proof/nonce and diagnose persistent refusal rather than replay indefinitely. |
 | Preserve the 310 legacy envelope-byte fixtures as abstract post-hold admission inputs | Explicitly approved fixture boundary: R125 is not a realizable new-start trace. B.3 alone plans real provider/hold lifecycle qualification. The object-format profile adds protected fixture metadata and new revision rows; legacy envelope bytes and row text remain unchanged. |

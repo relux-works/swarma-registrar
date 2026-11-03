@@ -201,6 +201,7 @@ func TestTransportRequiresTLSOrExplicitLoopback(t *testing.T) {
 		}
 	}
 	certificate, key := tlsFixture(t)
+	f.config.TimePolicy = "/etc/timeconf/policy.json" // Injected opener; no production policy read.
 	f.config.TLSCertificate = certificate
 	f.config.TLSKey = key
 	if err := os.Chmod(key, 0644); err != nil {

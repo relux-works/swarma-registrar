@@ -20,7 +20,7 @@ contracts have been checked.
 
 Remaining dependencies:
 
-- Service activation: the shared Platform time policy provider, the §7 two-check/4-second startup ordering and an authenticated durable off-host audit sink still need integration and qualification. The binary supplies neither production evidence source; it stays clock-fenced and never releases a JWT without remote acknowledgement. Interactive registry reconciliation alone cannot qualify them.
+- Service activation: the shared Platform time policy provider and §7 two-check/4-second startup ordering now have an adapter and injected tests; deployed qualification remains open. An authenticated durable off-host audit sink still needs integration and qualification. The binary never releases a JWT without remote acknowledgement. Interactive registry reconciliation alone cannot qualify them.
 - HS2 / HS4: the chosen path is documented patches in our build plus upstream PRs: HS2 supplies configurable access-token expiry without refresh-token issuance, and HS4 refuses deactivated-account JWT login without auto-provisioning re-creating the account. Any homeserver meeting §10.0 qualifies. Deployment remains blocked until the operated build passes Appendix B.1 requirements on an isolated test server; the test server location is pending the owner. The HS2 configuration key will be recorded at qualification. Specification, vectors and service code continue meanwhile; §11's lock/containment and logout steps remain required.
 
 These are implementation and qualification dependencies, not unresolved choices
@@ -71,12 +71,12 @@ downgrade, empty-stream bootstrap or joint-rollback detection is claimed.
 
 ## Platform time policy publication and qualification
 
-The credential-broker project owns [Platform time policy](https://github.com/relux-works/swarma-credential-broker/blob/191c0c35aa2f4e6a850246b26c05c0462ff96c41/docs/time-policy.md)
+The credential-broker project owns [Platform time policy](https://github.com/relux-works/swarma-credential-broker/blob/e7619dfc4b2a6cf1696d8a21eff603bc80f147c7/docs/time-policy.md)
 and one provider behind an evidence-source interface for all three services.
 The document is published at the pinned revision; the publication/link item is
 closed. Production provider integration and qualification of both startup
 checks, the fixed 4-second monotonic hold and lifetime fences remain required;
-this specification slice implements none. The three policy differences are
+the adapter implements the provider integration and injected startup tests; deployment qualification remains open. The three policy differences are
 resolved: alignment of §7's strict sync-age boundary, exclusive authority endpoint
 and conservative uncertainty calculation was accepted on 2026-10-24. This
 specification alignment does not qualify the provider or its integration.
