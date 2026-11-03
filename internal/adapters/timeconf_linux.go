@@ -16,7 +16,8 @@ func NewProductionClock(ctx context.Context, path string) (clock *Clock, fault <
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	p, err := timeconf.Production(&policy, nil)
+	// Health failures travel through the clock fence; suppress provider std-log output.
+	p, err := timeconf.Production(&policy, func(timeconf.Incident) {})
 	if err != nil {
 		return nil, nil, nil, failure("clock_skew")
 	}

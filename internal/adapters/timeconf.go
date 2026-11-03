@@ -30,13 +30,15 @@ type providerEvidence struct {
 	point    func() (clockObservation, error)
 	boot     string
 	faulted  bool
+	fixed    time.Time
 	done     chan struct{}
 }
 
-func (e *providerEvidence) Startup(time.Time) (bool, bool) {
+func (e *providerEvidence) Startup(instant time.Time) (bool, bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return !e.faulted, !e.faulted
+	valid := !e.faulted && !e.fixed.IsZero() && instant.Equal(e.fixed)
+	return valid, valid
 }
 func (e *providerEvidence) Current() (bool, bool) { return e.check(false) }
 func (e *providerEvidence) check(start bool) (bool, bool) {
@@ -105,6 +107,7 @@ func startProviderClock(ctx context.Context, p timeProvider, now func() time.Tim
 		return nil, e, failure("clock_skew")
 	}
 	fixed := now()
+	e.fixed = fixed
 	clock := NewClock(fixed, e)
 	clock.now = now
 	return clock, e, nil

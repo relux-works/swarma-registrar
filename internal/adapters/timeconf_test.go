@@ -43,6 +43,10 @@ func TestProviderSampleBoundaries(t *testing.T) {
 		edit func(*sampleProvider)
 		bad  bool
 	}{
+		{"healthy", func(p *sampleProvider) {}, false},
+		{"future", func(p *sampleProvider) { p.sample.Now = now.Add(1) }, true},
+		{"boot-mismatch", func(p *sampleProvider) { p.sample.Boot = "other" }, true},
+		{"empty-boot", func(p *sampleProvider) { p.sample.Boot = "" }, true},
 		{"unavailable", func(p *sampleProvider) { p.err = timeconf.ErrUnavailable }, true},
 		{"untrusted", func(p *sampleProvider) { p.sample.Trusted = false }, true},
 		{"stale", func(p *sampleProvider) { p.sample.Fresh = false }, true},
@@ -56,7 +60,11 @@ func TestProviderSampleBoundaries(t *testing.T) {
 			p := &sampleProvider{sample: healthySample(now)}
 			tc.edit(p)
 			e := &providerEvidence{provider: p, ctx: context.Background(), point: func() (clockObservation, error) {
-				return clockObservation{ClockPoint: timeconf.ClockPoint{Now: now, Boot: "boot"}}, nil
+				boot := "boot"
+				if tc.name == "empty-boot" && p.sample.Boot == "" {
+					boot = ""
+				}
+				return clockObservation{ClockPoint: timeconf.ClockPoint{Now: now, Boot: boot}}, nil
 			}, done: make(chan struct{})}
 			ok, fault := e.Current()
 			if ok == tc.bad || fault != tc.bad {
@@ -74,7 +82,7 @@ func TestProviderSampleBoundaries(t *testing.T) {
 
 type trackingCollector struct{ evidence timeconf.Evidence }
 
-func (c trackingCollector) Collect(context.Context, timeconf.Policy) (timeconf.Evidence, error) {
+func (c *trackingCollector) Collect(context.Context, timeconf.Policy) (timeconf.Evidence, error) {
 	return c.evidence, nil
 }
 
@@ -83,7 +91,8 @@ type fixtureTime struct{ point timeconf.ClockPoint }
 func (c *fixtureTime) Read(context.Context) (timeconf.ClockPoint, error) { return c.point, nil }
 
 // Real shared-provider validation feeds the adapter: leap, age, offset and root
-// distance rejections have nearby accepted controls. No host chrony is consulted.
+// distance rejections latch across healthy evidence, with adjacent valid controls.
+// No host chrony is consulted.
 func TestProviderTrackingBoundaries(t *testing.T) {
 	now := time.Unix(10000, 0)
 	for _, tc := range []struct {
@@ -104,18 +113,24 @@ func TestProviderTrackingBoundaries(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tracking := timeconf.Tracking{Address: "192.0.2.1", Leap: "Normal", Stratum: 2, Reference: now.Add(-time.Second)}
-			tc.edit(&tracking)
+			collector := &trackingCollector{timeconf.Evidence{Tracking: tracking, Sources: timeconf.Sources{Count: 1, AllNTS: true, Entries: []string{"192.0.2.1"}}}}
+			tc.edit(&collector.evidence.Tracking)
 			c := &fixtureTime{timeconf.ClockPoint{Now: now, Boot: "boot"}}
-			p, err := timeconf.New(testTimePolicy(), trackingCollector{timeconf.Evidence{Tracking: tracking, Sources: timeconf.Sources{Count: 1, AllNTS: true, Entries: []string{"192.0.2.1"}}}}, c, func(timeconf.Incident) {})
+			p, err := timeconf.New(testTimePolicy(), collector, c, func(timeconf.Incident) {})
 			if err != nil {
 				t.Fatal(err)
 			}
 			e := &providerEvidence{provider: p, ctx: context.Background(), point: func() (clockObservation, error) {
 				return clockObservation{ClockPoint: c.point, latest: c.point.Elapsed}, nil
 			}, done: make(chan struct{})}
-			ok, _ := e.Current()
-			if ok == tc.bad {
+			ok, fault := e.Current()
+			if ok == tc.bad || fault != tc.bad {
 				t.Fatal("wrong tracking verdict")
+			}
+			collector.evidence.Tracking = tracking
+			ok, fault = e.Current()
+			if ok == tc.bad || fault != tc.bad {
+				t.Fatal("tracking fault recovered in place")
 			}
 		})
 	}
@@ -178,46 +193,91 @@ func TestProviderStartupLifecycle(t *testing.T) {
 	}
 }
 
-// Protected policy rejects group write, final links, and a raised cap; the same
-// bytes under an injected custody guard pass; root ownership is covered by the
-// existing protected-file tests, rather than changed on this host.
+// Root custody, option-A source and cap are enforced through the real guard;
+// only ownership/service UID metadata is substituted, with real mode/link I/O.
 func TestTimePolicyCustodyAndCap(t *testing.T) {
 	dir := tempDir(t)
 	path := filepath.Join(dir, "policy")
 	p := testTimePolicy()
-	guard := func(info os.FileInfo, _ int) bool { return info.Mode().IsRegular() && info.Mode().Perm()&0022 == 0 }
-	write := func() {
+	save := func() {
 		t.Helper()
-		b, _ := json.Marshal(p)
-		if err := os.WriteFile(path, b, 0644); err != nil {
+		b, err := json.Marshal(p)
+		if err != nil {
 			t.Fatal(err)
 		}
+		write(t, path, b, 0644)
 	}
-	write()
+	save()
+	if _, err := loadTimePolicy(path, rootFixture); err != nil {
+		t.Fatal("protected control", err)
+	}
+	for _, tc := range []struct {
+		name    string
+		owner   uint32
+		service int
+	}{
+		{"not-root-owned", 1001, 1001}, {"root-service", 0, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := loadTimePolicy(path, func(info os.FileInfo, _ int) bool {
+				return protected(ownedInfo{info, tc.owner, info.Mode()}, tc.service)
+			})
+			wantCode(t, err, configurationInvalid)
+		})
+	}
 	if err := os.Chmod(path, 0664); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := loadTimePolicy(path, guard); err == nil {
-		t.Fatal("group write accepted")
-	}
-	os.Chmod(path, 0644)
-	if _, err := loadTimePolicy(path, guard); err != nil {
-		t.Fatal("protected control", err)
+	_, err := loadTimePolicy(path, rootFixture)
+	wantCode(t, err, configurationInvalid)
+	if err := os.Chmod(path, 0644); err != nil {
+		t.Fatal(err)
 	}
 	link := filepath.Join(dir, "link")
-	os.Symlink(path, link)
-	if _, err := loadTimePolicy(link, guard); err == nil {
-		t.Fatal("link accepted")
+	if err := os.Symlink(path, link); err != nil {
+		t.Fatal(err)
 	}
+	_, err = loadTimePolicy(link, rootFixture)
+	wantCode(t, err, configurationInvalid)
+	for _, source := range []timeconf.Source{"off", "chrony-nts-authdata"} {
+		p = testTimePolicy()
+		if source == timeconf.Off {
+			p = timeconf.Policy{}
+		}
+		p.Source = source
+		save()
+		_, err := loadTimePolicy(path, rootFixture)
+		wantCode(t, err, configurationInvalid)
+	}
+	p = testTimePolicy()
 	p.MaxUncertainty = 1500*time.Millisecond + 1
-	write()
-	if _, err := loadTimePolicy(path, guard); err == nil {
-		t.Fatal("raised cap accepted")
+	save()
+	_, err = loadTimePolicy(path, rootFixture)
+	wantCode(t, err, configurationInvalid)
+	p = testTimePolicy()
+	save()
+	if _, err := loadTimePolicy(path, rootFixture); err != nil {
+		t.Fatal("option-A cap control", err)
 	}
-	p.MaxUncertainty = 1500 * time.Millisecond
-	write()
-	if _, err := loadTimePolicy(path, guard); err != nil {
-		t.Fatal("cap control", err)
+}
+
+// A boot change with matching sample/point identities still permanently fences;
+// restoring healthy evidence in the original boot cannot reopen the instance.
+func TestProviderBootChange(t *testing.T) {
+	now := time.Unix(10000, 0)
+	p := &sampleProvider{sample: healthySample(now)}
+	point := clockObservation{ClockPoint: timeconf.ClockPoint{Now: now, Boot: "boot"}}
+	e := &providerEvidence{provider: p, ctx: context.Background(), point: func() (clockObservation, error) { return point, nil }, done: make(chan struct{})}
+	if ok, fault := e.Current(); !ok || fault {
+		t.Fatal("healthy control")
+	}
+	p.sample.Boot, point.Boot = "new-boot", "new-boot"
+	if ok, fault := e.Current(); ok || !fault {
+		t.Fatal("boot change admitted")
+	}
+	p.sample, point.Boot = healthySample(now), "boot"
+	if ok, fault := e.Current(); ok || !fault {
+		t.Fatal("boot fault recovered")
 	}
 }
 
@@ -277,5 +337,25 @@ func TestClockCancellationIsNotHealthIncident(t *testing.T) {
 	case <-e.done:
 		t.Fatal("shutdown latched fault")
 	default:
+	}
+}
+
+// Startup attests only the bound fixed instant, never an unbound or different one.
+func TestProviderStartupInstant(t *testing.T) {
+	fixed := time.Unix(10000, 123)
+	e := &providerEvidence{}
+	if healthy, ordered := e.Startup(fixed); healthy || ordered {
+		t.Fatal("unbound startup attested")
+	}
+	e.fixed = fixed
+	if healthy, ordered := e.Startup(fixed); !healthy || !ordered {
+		t.Fatal("bound control refused")
+	}
+	if healthy, ordered := e.Startup(fixed.Add(1)); healthy || ordered {
+		t.Fatal("different instant attested")
+	}
+	e.faulted = true
+	if healthy, ordered := e.Startup(fixed); healthy || ordered {
+		t.Fatal("faulted startup attested")
 	}
 }

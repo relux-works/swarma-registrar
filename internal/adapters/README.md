@@ -81,7 +81,7 @@ for bytes only and must not substitute for LoadConfig at startup.
 | `object_format` | Required protected repository profile: exactly `sha1` or `sha256`. No default or inference from revision length. Passed unchanged to the loader, Git, store/digest and audit constructors. |
 | `revision` | Exactly 40 lowercase hex characters for `sha1`, or 64 for `sha256`, as selected by protected `object_format`. Not a branch, tag, abbreviated or cross-format ID. |
 | `allowed_signers` | Absolute clean path to protected OpenSSH allowed-signers material for approved registry maintainers. |
-| `time_policy` | Absolute clean protected shared policy path, e.g. `/etc/timeconf/policy.json`. Required by `serve` except `--loopback-test-http`; if present, always validated. Root-owned regular file, no group/other write, no final symlink. Only option A; raised platform bounds refuse startup. |
+| `time_policy` | Absolute clean protected registrar policy path, e.g. `/etc/timeconf/policy.json`. Required by `serve` except `--loopback-test-http`; if present, always validated. Root-owned regular file, no group/other write, no final symlink. Only option A; raised platform bounds refuse startup. |
 | `publisher_key` | Strict canonical enrollment-publisher public-key string accepted by enrollment.NewPolicy. The containing configuration protects this pin. |
 | `stations` | Object mapping valid host labels to booleans, for example `{"host-a":false}`. |
 | `high_water`, `signing_key`, `audit_file` | Absolute clean file paths without NUL or expansion. Use separate files/directories for state, audit and signing material. |
@@ -166,11 +166,13 @@ readiness. A subsequent service integration must qualify those properties.
 
 ## Shared option-A policy runbook
 
-Both consumers can point at `/etc/timeconf/policy.json`. This service reads the
-shared JSON using its root-owned allowed-signers custody rule, then the provider's
-`DecodePolicy` and `Production`; it does not use the provider's service-owned
-private-file loader. There is no service override. Contents (durations are integer
-nanoseconds):
+This registrar loads the path named by `time_policy` in its protected config,
+for example `/etc/timeconf/policy.json`, through its own `loadTimePolicy` and
+`readProtectedWith` root-custody loader. It requires a root-owned regular file,
+a non-root service UID, no group/other write bits, and no final symlink. The
+install mode below is 0644. It then calls `DecodePolicy` and `Production`;
+it does not call the provider's private-file `LoadPolicy`. Exact contents
+(durations are integer nanoseconds):
 
 ```json
 {
@@ -182,7 +184,7 @@ nanoseconds):
   "max_offset_ns": 500000000,
   "max_root_distance_ns": 1000000000,
   "authority_window_ns": 300000000000,
-  "backward_tolerance_ns": 1000000000,
+  "backward_tolerance_ns": 0,
   "step_tolerance_ns": 60000000000,
   "timeout_ns": 1000000000,
   "max_output_bytes": 4096,
@@ -196,6 +198,20 @@ After preparing `policy.json`, install as root into the root-owned, non-writable
 ```sh
 install -o root -g root -m 0644 policy.json /etc/timeconf/policy.json
 ```
+
+Other consumers carry the same values under their own custody rules; this is
+not a shared-file installation contract. Keymaker nests `time_policy` in its own
+`config.json`. At provider pin
+[`e7619df`](https://github.com/relux-works/swarma-credential-broker/tree/e7619dfc4b2a6cf1696d8a21eff603bc80f147c7),
+`LoadPolicy` uses service-UID ownership and exact mode 0600
+([`timeconf/collect_linux.go:99-136`](https://github.com/relux-works/swarma-credential-broker/blob/e7619dfc4b2a6cf1696d8a21eff603bc80f147c7/timeconf/collect_linux.go#L99-L136)).
+The example uses `backward_tolerance_ns: 0`: provider `Policy.Validate` permits
+zero through one second
+([`timeconf/policy.go:60`](https://github.com/relux-works/swarma-credential-broker/blob/e7619dfc4b2a6cf1696d8a21eff603bc80f147c7/timeconf/policy.go#L60)),
+but the broker's nested `time_confidence` requires exactly zero
+([`internal/policy/policy.go:60`](https://github.com/relux-works/swarma-credential-broker/blob/e7619dfc4b2a6cf1696d8a21eff603bc80f147c7/internal/policy/policy.go#L60)).
+Zero is valid for this registrar and preserves the same values across consumers;
+the registrar also independently fences detected backward interval discontinuities.
 
 The closed configuration inventory must match the running chronyd configuration,
 including included files. A minimal protected `/etc/chrony/chrony.conf` source
@@ -211,7 +227,7 @@ executable protected against untrusted writes. Option A infers NTS from this
 configuration and selected-source matching; it does not prove authenticated
 per-source operation. This runbook is a template, not installation evidence.
 
-Narrow validation for this adapter slice (Go 1.26.8, Linux):
+Narrow validation for this adapter slice (Go 1.26.10, Linux):
 
 ```sh
 GOTOOLCHAIN=local go test ./internal/adapters/... ./cmd/registrar/...

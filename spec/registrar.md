@@ -1777,6 +1777,17 @@ Source-selection negatives do not claim authenticated per-source NTS observation
 | PT8 | Supervised clock recovery | Fence -> stop admission -> join pending handlers and detached audit -> close sink -> exit 75 with `registrar: clock fenced` -> supervisor restart after old exit within the start budget. New initial UTC=1000; both checks pass, hold=4 monotonic seconds, fixed UTC=1004, barrier=1035; at UTC=1035 use fresh iat=1035 and nonce, all other gates valid | No operator needed for this clock restart; no old/new overlap, no JWT before the new barrier; the new proof admits once, with one reservation/debit per budget | PT1 |
 | PT9 | Operator recovery after start-limit stop | T24 unit remains stopped; operator diagnoses and repairs the cause, clears the start-limit failure and explicitly starts it; repeat the healthy PT8 path with fresh evidence | Restart resumes only after operator action and old exit; both checks/full hold still required, fresh proof at the new barrier admits once | PT8 |
 
+The injected adapter tests in `internal/adapters/timeconf_test.go` instantiate
+the unavailable, leap, sync-age, offset, root-distance, error-cap and expiry
+boundaries, incomplete holds, backward steps during the hold, second-check
+failure, permanent fencing and the healthy post-hold control. These are selected
+adapter/startup cases from this plan, rather than full admission-stage traces.
+They exercise the shared provider with injected tracking evidence, not a local
+chrony parser or the host clock. Command tests preserve loopback injection and
+require a production policy. The remaining full admission, supervisor and deployed
+smooth-slew/jitter qualification traces in this appendix remain open; these unit
+tests do not qualify a live host.
+
 A future lifecycle harness must kill bounded controls that (a) skip/shorten the
 hold at T2/T3, (b) use only the new sample at T4, (c) ignore the second check at
 T14 and (d) ignore subsecond backward steps at T17, while PT controls remain
@@ -1902,17 +1913,6 @@ local file or an audit shipping adapter.
 
 No service code, socket implementation, vector files, live-account tests,
 network-registry API or deployment change is included in this specification slice.
-
-The injected adapter tests in `internal/adapters/timeconf_test.go` instantiate
-the unavailable, leap, sync-age, offset, root-distance, error-cap and expiry
-boundaries, incomplete holds, backward steps during the hold, second-check
-failure, permanent fencing and the healthy post-hold control. These are selected
-adapter/startup cases from this plan, rather than full admission-stage traces.
-They exercise the shared provider with injected tracking evidence, not a local
-chrony parser or the host clock. Command tests preserve loopback injection and
-require a production policy. The remaining full admission, supervisor and deployed
-smooth-slew/jitter qualification traces in this appendix remain open; these unit
-tests do not qualify a live host.
 
 ### C.4 Platform-time alignment and proposed local choices (informative)
 
