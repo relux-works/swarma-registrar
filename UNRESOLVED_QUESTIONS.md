@@ -107,8 +107,9 @@ exclude it from JWT login. These are contracts, not implementation evidence.
 
 Open activation dependencies (C.2, HR10–HR14, B.1 I16–I20 and B.4):
 
-- Qualify server-side JWT-login exclusion for the audit account, including an
-  otherwise valid signed JWT for an existing active account.
+- Qualify server-side JWT-login exclusion for current and retired audit
+  accounts, including otherwise valid signed JWTs and mandatory retired-device
+  logout, token revocation and deactivation.
 - Qualify off-host placement and durable-before-ack storage on the operated
   build, including crash/restart retention.
 - Qualify tuwunel transaction retention across restart within the in-flight
@@ -129,11 +130,20 @@ readers to be invited before locking; those readers may join afterwards.
 The separate offline auditor joins before the first audit event. New invitations
 or re-invitations after locking remain outside version 0.
 
-Persistent non-prefix conflicts, unrecoverable device bindings and loss of
-locked audit membership use the §9.1.4 operator incident procedure: preserve
+Persistent non-prefix conflicts, persistent non-audit/non-membership timeline
+violations, unrecoverable device bindings and loss of locked audit membership
+use the §9.1.4 operator incident procedure: preserve
 the old local chain/suffix and available terminal room evidence, then explicitly
 provision a new dedicated audit account, room, binding and fresh chain, linked
-by a protected incident manifest.
+by a protected incident manifest. Timeline fences survive restart/recovery and
+only incident replacement clears them for a new binding; the worker and offline
+auditor must detect them independently of audit-only prefix checks.
+After exporting evidence the operator must log out every retired device,
+revoke its token, deactivate the account, retain permanent HR10 JWT exclusion
+and append its spelling-closed localpart to the protected root-owned retired
+list. The post-terminal retirement membership event is expected.
+Qualify server-side RoomEventFilter enforcement for head/prefix and predecessor
+walks; ignored filters fail closed, including over-budget membership churn.
 An unavailable remote export remains an evidence gap, not a complete archive.
 No in-place history repair or automatic rebind is claimed. Qualification of
 that evidence-preserving replacement remains open alongside B.4 recovery and
