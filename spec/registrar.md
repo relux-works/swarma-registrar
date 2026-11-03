@@ -611,9 +611,11 @@ The nonce is already reserved; both limiter debits MUST remain. This is not
 an enrollment-name failure at row 13. Earlier failures retain their normal
 precedence and nonce effects. Startup spelling restrictions ensure that an
 alternative spelling of the audit account cannot evade this comparison.
-The same comparison MUST cover every localpart in `audit_retired_localparts`
-(§9.1.1), using the configured audience as its server. Retired entries MUST
-remain refused permanently, regardless of enrollment or account deactivation.
+Independently of whether §9.1 is configured, the registrar MUST compare every
+localpart in `audit_retired_localparts` (§9.1.1), using the configured audience
+as its server, after the same name and audience validation. Retired entries
+MUST remain refused permanently, regardless of enrollment, account deactivation
+or profile disablement.
 The homeserver MUST independently exclude current and retired audit accounts
 from JWT login (HR10).
 
@@ -673,7 +675,7 @@ MUST NOT attempt later checks merely to select a different refusal.
 | 17 | `now < request.exp + 30`. | `request_expired` | 403 |
 | 18 | Both per-key and per-name budgets have capacity (§7). | `rate_limited` | 429 |
 | 19 | `(key, nonce)` has not been consumed. Reserve it atomically. | `nonce_replayed` | 409 |
-| 19b | When §9.1 is configured, validated `sub` and configured `aud` do not both byte-equal the parsed `audit_user` localpart and server, or any `audit_retired_localparts` entry and its configured audience (§5); never compare by prefix. The nonce and both limiter debits are retained. | `name_not_permitted` | 403 |
+| 19b | Validated `sub` and configured `aud` MUST match neither the parsed `audit_user` localpart and server (when §9.1 is configured) nor any retired entry and its configured audience, independently of profile enablement (§5). Compare components byte for byte, never by prefix. The nonce and both limiter debits are retained. | `name_not_permitted` | 403 |
 | 20 | Signer and service prerequisites work; all final authority/time checks still pass; signing-key generation remains current through release. | `service_unavailable` | 503 |
 | 21 | Audit commit and off-host acknowledgement succeed before releasing JWT (§9). | `audit_unavailable` | 503 |
 
@@ -990,20 +992,25 @@ events with this identity and MUST NOT edit or redact events.
 
 #### 9.1.1 Startup configuration and transport (normative)
 
-The protected startup schema MUST accept the following optional string fields.
-If any is present, all four MUST be present and nonempty. All four MUST be
-required to enable this profile for issuance. Absence of all four MUST NOT
-imply a local-only sink or permit issuance without another qualified §9 sink.
+The protected startup schema MUST accept the four string fields and the
+separate array field below. If any of the four string fields is present, all
+four MUST be present and nonempty; together they enable this profile for
+issuance. The retired list alone MUST NOT enable it. When the profile is off,
+the list MAY be absent only if no audit account has ever been retired; once
+any account is retired it MUST remain present, including after disablement.
+Absence of all four strings MUST NOT imply a local-only sink or permit
+issuance without another qualified §9 sink.
 Parsing MUST retain the existing strict schema rules, including rejection of
 unknown fields, duplicate keys, wrong types, nulls and oversized configuration.
 Invalid configuration MUST refuse startup as `configuration_invalid`.
 
-| Field | Required value when this profile is enabled |
+| Field | Presence and value |
 | --- | --- |
 | `audit_homeserver` | Absolute HTTPS origin, such as `https://example.org`, with an ASCII host using the §5 Matrix server-name grammar (no Unicode IDN; use ASCII A-labels) and optional numeric port in 1–65535; uppercase DNS, IPv6 literals and trailing-dot spellings follow that grammar and MUST NOT be normalized; no path (including `/`), query (including an empty query), userinfo or fragment. HTTP, whitespace, controls, backslashes and percent-encoded authority components MUST be rejected. |
 | `audit_room` | Full Matrix room ID in `!opaque:server` form, such as `!audit:example.org`; both components MUST be nonempty and the server name valid under §5 and byte-equal to the server part of `audit_user`. Room aliases, including `#audit:example.org`, MUST be rejected, never resolved. |
 | `audit_user` | Full Matrix user ID in `@localpart:server` form, such as `@registrar-audit:example.org`, with the component restrictions below. It MUST identify the dedicated service identity, never an admission caller. |
 | `audit_token` | Absolute clean token-file path, with no expansion, NUL, empty, `.` or `..` components; MUST name a regular, service-UID-owned file of exactly mode 0600 in a service-UID-owned immediate directory of exactly mode 0700. |
+| `audit_retired_localparts` | Array of exact retired localparts; required when this profile is enabled or any audit account has ever been retired. With the profile off and no retirement history it MAY be absent or empty; it MUST remain present with all retired entries after disablement. |
 
 The registrar MUST parse `audit_user` at the first colon after `@`, preserving
 the complete server component, including any IPv6 brackets and port. Its
@@ -1017,16 +1024,18 @@ code. All these checks MUST precede any authenticated call. Thus every
 spelling is either rejected at startup or compared by parsed components at row
 19b. The HTTPS origin is a transport address, not an alternative JWT audience.
 
-When this profile is enabled, the same protected root-owned configuration
-MUST additionally contain `audit_retired_localparts`, an array of strings
-(empty only if no audit account has been retired). Each entry MUST satisfy
-exactly the `audit_user` localpart grammar and configured-audience mxid length
+The same protected root-owned configuration MUST accept
+`audit_retired_localparts` independently of profile enablement, with the
+presence rules above (empty only if no audit account has been retired). Each
+entry MUST satisfy exactly the `audit_user` localpart grammar and
+configured-audience mxid length
 checks above; its server is the byte-equal configured audience. Uppercase,
 non-§5, overlength, full-mxid or otherwise alternative spellings, duplicate
-entries, nulls, wrong types or a missing list MUST yield
+entries, nulls, wrong types or a missing required list MUST yield
 `configuration_invalid` before any authenticated call, without normalization.
-The current audit localpart MUST NOT occur in this list. The list MUST be
-append-only across incident replacements and retained across restart/restore;
+When configured, the current audit localpart MUST NOT occur in this list. The
+list MUST be append-only across incident replacements and retained across
+restart/restore;
 protected custody MUST match the root-owned startup configuration, never a
 request or service-writable source. Removing a retired entry is forbidden.
 Row 19b MUST compare validated components byte for byte for every entry,
@@ -1199,7 +1208,7 @@ line. After PUT and exact read-back, it MUST use
 `GET /_matrix/client/v3/rooms/{room}/context/{event_id}`, paginating backwards
 with `/messages` when necessary, with a server-side `RoomEventFilter`
 `{"not_types":["m.room.member"]}` in the `filter` query parameter. It MUST
-inspect every returned event until the nearest preceding event of type
+inspect every returned timeline event until the nearest preceding event of type
 `works.relux.registrar.audit.v0` in the served timeline is found. This filter
 excludes only membership noise; it MUST retain all audit-type events and
 persisted non-audit, non-membership events. For sequence N > 1 that audit-type
@@ -1207,12 +1216,18 @@ predecessor MUST be the acknowledged event containing
 exact local line N-1 (ID, bytes, sequence and hash). Every audit-type event
 MUST participate in this check, including malformed or wrong-sender events; an
 injected audit event MUST NOT be skipped. For N = 1, history through creation
-MUST contain no earlier audit-type event. Intervening reader `m.room.member`
-profile updates and leaves MUST be self-sent; this includes an invited reader
-rejecting its own invite. Joins MUST be self-sent by already invited, approved
-auditors. These transitions MUST NOT fence issuance if the re-read policy
-remains valid. A leave or kick sent by another member requires power 101 and
+MUST contain no earlier audit-type event. The separate membership-only scan
+in §9.1.4 MUST check intervening `m.room.member` changes, including those for
+`audit_user`; neither this predecessor walk nor the audit-only head read can
+observe them. Reader profile updates and leaves MUST be self-sent; this includes
+an invited reader rejecting its own invite. Joins MUST be self-sent by
+already invited, approved auditors. These transitions MUST NOT fence issuance
+if the re-read policy remains valid. A leave or kick sent by another member
+requires power 101 and
 MUST fence as a policy violation, not qualify as harmless reader activity.
+A ban or an invitation after locking MUST also fail as a policy violation.
+An audit-user leave, kick, ban or invite MUST fail; only its self-sent profile
+updates preserving joined membership MAY pass.
 For N > 1 any intervening persisted non-audit, non-membership event MUST set
 the persistent timeline-violation fence in §9.1.4, with readiness code
 `audit_room_policy_invalid`; provisioning state before the first audit event
@@ -1281,7 +1296,10 @@ Filters select by type only, never sender or content: malformed and
 wrong-sender audit events MUST remain visible and fail verification. A server
 that does not honour a filter MUST fail closed as `audit_room_unavailable`;
 the registrar MUST NOT silently fall back to unfiltered pagination or accept
-partial results. Every returned event MUST satisfy the requested filter.
+partial results. Every event in the timeline arrays (`chunk`, `events_before`
+and `events_after`) MUST satisfy the requested filter. This condition MUST NOT
+be applied to `/context`'s anchor `event` or `state` array; those MUST be
+validated for their respective purposes, not treated as filtered timeline.
 It MUST validate the head event's sender, type, content and hash, and require
 its bytes, sequence and hash to equal the durable local chain head. Empty
 audit history in the room MUST match
@@ -1301,11 +1319,14 @@ mismatch and keep issuance disabled. An automatic recovery worker MUST run
 on startup suffix mismatch and on runtime delivery/check failure. It MUST
 retry policy/head checks and eligible replay with exponential delays of 1, 2,
 4, 8, 16, then at most 30 seconds between attempts, with one worker and no
-overlapping attempts. A current-state policy violation MUST remain fenced
-until that policy is actually restored and freshly verified; the worker MUST
-NOT mutate policy/history. A non-prefix audit-chain conflict MUST remain
-fenced on the old binding and require incident replacement below, not in-place
-correction.
+overlapping attempts. Before the first remote audit event, a current-state
+policy violation MAY clear only after actual restoration and fresh
+verification. Once the first remote audit event exists, any observed
+current-state policy violation MUST set the persistent fence below; restoring
+policy MUST NOT clear it. A state-event restoration after that first audit
+event is itself a timeline violation. The worker MUST NOT mutate policy/history.
+A non-prefix audit-chain conflict MUST remain fenced on the old binding and
+require incident replacement below, not in-place correction.
 
 A persisted non-audit, non-membership event after the first audit event is a
 persistent timeline violation, including an event after the current audit
@@ -1314,25 +1335,44 @@ and offending event ID with the old binding as incident evidence. It MUST
 survive restart, recovery, restored current state and later equal audit heads;
 only incident replacement below clears it for a new binding. Readiness MUST
 remain `audit_room_policy_invalid`, with no replay PUT or JWT release on the
-old binding. At startup and every recovery check the worker MUST detect such
-violations independently of the audit-only prefix walk, scanning from the
-first audit event through the served timeline tail with
-`{"not_types":["m.room.member"]}`. Before each issuance it MUST also verify
-any unchecked interval through the current tail. Scan coverage and the fence
-MUST be durable; missing coverage MUST be reverified, never inferred from
-head equality. Incomplete or over-budget scans MUST fail closed as
-`audit_room_unavailable` unless a retained timeline fence already requires
-`audit_room_policy_invalid`; they MUST never erase that fence. Provisioning
-state before the first audit event remains permitted. The offline auditor MUST
-perform the same timeline-violation detection on its complete export.
+old binding. At startup, every recovery check and before each issuance, the
+registrar MUST scan only the unchecked interval from a durable coverage
+watermark through the served timeline tail, independently of the audit-only
+prefix walk. The watermark MUST contain the verified event ID and pagination
+position, bound to the persisted origin/room/user/device binding (§9.1.2).
+The scan MUST verify that anchor and continuity to the new tail, using
+`{"not_types":["m.room.member"]}` for non-membership events and a separate
+`{"types":["m.room.member"]}` filter for membership state changes over the
+same interval, including every change for `audit_user`. Returned membership
+events MUST be state changes with a state key; the scan MUST check sender,
+state key and transition against §9.1.3; it MUST NOT skip a leave or kick sent
+by another member even if a later self-sent update hides it in current state.
+Both scans MUST complete before advancing coverage.
+
+Only when no coverage has ever been established MAY the scan start at the
+first audit event; a fresh binding MUST have an empty room audit history.
+Provisioning state before the first audit event remains permitted. Lost or
+unverifiable existing coverage, including an unavailable anchor, broken
+pagination continuity or binding mismatch, MUST fail closed as
+`audit_room_unavailable`, never fall back to a full rescan or infer coverage
+from head equality. The watermark and any detected fence MUST be durable;
+the completed coverage write MUST precede replay or JWT release. After a
+candidate PUT, the unchecked interval through the newly observed tail MUST
+also be verified and durably covered before release. Each scan and durable
+write MUST fit inside the applicable existing 5-second budget, never reset it.
+Incomplete or over-budget scans or failed coverage writes MUST fail closed as
+`audit_room_unavailable` unless a retained fence already requires
+`audit_room_policy_invalid`; they MUST never erase that fence. The offline
+auditor MUST perform the same violation detection on its complete export.
 
 Ordinary permitted self-membership interleaving (§9.1.3) MUST NOT be classified
 as a non-prefix conflict or require operator action. Head and prefix chain
-comparisons use audit-type events; predecessor and timeline-violation scans
-exclude only membership. These checks MUST independently validate room policy
-and the permitted membership transitions, never hide non-membership violations
-behind an audit-only projection. Read receipts and typing MUST NOT enter chain
-checks. With otherwise valid policy, complete timeline checks and matching
+comparisons use audit-type events; predecessor and non-membership scans
+exclude only membership. Full current-state reads validate room policy; the
+separate membership-only interval scan validates permitted transitions. Neither
+MUST hide violations behind the audit-only projection. Read receipts and typing
+MUST NOT enter chain checks. With otherwise valid policy, complete timeline
+checks and matching
 audit heads, permitted reader activity MUST preserve readiness without a
 failed issuance. A queued local suffix remains automatically recoverable.
 Each check attempt MUST use a separate total 5-second budget. Recovery-only
@@ -1347,8 +1387,8 @@ and MUST NOT re-PUT any verified remote-prefix line, even if its receipt was
 lost or transaction retention expired. Each remaining line, including
 uncertain issued lines and spooled refusals, MUST be sent in original sequence
 and exact bytes. Each line MUST have its own total 5-second delivery budget,
-including fresh policy,
-predecessor and read-back checks, not one budget for the entire batch. For
+including fresh policy, predecessor, read-back, both unchecked-interval scans
+and durable coverage writes, not one budget for the entire batch. For
 replay, the pre-send remote head MUST equal the last acknowledged local prefix
 line, rather than the newer full local head. Newly admitted requests MUST NOT
 bypass their own deadlines to wait for recovery.
@@ -1367,7 +1407,10 @@ consumed nonces. A client MUST obtain a fresh proof/nonce after recovery.
 A persistent non-prefix conflict, a persistent timeline-violation fence, an
 uncorrectable current-state policy violation, an unrecoverable device binding
 or loss of the locked audit membership MUST NOT trigger automatic rebinding
-or chain reset. The operator MUST stop the old writer and its recovery worker
+or chain reset. Here, an uncorrectable policy violation means one already
+covered by the persistent post-first-event fence, or one that cannot be
+restored under the locked policy, such as lost audit-user membership. The
+operator MUST stop the old writer and its recovery worker
 and preserve its binding, complete local chain,
 pending suffix and receipts as incident evidence. The operator MUST retain an
 offline room export through its observed terminal audit head (event ID,
@@ -1379,17 +1422,20 @@ chain's storage.
 
 After this evidence export (or recording its unavailability), before starting
 the replacement, the operator MUST log out every device of the retired audit
-account and revoke its audit token (HR9), MUST deactivate the account (HR6),
-and MUST retain it permanently under server-side HR10 JWT-login exclusion.
+account and revoke its audit token (HR9), MUST deactivate the account without
+erasure (HR6), and MUST retain it permanently under server-side HR10 JWT-login
+exclusion.
 All four obligations apply together; neither expiry nor deactivation alone
 substitutes for logout, revocation or permanent exclusion. The operator MUST
 append its exact localpart to the protected `audit_retired_localparts` list
 as part of the same configuration replacement that changes `audit_user`,
 before starting the new writer, and retain the list permanently. The resulting
-retirement membership event after the recorded terminal audit head is expected
-and MUST NOT invalidate the archived export or count as a timeline violation;
-it is retirement evidence, not another audit line. Preserve its event ID when
-available. No audit-type append after the terminal head is authorized.
+retirement membership events (for example a profile clear followed by leave)
+MUST be membership-only, sent by the retired audit user and after the recorded
+terminal audit head. Only those events are expected retirement evidence and
+MUST NOT invalidate the archived export or count as timeline violations.
+Preserve their event IDs when available; audit events MUST remain unredacted. No
+audit-type append after the terminal head is authorized.
 
 Recovery from such an incident MUST provision a new dedicated audit account
 and room using §9.1.3, and a new protected binding with a new empty local chain
@@ -1426,8 +1472,10 @@ after the first audit event through the observed tail MUST be reported as a
 persistent timeline violation, rejecting acceptance and requiring incident
 replacement even when current state and the audit chain are valid. Ordinary
 permitted self-membership transitions and the expected post-terminal
-retirement membership event MUST NOT invalidate the export. That event MUST
-be distinguished from any unauthorized post-terminal audit append. This
+retirement membership events MUST NOT invalidate the export. Those events
+MUST be membership-only, sent by the retired audit user and after the terminal
+audit head; they MUST be distinguished from unauthorized post-terminal audit
+appends. Retirement MUST NOT erase or redact audit events. This
 procedure MUST NOT be claimed to provide online rejection by the homeserver. A
 homeserver administrator can purge or rewrite served history; head equality
 and TLS MUST NOT be represented as protection against that administrator,
@@ -1472,7 +1520,7 @@ Each requirement MUST pass its Appendix B.1 cases on an isolated test server.
 | HR7 | Password registration, registration-token registration, guest registration and shared-secret registration MUST all be disabled, leaving JWT provisioning as the only agent account-provisioning path. | I2 |
 | HR8 | The homeserver MUST use exactly one configured JWT verification key, refuse old-key signatures after a coordinated registrar/homeserver key switch and require separate logout to terminate existing access tokens. | I8 |
 | HR9 | Logout and device deletion MUST terminate the affected existing device sessions and invalidate their access tokens. | I3, I21 |
-| HR10 | When §9.1 is enabled, the current audit account MUST NOT be JWT-loginable, and every retired audit account MUST remain excluded permanently even after replacement or profile disablement, including with an otherwise valid registrar-signed token for an existing active account. The operator MUST create it through a separate administrative account-provisioning path and qualify server-side exclusion; a registrar-side name denial alone is insufficient. | I16, I21 |
+| HR10 | Every current or retired audit account MUST be excluded from JWT login, including with an otherwise valid registrar-signed token for an existing active account. Retired-account exclusion MUST remain permanent after replacement or profile disablement. The operator MUST create each new audit account through a separate administrative account-provisioning path and qualify server-side exclusion; a registrar-side name denial alone is insufficient. | I16, I21 |
 | HR11 | The audit server MUST run off the registrar host and durably store each audit event before returning its PUT acknowledgement; qualification MUST test crash/restart retention of acknowledged events. Operator evidence MUST establish placement independently of DNS. | I17 |
 | HR12 | The audit server MUST durably retain transaction-to-event mappings across server restart throughout each 5-second in-flight retry window. Qualification MUST record token/device deduplication scope; replay after that window MUST use verified remote-prefix reconciliation, never assume lifetime retention. | I18 |
 | HR13 | The non-JWT audit credential MUST have a documented server-enforced lifetime and operator rotation schedule leaving enough time for delivery/recovery, with same-device rotation and qualified transaction scope. If HS2 expiry also covers this credential, rotation MUST precede that expiry; no indefinite token lifetime is assumed. | I19 |
@@ -1637,9 +1685,9 @@ out affected devices, inspect audit and secure the signer before resuming.
 | Proof replay/concurrent retries/restart | Atomic consumed nonces, expiry/skew bounds, start barrier and single replica. A captured JWT remains replayable within homeserver validity; `jti` is audit correlation only. |
 | Registry tampering/rollback | Reviewed signed pin, separate publisher pin, whole-snapshot validation, durable history/tombstones and restore fence. A compromised authorized publisher/maintainer or operator is outside this trust claim. |
 | Clock manipulation | Platform provider evidence, common 1.5-second error cap, 4-second monotonic pre-start hold, fixed barrier and permanent fence on any detected backward step or invalid/expired authority. Option A infers NTS from configuration, not authenticated per-source data; a compromised source can invalidate the error-bound premise. Concurrent instances are outside the proof (§7). |
-| DoS / audit exhaustion | Bounded request/registry/depth, authenticated sliding limits, independent ingress limits and finite audit deadlines. Audit unavailability deliberately denies issuance. Every routing/pre-auth refusal adds an event: unauthenticated floods can exhaust storage and deny issuance despite authenticated limits. HR14 requires audit rate-limit exemption, independent ingress controls and capacity monitoring; exemption does not bound room growth or permit dropping records. |
-| Audit-room administration / credential compromise | A homeserver administrator can purge/rewrite history or mint audit-user tokens; stolen tokens can append unsigned chain-valid-looking lines. System-root CAs, including interception roots, can forge PUT/read-back. A leave by the audit identity prevents re-invitation under invite 101 and denies service; readers who leave also lose access. Per-issuance policy/head/predecessor checks fence observed changes, but cannot defeat server equivocation, joint rollback or changes after observation. Retain independent evidence; HR10 permanently excludes ordinary JWT login into current and retired audit accounts; retirement also terminates all devices, revokes the token and deactivates the account. |
-| Reader membership churn / filter failure | Server-side RoomEventFilter selects audit type for head/prefix walks and excludes only m.room.member for predecessor/timeline scans. If the server does not honour a filter, membership churn can exceed the 5-second or pagination bounds and keep issuance unavailable. Checks fail closed as audit_room_unavailable with no JWT; no unfiltered fallback or budget extension is permitted. Qualify filter enforcement on the operated server. Persistent timeline violations require incident replacement, not policy restoration. |
+| DoS / audit exhaustion | Bounded request/registry/depth, authenticated sliding limits, independent ingress limits and finite audit deadlines. Audit unavailability deliberately denies issuance. Every routing/pre-auth refusal adds an event: unauthenticated floods can exhaust storage and deny issuance despite authenticated limits. HR14 requires audit rate-limit exemption, independent ingress controls and capacity monitoring; exemption does not bound room growth or permit dropping records. Durable incremental coverage avoids mandatory full-history rescans, but a large unchecked interval, lost/unverifiable coverage or an initial scan exceeding 5 seconds still denies startup/recovery; no budget extension is permitted. |
+| Audit-room administration / credential compromise | A homeserver administrator can purge/rewrite history or mint audit-user tokens; stolen tokens can append unsigned chain-valid-looking lines. System-root CAs, including interception roots, can forge PUT/read-back. A leave by the audit identity prevents re-invitation under invite 101 and denies service; readers who leave also lose access. Per-issuance policy/head/predecessor checks fence observed changes, but cannot defeat server equivocation, joint rollback or changes after observation. Retain independent evidence; HR10 permanently excludes ordinary JWT login into current and retired audit accounts; retirement also terminates all devices, revokes the token and deactivates the account without erasure. Retired-list append/retention remains an operator obligation; the registrar does not independently check prior bindings for an omitted or removed retired entry. HR10 exclusion remains independently mandatory. |
+| Reader membership churn / filter failure | Server-side RoomEventFilter selects audit type for head/prefix walks, excludes only m.room.member for predecessor/non-membership scans, and selects m.room.member separately for unchecked membership changes including audit_user. The first nonmatching event in a filtered timeline array fails closed even within all bounds; context anchor/state arrays are not subject to that filter. With honoured filters, excessive unchecked membership churn can still exceed the 5-second or pagination bounds and keep issuance unavailable. Checks fail closed as audit_room_unavailable with no JWT; no unfiltered fallback or budget extension is permitted. Qualify filter enforcement on the operated server. Persistent timeline violations require incident replacement, not policy restoration. |
 | Bearer interception / retained sessions | TLS, no token logging, bounded JWT validity and explicit logout. Access-token expiry is an activation blocker on the pinned source; do not claim a bound before qualification. |
 
 ### 11.3 CLI and cutover guidance (informative)
@@ -2387,18 +2435,22 @@ control so an implementation that refuses everything fails the plan.
 | Spool has multiple refusals after an uncertain issued line; remote history is not a local prefix | `audit_room_head_mismatch`; no replay writes or JWT; retained suffix unchanged | Verified prefix permits exact ordered replay; fresh equality required before new issuance |
 | Otherwise valid caller requests exact legacy audit localpart registrar-audit, explicitly enrolled for that caller; audit_user = @registrar-audit:example.org | Row 19b `403 name_not_permitted`; one debit per budget, nonce inserted and retained, one durable acknowledged refused line, no issued line, JWT or new fake-server device; readiness healthy | Explicitly permitted legacy registrar-audit-extra and strict-prefix registrar-aud from the same caller each succeed with a fresh proof/nonce, debit once per budget, retain that nonce, acknowledge one issued line and release JWT; no prefix-based denial |
 | Otherwise valid host node1 with matching structured prefix requests node1_registrar_audit; audit_user = @node1_registrar_audit:example.org | Row 19b `403 name_not_permitted` after own name/audience validation; one debit per budget, nonce inserted and retained, one durable acknowledged refused line, no issued line, JWT or new fake-server device; readiness healthy | Sibling node1_registrar_audit-q1 with the same host/prefix succeeds, debits once per budget, retains its fresh nonce, acknowledges one issued line and releases JWT |
-| Retired legacy registrar-audit or structured node1_registrar_audit remains enrolled for a valid caller after replacement; exact entry in protected audit_retired_localparts (separate fixtures) | Row 19b `403 name_not_permitted`; one debit per budget, retained nonce, acknowledged refused line, no issued line, JWT, new device or old-room membership change; readiness healthy | Permitted registrar-aud, registrar-audit-extra and node1_registrar_audit-q1 siblings each issue once; the new audit identity sends under final policy |
-| Missing/unsafe-custody retired list, wrong type, null, duplicate, current localpart, uppercase, non-§5, full mxid or overlength entry (separate fixtures) | `configuration_invalid` before authenticated calls; no normalization or implicit list repair | Protected root-owned array with empty initial list or valid exact retired localparts passes startup |
+| Retired legacy registrar-audit or structured node1_registrar_audit remains enrolled for a valid caller after replacement or with §9.1 disabled and another qualified §9 sink; exact entry in protected audit_retired_localparts (legacy/structured and enabled/disabled fixtures) | Row 19b `403 name_not_permitted`; one debit per budget, retained nonce, acknowledged refused line, no issued line, JWT, new device or old-room membership change; readiness healthy | Permitted registrar-aud, registrar-audit-extra and node1_registrar_audit-q1 siblings each issue once under the configured qualified sink |
+| Missing required retired list (enabled profile or disabled after retirement), unsafe custody, wrong type, null, duplicate, current localpart, uppercase, non-§5, full mxid or overlength entry (separate fixtures) | `configuration_invalid` before authenticated calls; no normalization or implicit list repair | Protected root-owned array with empty initial list or valid exact retired localparts passes; with profile off and no retirement history, absent or empty list passes without enabling §9.1 |
 | Mixed-case request Registrar-Audit with lowercase configured audit_user | Row 12 `400 name_invalid`, no nonce/debits under Appendix A; never case-folded into row 19b | Exact lowercase audit localpart reaches row 19b with its specified accounting; permitted registrar-aud issues |
-| Another member sends a reader leave/kick, including an invited-reader rejection sent by another member | `audit_room_policy_invalid`; no JWT or recovery policy mutation; runtime delivery effects if detected in request | Reader's self-sent leave or invite rejection with valid policy does not fence |
+| Another member sends a reader leave/kick or invite rejection; or an audit_user leave/kick is followed by an apparently valid current membership state (separate fixtures) | Separate membership-only unchecked-interval scan detects sender/state-key or transition violation: `audit_room_policy_invalid`, no JWT/recovery PUT; after first remote audit event the fence is durable; runtime delivery effects when in request | Reader self-sent leave/invite rejection or audit_user self-sent joined profile update passes with valid policy; predecessor and audit-head reads alone cannot satisfy this row |
 | Lost head receipt after remote append, then restart and verified prefix reconciliation | Head event ID, bytes, seq/hash durably restored before replay/issuance; no re-PUT of verified prefix; subsequent N-1 ID comparison succeeds | Wrong predecessor event ID with identical-looking bytes fails as `audit_room_head_mismatch`, no JWT |
-| Membership interleaving exceeds unfiltered page/budget capacity; server ignores requested filter (head, replay-prefix, predecessor and timeline scans separately) | `audit_room_unavailable`; no JWT, no fallback or budget extension; runtime delivery effects when in request; recovery remains closed | Same history with honoured audit-type or not_types membership filter completes within budget, preserves all audit and non-membership checks, and permits issuance/replay |
+| Server ignores requested filter and returns one nonmatching timeline event within bounds, or churn exceeds unfiltered page/budget capacity (separate fixtures for head, replay-prefix, predecessor, non-membership and membership scans) | First filter violation gives `audit_room_unavailable`; no JWT, fallback or budget extension; runtime delivery effects when in request; recovery remains closed | Honoured filters with bounded unchecked interval permit issuance/replay; `/context` anchor or state containing membership is accepted when valid for its purpose, regardless of timeline filter |
+| History exceeds a single 5-second full scan, but valid binding-bound durable coverage leaves a bounded unchecked interval (startup and recovery fixtures) | Startup and recovery pass within their existing budgets by scanning only the unchecked interval and durably advancing coverage; a planted full-rescan implementation MUST fail this row by exhausting the scan budget | Same valid covered history with an empty unchecked interval also passes; assertions verify requested pagination starts at the retained watermark, not the first audit event |
+| Same large history with missing/lost coverage, unavailable anchor, unverifiable position/continuity or mismatched binding (separate fixtures) | `audit_room_unavailable`; no JWT or replay PUT, no full-rescan fallback or fabricated coverage; local chain/fence preserved | Valid coverage on the same history passes the bounded incremental scan; a genuinely fresh binding with no prior coverage and empty audit history passes its initial scan |
+| Incremental scan finds a violation, exhausts its budget, or coverage durability fails (separate fixtures, including after candidate PUT) | Detected policy violation retains durable `audit_room_policy_invalid`; unavailable/incomplete coverage or failed write gives `audit_room_unavailable` unless already fenced; no JWT or further replay PUT; restart never treats incomplete coverage as verified | Complete non-membership and membership scans to the same tail plus durable watermark before release/replay permit the normal outcome within the unchanged budget |
 | Timeline violation lies before an otherwise matching audit head or after the last audit head; restart and repeated recovery with valid current policy (separate fixtures) | Durable `audit_room_policy_invalid`; no replay PUT/JWT, evidence retained; full offline export rejects; audit-only head equality cannot clear fence | Provisioning before first audit event and permitted membership noise pass; incident replacement alone enables a new binding |
-| Retired audit account after completed export/replacement receives otherwise valid registrar-signed JWT or old bearer token (separate fixtures) | Server refuses; no device/token, account re-creation or old-room membership change; all devices logged out, token revoked, account deactivated and permanent HR10 exclusion retained | New audit account sends under final policy; expected post-terminal retirement membership event preserves archived export acceptance |
+| Retired audit account after completed export/replacement receives otherwise valid registrar-signed JWT or old bearer token (separate fixtures) | Server refuses; no device/token, account re-creation or old-room membership change; all devices logged out, token revoked, account deactivated without erasure and permanent HR10 exclusion retained | New audit account sends under final policy; multiple post-terminal membership-only events sent by the retired user (profile clear then leave) preserve archived export acceptance and unredacted audit bytes; other senders or post-terminal audit appends are rejected |
 | New otherwise valid request while runtime issuance readiness is closed | Row 21 `503 audit_unavailable`; consumed nonce, durable refused line spooled, no candidate issued line, readiness remains closed | After worker reconciliation, fresh proof/nonce reaches one acknowledged issued line and JWT |
 | First or later in-request reconciliation finds unequal head or unavailable history | HTTP `503 audit_unavailable`; respective `audit_room_head_mismatch` / `audit_room_unavailable` readiness diagnostic, consumed nonce, durable refused line, no candidate issued line | Matching fresh head within budget permits candidate append and issuance |
 | Remote head advances after startup but before first issuance | `503 audit_unavailable`, `audit_room_head_mismatch`; consumed nonce, refused line only, readiness closed, no truncation/replay into a non-prefix | Unchanged remote head passes the repeated pre-issuance check |
-| Policy changes after startup (creator restored to 101 or reader granted redaction), including between PUT and final check | `503 audit_unavailable`, `audit_room_policy_invalid`; consumed nonce, refused line, issued line only if already appended; readiness closed | Unchanged final policy passes fresh reads; planted omitted re-check MUST fail this case |
+| Policy changes after startup before the first remote audit event: creator restored to 101 or reader granted redaction | `503 audit_unavailable`, `audit_room_policy_invalid`; consumed nonce, refused line, no JWT or candidate append; readiness closed pending fresh verification | Actual policy restoration before the first remote audit event permits recovery; unchanged final policy passes; planted omitted re-check MUST fail |
+| Same policy changes after the first remote audit event, including between PUT and final check | `503 audit_unavailable`, durable `audit_room_policy_invalid`; consumed nonce, refused line, issued line only if already appended; restoration and equal heads MUST NOT clear the fence or permit replay/JWT | Unchanged final policy passes; only incident replacement permits issuance on a new binding after a violation |
 | Audit-type event injected between two issuances, or between precheck and candidate PUT, including malformed/wrong-sender audit events (separate fixtures) | `503 audit_unavailable`, `audit_room_head_mismatch`; no JWT, consumed nonce, refused line; issued line present only for post-append detection; readiness closed | Nearest preceding audit-type event is exact local N-1 (ID/bytes/seq/hash), with or without approved membership interleaving: issuance succeeds; planted skipped predecessor assertion MUST fail |
 | Reader self-sent profile update, leave or invited-reader invite rejection between issuances or between precheck and candidate PUT (separate fixtures); policy stays valid | No refusal or fence: next request releases one JWT, debits once per budget, consumes its nonce and acknowledges one local issued line; audit predecessor stays N-1 | Same two audit lines without membership interleaving also succeed; a planted all-event adjacency check MUST fail the interleaved cases |
 | Already invited, operator-approved auditor joins after lock, between issuances; final policy stays valid | No refusal or fence: one JWT, consumed nonce, one debit per budget and one acknowledged issued line; no policy mutation by registrar | The same approved reader already joined passes; a foreign-server member still fails the independent policy row |
@@ -2408,7 +2460,8 @@ control so an implementation that refuses everything fails the plan.
 | Slow first delivery exhausts a queued request's own budget | Queued request returns `503 audit_unavailable`, no JWT, consumed nonce and local refused line; no reset after lock acquisition | Queue wait plus all operations below 5 seconds permits issuance; admission lock remains available during network wait |
 | Token expired/revoked, including `M_UNKNOWN_TOKEN`, before precheck or after candidate append (separate fixtures) | `audit_unavailable`; consumed nonce, refused line, no JWT, readiness closed; issued line only for post-append fault; static secret-free diagnostics; startup/recovery instead gives `audit_room_unavailable` | Valid same-device credential after qualified operator rotation and restart permits prefix recovery |
 | Transient 429/5xx closes readiness, then worker timer fires | Current request has delivery effects; worker retries automatically at bounded delays; no JWT/nonce restoration or overlapping attempts; failed check stays closed | Restored server permits ordered suffix replay and fresh checks, then new issuance |
-| Persistent current-state policy violation during recovery (no timeline violation) | `audit_room_policy_invalid` remains; no policy mutation, recovery PUTs or JWT; local evidence preserved; an uncorrectable violation requires incident replacement | Actually restored policy plus verified local prefix permits automatic replay; check/line budgets are separate, each 5 seconds |
+| Current-state policy violation during recovery before the first remote audit event | `audit_room_policy_invalid`; no policy mutation, recovery PUT or JWT while invalid; uncorrectable locked-policy violation requires incident replacement | Actually restored policy before the first remote audit event plus verified local prefix permits automatic replay; check/line budgets stay separate, each 5 seconds |
+| Current-state policy violation during recovery after the first remote audit event, then state restored | Persistent `audit_room_policy_invalid`; no recovery PUT or JWT even after restoration/equal heads/restart; evidence retained; restoration state events also violate the timeline rule | Valid policy with no violation permits recovery; after a violation only incident replacement permits new-binding issuance |
 | Persistent non-prefix audit conflict, including injected event or administrator purge | `audit_room_head_mismatch` remains on old binding; no in-place reset, rebind, replay writes or JWT; archive local/remote terminal evidence and pending suffix | Explicit incident replacement preserves old evidence, links a new empty chain/binding in the protected manifest, passes fresh startup gates and records its first acknowledgement; no old pending JWT is released |
 | New incident binding without archived old evidence or protected old/new linkage | Operator qualification fails; the old binding retains its original readiness code and remains fenced; replacement MUST NOT start, with no old-chain mutation or JWT | Complete protected manifest/evidence and separately qualified new binding permit new-chain issuance; an unavailable remote export is explicitly marked incomplete |
 | Recovery sees reader membership interleaving and a remote audit prefix with a queued local suffix | Membership causes no policy/head failure; worker automatically replays only the missing suffix in exact order/bytes, restores equality and readiness; no JWT replay or nonce restoration | Same prefix/suffix without reader activity recovers identically |
@@ -2469,7 +2522,7 @@ Option C has additional proposed activation prerequisites in C.3.
 | HS3 | Accept stock 60-second JWT leeway, including equality; revocation accounts for `exp + 60`. | Accepted; no remaining leeway choice. |
 | HS4 | The reviewed homeserver change must refuse JWT login for deactivated accounts. Keep §11's lock/containment and logout procedure. | Decided; deployment blocked pending that change and its qualification. |
 | Audit profile qualification | HR10–HR14 and B.1 I16–I21: server-side current/retired audit-account JWT exclusion and mandatory retirement closure, off-host/durable-before-ack storage, bounded durable transaction retention, actual token expiry/rotation and rate-limit exemption. | Open activation dependencies; tuwunel qualification evidence is absent. No passing source or plan substitutes for an operated-build result. |
-| Audit runtime budget | B.4 must qualify per-issuance full policy/head reads, exact read-back, predecessor and final power/tombstone checks within 5 seconds. | Open implementation/qualification dependency; no budget extension or stale-cache fallback accepted. |
+| Audit runtime budget | B.4 must qualify per-issuance full policy/head reads, exact read-back, predecessor, unchecked-interval non-membership and membership scans, durable coverage writes and final power/tombstone checks within 5 seconds; startup/recovery incremental coverage scans and writes must fit their own existing 5-second check budgets, including history too large for a full rescan. | Open implementation/qualification dependency; no budget extension or stale-cache fallback accepted. |
 | KM1 | Use the Keymaker specification at landed main head `f5bbba2281c224c2c120cc422644cc8a1fda1bf8` in §1. | Bound; cited helper, peer-UID and enrollment contracts verified at the landed head. |
 | Access-token lifetime | 86,400 seconds without refresh-token issuance. | Accepted; deployment still gated by HS2 qualification. |
 

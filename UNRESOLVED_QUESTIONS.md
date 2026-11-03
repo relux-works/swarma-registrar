@@ -105,7 +105,7 @@ token creates the room with creator power 101 before final policy and lowering
 to 100. The registrar refuses the audit mxid and the server must independently
 exclude it from JWT login. These are contracts, not implementation evidence.
 
-Open activation dependencies (C.2, HR10–HR14, B.1 I16–I20 and B.4):
+Open activation dependencies (C.2, HR10–HR14, B.1 I16–I21 and B.4):
 
 - Qualify server-side JWT-login exclusion for current and retired audit
   accounts, including otherwise valid signed JWTs and mandatory retired-device
@@ -139,11 +139,25 @@ by a protected incident manifest. Timeline fences survive restart/recovery and
 only incident replacement clears them for a new binding; the worker and offline
 auditor must detect them independently of audit-only prefix checks.
 After exporting evidence the operator must log out every retired device,
-revoke its token, deactivate the account, retain permanent HR10 JWT exclusion
-and append its spelling-closed localpart to the protected root-owned retired
-list. The post-terminal retirement membership event is expected.
+revoke its token, deactivate the account without erasure, retain permanent
+HR10 JWT exclusion and append its spelling-closed localpart to the protected
+root-owned retired
+list, including after profile disablement; the list alone does not enable the
+profile. Expected post-terminal retirement membership events must be
+membership-only and sent by the retired audit user; audit bytes stay unredacted.
+Append-only list custody is an operator obligation; an omitted or removed entry
+has no independent registrar-side history check in this profile.
 Qualify server-side RoomEventFilter enforcement for head/prefix and predecessor
-walks; ignored filters fail closed, including over-budget membership churn.
+walks and the separate membership-only unchecked-interval scan, including
+changes for the audit user. Ignored filters fail closed on the first
+nonmatching timeline event, even within bounds; context anchor/state arrays
+are outside that filter condition. Qualify startup/recovery and issuance
+scans from binding-bound durable coverage (event ID and position), with durable
+coverage writes inside the existing budgets. Valid coverage must allow a room
+too large for one full scan; lost or unverifiable coverage fails closed. Large
+unchecked intervals remain an availability limit. After the first remote audit
+event any observed current-state policy violation is a persistent fence;
+restoration cannot clear it.
 An unavailable remote export remains an evidence gap, not a complete archive.
 No in-place history repair or automatic rebind is claimed. Qualification of
 that evidence-preserving replacement remains open alongside B.4 recovery and
