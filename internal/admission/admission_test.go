@@ -67,14 +67,21 @@ func (trust) Descends(string, string) (bool, error) { return true, nil }
 type waterStore struct{}
 
 func (waterStore) Commit(*registry.HighWater, registry.HighWater) error { return nil }
-func snapshot(t *testing.T, seed byte, state string, lo, hi int64) *registry.Snapshot {
+func snapshot(t *testing.T, seed byte, state string, lo, hi int64, explicit ...string) *registry.Snapshot {
 	t.Helper()
 	p, err := enrollment.NewPolicy("example.org", public(1), map[string]bool{"host-a": false})
 	if err != nil {
 		t.Fatal(err)
 	}
 	stamp := func(sec int64) string { return time.Unix(sec, 0).UTC().Format("2006-01-02T15:04:05Z") }
-	raw := signed(t, envelope.Enrollment, map[string]any{"type": "enrollment/1", "host": "host-a", "seq": int64(1), "state": state, "keys": []any{map[string]any{"key": public(seed), "not_before": stamp(lo), "not_after": stamp(hi)}}, "names": map[string]any{"prefix": "host-a_", "explicit": []any{"legacy.dev"}}}, 1)
+	if explicit == nil {
+		explicit = []string{"legacy.dev"}
+	}
+	names := make([]any, len(explicit))
+	for i, name := range explicit {
+		names[i] = name
+	}
+	raw := signed(t, envelope.Enrollment, map[string]any{"type": "enrollment/1", "host": "host-a", "seq": int64(1), "state": state, "keys": []any{map[string]any{"key": public(seed), "not_before": stamp(lo), "not_after": stamp(hi)}}, "names": map[string]any{"prefix": "host-a_", "explicit": names}}, 1)
 	s, _, err := (registry.Loader{ObjectFormat: "sha1", Policy: p, Verifier: trust{}, Store: waterStore{}}).Load(registry.Input{Revision: strings.Repeat("1", 40), FirstUse: true, Entries: []registry.Entry{{Path: "enrollments/a.json", Bytes: raw}}})
 	if err != nil {
 		t.Fatal(err)

@@ -13,7 +13,7 @@ the command bridges the neutral clock/audit values to the core types.
 | Signer | `LoadSigner`, `PublicKey`, `Sign` | One PKCS8 PEM Ed25519 generation. Generic failures contain neither paths nor key bytes. |
 | Clock | `NewClock`, `Startup`, `Now`, `Deadline` | System UTC/monotonic time; explicit evidence must attest synchronization and startup ordering. Faults latch for the instance. |
 | Audit | `NewAudit`, `Append`, `Acknowledge`, `Probe`, `Head`, `Close` | Canonical exact-schema lines, LF-inclusive hash chain, local fsync and exclusive writer. Remote acknowledgement must match exact durable bytes. |
-| Configuration | `LoadConfig`, `ParseConfig` | Strict CCJ-1 bytes and schema; only LoadConfig checks root ownership of configuration and allowed-signers material. |
+| Configuration | `LoadConfig`, `ParseConfig` | Strict CCJ-1 bytes and schema; LoadConfig checks root ownership of configuration/pins and service custody of the optional audit token. |
 
 `Load` always returns `Reconciled: false`, even after a successful local write.
 Missing/restored files cannot establish freshness. After any Commit error, fence
@@ -85,10 +85,29 @@ for bytes only and must not substitute for LoadConfig at startup.
 | `publisher_key` | Strict canonical enrollment-publisher public-key string accepted by enrollment.NewPolicy. The containing configuration protects this pin. |
 | `stations` | Object mapping valid host labels to booleans, for example `{"host-a":false}`. |
 | `high_water`, `signing_key`, `audit_file` | Absolute clean file paths without NUL or expansion. Use separate files/directories for state, audit and signing material. |
+| `audit_homeserver` | Optional string; all four audit strings or none. HTTPS origin only: ASCII §5 server name, optional port 1–65535, no path (even `/`), query, userinfo, fragment, escapes, whitespace or backslash. Spelling is preserved. |
+| `audit_room` | Full `!opaque:server` room ID, never an alias; nonempty components and valid server byte-equal to `audit_user`'s server. |
+| `audit_user` | Full `@localpart:server`, split at the first colon after `@`. Localpart uses §5 structured or legacy grammar and configured-audience 255-byte mxid bound; server is byte-equal to `audience`, including case, port and trailing dot. No normalization. |
+| `audit_token` | Absolute clean token-file path. Service-owned regular 0600 file in a service-owned 0700 immediate directory, opened with O_NOFOLLOW and checked on its descriptor, like `signing_key`. Content is 1–4096 visible ASCII bytes (0x21–0x7e), no whitespace or trimming. |
+| `audit_retired_localparts` | Separate array of exact §5 localparts under the same audience length bound; no duplicates, full mxids or current audit localpart. Required with the profile enabled and retained permanently once any account is retired. Alone never enables the profile. With no retirement history and profile off, absent or empty is valid. |
 | `per_key`, `per_name` | Optional integer limits, respectively 1–10 and 1–3. Defaults 10 and 3. |
 | `listen` | Optional literal IP:port, default `127.0.0.1:8443`. |
 | `tls_certificate`, `tls_key` | Optional paired absolute clean paths; serve requires them except in explicit loopback HTTP test mode. Both require service-owned 0600 files in service-owned 0700 immediate directories. |
 | `first_use` | Optional exact full configured revision, never a boolean. Only explicit operator-confirmed bootstrap may use absent state. |
+
+All audit configuration and token violations return `configuration_invalid`
+before any network call. Row 19b refuses exact current audit identity components
+and all retired localparts even when enrollment permits them. It runs after
+name/audience validation, both limiter debits and nonce reservation; earlier
+refusals keep precedence and accounting is never refunded.
+
+The four strings currently enable startup validation and name exclusion only.
+No Matrix Remote is implemented: otherwise issuable requests still refuse with
+`audit_unavailable`, including with the profile enabled. Network delivery,
+read-back, room policy, reconciliation and replay remain unimplemented.
+Operators must preserve the append-only retired list through replacement,
+disablement and restore. With the profile off, a missing list cannot reveal
+prior retirement history from configuration bytes alone (§11.2).
 
 Configuration, time-policy and allowed-signers files must be root-owned, regular and have no
 group/other write permission; running as root is refused. Final symlinks are
@@ -130,6 +149,7 @@ The specification does not fix these adapter details:
   limits include 4 MiB for Git tree listings; registry count/aggregate/file limits
   remain those in §4.4. Audit lines are additionally bounded to 16 KiB.
 - Configuration and allowed-signers input limits are 64 KiB; PKCS8 input 16 KiB;
+  audit token 4096 bytes;
   retained high-water input 64 MiB. These conservative adapter limits refuse
   excess input rather than truncate or normalize it.
 - Version-1 high-water encoding is canonical CCJ-1 with `v` and `high_water`;

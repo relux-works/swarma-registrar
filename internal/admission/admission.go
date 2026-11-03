@@ -27,28 +27,41 @@ type signing struct {
 // Admitter owns one process's authority, accounting, clock fence and audit chain.
 // New instances model real verified restarts, never a way to clear live fences.
 type Admitter struct {
-	life                     lifecycle
-	mu                       sync.Mutex
-	clock                    Clock
-	audience                 string
-	barrier                  int64
-	last                     Reading
-	clockFenced, auditFenced bool
-	snapshot                 *registry.Snapshot
-	signing                  signing
-	limits                   Limits
-	timeout                  time.Duration
-	nonces                   map[nonceID]int64
-	keyEvents, nameEvents    map[string][]time.Duration
-	auditGate                chan struct{} // Cancellable local sequencing; never held during off-host I/O.
-	sink                     Audit
-	head                     AuditHead
-	instance                 string
+	life                        lifecycle
+	mu                          sync.Mutex
+	clock                       Clock
+	audience                    string
+	auditLocalpart, auditServer string
+	auditRetiredLocalparts      []string
+	barrier                     int64
+	last                        Reading
+	clockFenced, auditFenced    bool
+	snapshot                    *registry.Snapshot
+	signing                     signing
+	limits                      Limits
+	timeout                     time.Duration
+	nonces                      map[nonceID]int64
+	keyEvents, nameEvents       map[string][]time.Duration
+	auditGate                   chan struct{} // Cancellable local sequencing; never held during off-host I/O.
+	sink                        Audit
+	head                        AuditHead
+	instance                    string
 }
 
 func New(c Config) (*Admitter, error) {
 	if c.Clock == nil || c.Audit == nil || c.Audience == "" {
 		return nil, invalidConfig("clock, audit and canonical audience required")
+	}
+	if (c.AuditLocalpart == "") != (c.AuditServer == "") ||
+		(c.AuditLocalpart != "" && (c.AuditServer != c.Audience || (&registration.Body{Name: c.AuditLocalpart}).CheckName(c.Audience) != nil)) {
+		return nil, invalidConfig("invalid audit identity")
+	}
+	seen := map[string]bool{}
+	for _, name := range c.AuditRetiredLocalparts {
+		if (&registration.Body{Name: name}).CheckName(c.Audience) != nil || seen[name] || name == c.AuditLocalpart {
+			return nil, invalidConfig("invalid retired audit identity")
+		}
+		seen[name] = true
 	}
 	limits := Limits{10, 3}
 	if c.Limits != nil {
@@ -74,6 +87,8 @@ func New(c Config) (*Admitter, error) {
 	}
 	a := &Admitter{auditGate: make(chan struct{}, 1), clock: c.Clock, audience: c.Audience, barrier: c.Startup.Reading.UTC + 31, last: c.Startup.Reading, snapshot: c.Registry, limits: limits, timeout: c.Timeout, nonces: map[nonceID]int64{}, keyEvents: map[string][]time.Duration{}, nameEvents: map[string][]time.Duration{}, sink: c.Audit, head: c.Head, instance: base64.RawURLEncoding.EncodeToString(c.Instance[:])}
 	a.clockFenced = !c.Startup.Ordered || !c.Startup.Reading.Healthy || c.Startup.Reading.Faulted
+	a.auditLocalpart, a.auditServer = c.AuditLocalpart, c.AuditServer
+	a.auditRetiredLocalparts = append([]string(nil), c.AuditRetiredLocalparts...)
 	a.signing = signing{signer: c.Signer, public: signingPublic(c.Signer), generation: 1}
 	return a, nil
 }
@@ -274,6 +289,9 @@ func (a *Admitter) Admit(parent context.Context, request Request) (string, error
 	if failure == nil {
 		failure = a.reserve(&p, r.UTC)
 	}
+	if failure == nil && a.reservedAuditName(p.Name) {
+		failure = deny(refusal.NameNotPermitted)
+	}
 	generation := a.signing.generation
 	if failure == nil {
 		r, failure = a.final(&p, &m, generation)
@@ -354,4 +372,19 @@ func (a *Admitter) RecoverAudit(parent context.Context) error {
 	a.auditFenced = false
 	a.mu.Unlock()
 	return nil
+}
+
+// Row 19b runs only after rows 12/14 and nonce reservation. Component equality
+// is literal; all retired entries remain excluded while the profile is off.
+func (a *Admitter) reservedAuditName(sub string) bool {
+	if sub == a.auditLocalpart && a.audience == a.auditServer {
+		return true
+	}
+	// Each retired server is the configured audience, already validated at row 14.
+	for _, localpart := range a.auditRetiredLocalparts {
+		if sub == localpart {
+			return true
+		}
+	}
+	return false
 }

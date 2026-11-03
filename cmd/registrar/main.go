@@ -230,7 +230,7 @@ func wire(c adapters.Config, snapshot *registry.Snapshot, clock admission.Clock,
 	if _, err := rand.Read(instance[:]); err != nil {
 		return nil, errors.New("instance unavailable")
 	}
-	core, err := admission.New(admission.Config{Audience: c.Audience, Registry: snapshot, Clock: clock, Startup: startup, Signer: signer, Audit: audit, Head: head, Instance: instance, Limits: &admission.Limits{PerKey: c.PerKey, PerName: c.PerName}})
+	core, err := admission.New(admission.Config{Audience: c.Audience, AuditLocalpart: c.AuditLocalpart, AuditServer: c.AuditServer, AuditRetiredLocalparts: c.AuditRetiredLocalparts, Registry: snapshot, Clock: clock, Startup: startup, Signer: signer, Audit: audit, Head: head, Instance: instance, Limits: &admission.Limits{PerKey: c.PerKey, PerName: c.PerName}})
 	if err != nil {
 		return nil, errors.New("admission unavailable")
 	}

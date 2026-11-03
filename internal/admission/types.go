@@ -73,14 +73,18 @@ type Audit interface {
 type Limits struct{ PerKey, PerName int }
 type Config struct {
 	Audience string
-	Clock    Clock
-	Startup  Startup
-	Registry *registry.Snapshot
-	Signer   Signer
-	Audit    Audit
-	Head     AuditHead
-	Instance [16]byte // Caller supplies a random process identifier; tests use public fixed bytes.
-	Limits   *Limits
+	// Parsed startup identity and permanently excluded retired localparts.
+	// A retired list alone does not configure a remote audit profile.
+	AuditLocalpart, AuditServer string
+	AuditRetiredLocalparts      []string
+	Clock                       Clock
+	Startup                     Startup
+	Registry                    *registry.Snapshot
+	Signer                      Signer
+	Audit                       Audit
+	Head                        AuditHead
+	Instance                    [16]byte // Caller supplies a random process identifier; tests use public fixed bytes.
+	Limits                      *Limits
 	// Timeout bounds the total response deadline; zero selects five seconds.
 	// Expired audit refusals get a separate local-only spool attempt of this
 	// duration, without delaying the response or clearing the audit fence.

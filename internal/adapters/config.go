@@ -14,7 +14,8 @@ import (
 )
 
 // Config is immutable startup configuration. Paths are absolute; no environment
-// expansion, branch following, remote sink or healthy-clock switch is supported.
+// expansion, branch following or healthy-clock switch is supported. Audit
+// profile fields validate identity/custody; a remote sink is not implemented.
 type Config struct {
 	TimePolicy                                                   string
 	ObjectFormat                                                 string
@@ -23,6 +24,9 @@ type Config struct {
 	Stations                                                     map[string]bool
 	PerKey, PerName                                              int
 	Listen, TLSCertificate, TLSKey, FirstUse                     string
+	AuditHomeserver, AuditRoom, AuditUser, AuditToken            string
+	AuditLocalpart, AuditServer                                  string
+	AuditRetiredLocalparts                                       []string
 }
 
 func LoadConfig(path string) (Config, error) { return loadConfig(path, protected) }
@@ -34,6 +38,11 @@ func loadConfig(path string, guard func(os.FileInfo, int) bool) (Config, error) 
 	c, err := ParseConfig(raw)
 	if err != nil {
 		return Config{}, err
+	}
+	if c.AuditToken != "" {
+		if _, err := loadAuditToken(c.AuditToken, privateFile); err != nil {
+			return Config{}, err
+		}
 	}
 	if _, err = readProtectedWith(c.AllowedSigners, 65536, guard); err != nil {
 		return Config{}, failure(configurationInvalid)
@@ -62,10 +71,13 @@ func ParseConfig(raw []byte) (Config, error) {
 		return bad()
 	}
 	required := []string{"v", "audience", "repository", "revision", "object_format", "allowed_signers", "publisher_key", "stations", "high_water", "signing_key", "audit_file"}
-	if len(obj) < len(required) || len(obj) > len(required)+7 {
+	if len(obj) < len(required) || len(obj) > len(required)+12 {
 		return bad()
 	}
 	allowed := map[string]bool{"time_policy": true, "per_key": true, "per_name": true, "listen": true, "tls_certificate": true, "tls_key": true, "first_use": true}
+	for _, name := range []string{"audit_homeserver", "audit_room", "audit_user", "audit_token", "audit_retired_localparts"} {
+		allowed[name] = true
+	}
 	for _, name := range required {
 		if _, ok := obj[name]; !ok {
 			return bad()
@@ -88,6 +100,9 @@ func ParseConfig(raw []byte) (Config, error) {
 		}
 	}
 	if !revision.Valid(c.ObjectFormat, c.Revision) || !serverName(c.Audience) {
+		return bad()
+	}
+	if !parseAuditConfig(obj, &c) {
 		return bad()
 	}
 	c.Listen = "127.0.0.1:8443"

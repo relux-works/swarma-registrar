@@ -121,7 +121,9 @@ Plain HTTP requires the explicit `--loopback-test-http` flag **and** a literal
 loopback listener, for example `127.0.0.1:8443` or `[::1]:8443`. Wildcard,
 non-loopback, DNS and scoped addresses are refused in that mode. This flag does
 not bypass ownership, registry, clock or audit checks. There is no CLI or
-configuration switch that asserts a healthy clock or supplies a remote audit sink.
+configuration switch that asserts a healthy clock. Audit-profile configuration
+validates the protected identity and token but does not yet supply a Matrix
+Remote: otherwise issuable requests still refuse `audit_unavailable`.
 
 ### Configuration reference
 
@@ -136,6 +138,12 @@ Required fields are `v` (integer 1), `audience`, `repository`, `revision`,
 those capacities. `object_format` is exactly `sha1` (40 lowercase hex revision
 characters) or `sha256` (64); there is no default, request selection or length
 inference. The same protected pin governs loading, Git, retained state and audit.
+The optional `audit_homeserver`, `audit_room`, `audit_user` and `audit_token`
+strings must appear together. The separate `audit_retired_localparts` array is
+required with the profile enabled and retained permanently after retirement.
+Exact current and retired audit names refuse at row 19b after nonce reservation
+and both limiter debits, even when enrolled; retired exclusions also apply with
+the profile off. See the adapter reference for strict grammar and token custody.
 All configured file paths are absolute and clean, without
 expansion; example paths here are operator-owned installation locations.
 
