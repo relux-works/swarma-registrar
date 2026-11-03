@@ -141,12 +141,14 @@ auditor must detect them independently of audit-only prefix checks.
 After exporting evidence the operator must log out every retired device,
 revoke its token, deactivate the account without erasure, retain permanent
 HR10 JWT exclusion and append its spelling-closed localpart to the protected
-root-owned retired
-list, including after profile disablement; the list alone does not enable the
-profile. Expected post-terminal retirement membership events must be
-membership-only and sent by the retired audit user; audit bytes stay unredacted.
+root-owned retired list, including after profile disablement; the list alone
+does not enable the profile. Expected post-terminal retirement membership
+events must be membership-only and sent by the retired audit user; audit bytes
+stay unredacted.
 Append-only list custody is an operator obligation; an omitted or removed entry
-has no independent registrar-side history check in this profile.
+has no independent registrar-side history check in this profile, including an
+absent list after retirement with the profile disabled; HR10 remains the
+mandatory independent control.
 Qualify server-side RoomEventFilter enforcement for head/prefix and predecessor
 walks and the separate membership-only unchecked-interval scan, including
 changes for the audit user. Ignored filters fail closed on the first
@@ -155,9 +157,11 @@ are outside that filter condition. Qualify startup/recovery and issuance
 scans from binding-bound durable coverage (event ID and position), with durable
 coverage writes inside the existing budgets. Valid coverage must allow a room
 too large for one full scan; lost or unverifiable coverage fails closed. Large
-unchecked intervals remain an availability limit. After the first remote audit
-event any observed current-state policy violation is a persistent fence;
-restoration cannot clear it.
+unchecked intervals between consecutive appends remain an availability limit;
+every acknowledged append, including refusals, must advance durable coverage
+within its own 5-second budget, so refusal volume does not accumulate it.
+After the first remote audit event any observed current-state policy violation
+is a persistent fence; restoration cannot clear it.
 An unavailable remote export remains an evidence gap, not a complete archive.
 No in-place history repair or automatic rebind is claimed. Qualification of
 that evidence-preserving replacement remains open alongside B.4 recovery and

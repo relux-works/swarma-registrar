@@ -1028,16 +1028,16 @@ The same protected root-owned configuration MUST accept
 `audit_retired_localparts` independently of profile enablement, with the
 presence rules above (empty only if no audit account has been retired). Each
 entry MUST satisfy exactly the `audit_user` localpart grammar and
-configured-audience mxid length
-checks above; its server is the byte-equal configured audience. Uppercase,
-non-§5, overlength, full-mxid or otherwise alternative spellings, duplicate
+configured-audience mxid length checks above; its server is the byte-equal
+configured audience. Uppercase, non-§5, overlength, full-mxid or otherwise
+alternative spellings, duplicate
 entries, nulls, wrong types or a missing required list MUST yield
 `configuration_invalid` before any authenticated call, without normalization.
 When configured, the current audit localpart MUST NOT occur in this list. The
 list MUST be append-only across incident replacements and retained across
-restart/restore;
-protected custody MUST match the root-owned startup configuration, never a
-request or service-writable source. Removing a retired entry is forbidden.
+restart/restore; protected custody MUST match the root-owned startup
+configuration, never a request or service-writable source. Removing a retired
+entry is forbidden.
 Row 19b MUST compare validated components byte for byte for every entry,
 without prefix matching, case folding or another mapping.
 
@@ -1089,7 +1089,8 @@ the lifetime of the chain. The verified remote prefix, not receipt persistence,
 MUST determine the replay start (§9.1.4).
 Before the first send, the registrar MUST durably bind the configured origin,
 room, user and authenticated device ID to its local delivery state under the
-same ownership and mode protections as local audit state. Subsequent startup
+same ownership and mode protections as local audit state. The binding MUST
+include a durable initial empty-room coverage marker. Subsequent startup
 MUST compare this binding before replay; mismatch or missing binding for a
 nonempty chain MUST yield `audit_room_unavailable`. The dedicated device MUST
 survive restart. Device replacement or lost deduplication state during an
@@ -1125,10 +1126,17 @@ matching the exact schema above. Decoded `line` bytes MUST compare byte for byte
 `seq` and recomputed LF-inclusive hash MUST also agree. JSON key order and
 string escaping in the outer response MUST NOT affect that comparison.
 
-The PUT, read-back, any retry and final release MUST share the existing total
-5-second monotonic request budget; steps MUST NOT reset or extend it. Successful
-read-back and release MUST occur strictly before the deadline. A response at
-the deadline MUST be rejected. A PUT at deadline minus epsilon without enough
+Every append, including refused, issued and replay lines, MUST also verify both
+unchecked-interval scans and durably advance coverage (§9.1.4) through its
+read-back position before acknowledgement, within that line's existing total
+5-second budget. Scan or coverage-write failure MUST close readiness exactly
+as for issuance; a refusal's HTTP outcome MUST remain unchanged.
+
+The PUT, read-back, scans, coverage write, retry and release MUST share the
+existing total 5-second monotonic request budget; steps MUST NOT reset or
+extend it. Successful
+acknowledgement and release MUST occur strictly before the deadline. A response
+at the deadline MUST be rejected. A PUT at deadline minus epsilon without enough
 time to complete read-back MUST NOT acknowledge. Any non-2xx status, redirect,
 timeout, malformed/oversized response, malformed ID, missing event or mismatch
 MUST mean no acknowledgement and `503 audit_unavailable`. Each response body
@@ -1223,11 +1231,11 @@ observe them. Reader profile updates and leaves MUST be self-sent; this includes
 an invited reader rejecting its own invite. Joins MUST be self-sent by
 already invited, approved auditors. These transitions MUST NOT fence issuance
 if the re-read policy remains valid. A leave or kick sent by another member
-requires power 101 and
-MUST fence as a policy violation, not qualify as harmless reader activity.
+requires power 101 and MUST fence as a policy violation, not qualify as harmless
+reader activity.
 A ban or an invitation after locking MUST also fail as a policy violation.
-An audit-user leave, kick, ban or invite MUST fail; only its self-sent profile
-updates preserving joined membership MAY pass.
+Any membership change by or targeting `audit_user` MUST fail except self-sent
+profile updates preserving joined membership.
 For N > 1 any intervening persisted non-audit, non-membership event MUST set
 the persistent timeline-violation fence in §9.1.4, with readiness code
 `audit_room_policy_invalid`; provisioning state before the first audit event
@@ -1338,8 +1346,9 @@ remain `audit_room_policy_invalid`, with no replay PUT or JWT release on the
 old binding. At startup, every recovery check and before each issuance, the
 registrar MUST scan only the unchecked interval from a durable coverage
 watermark through the served timeline tail, independently of the audit-only
-prefix walk. The watermark MUST contain the verified event ID and pagination
-position, bound to the persisted origin/room/user/device binding (§9.1.2).
+prefix walk. The watermark MUST contain the verified event ID and a pagination
+position per filter, bound to the persisted origin/room/user/device binding
+(§9.1.2).
 The scan MUST verify that anchor and continuity to the new tail, using
 `{"not_types":["m.room.member"]}` for non-membership events and a separate
 `{"types":["m.room.member"]}` filter for membership state changes over the
@@ -1348,12 +1357,13 @@ events MUST be state changes with a state key; the scan MUST check sender,
 state key and transition against §9.1.3; it MUST NOT skip a leave or kick sent
 by another member even if a later self-sent update hides it in current state.
 Both scans MUST complete before advancing coverage.
+Every audit-type event MUST match local line bytes, read-back ID, seq and hash.
 
-Only when no coverage has ever been established MAY the scan start at the
+Only the initial empty-room coverage marker MAY authorize scanning from the
 first audit event; a fresh binding MUST have an empty room audit history.
-Provisioning state before the first audit event remains permitted. Lost or
-unverifiable existing coverage, including an unavailable anchor, broken
-pagination continuity or binding mismatch, MUST fail closed as
+Provisioning state before the first audit event remains permitted. Missing or
+unverifiable coverage for an existing binding, including an unavailable anchor,
+broken pagination continuity or binding mismatch, MUST fail closed as
 `audit_room_unavailable`, never fall back to a full rescan or infer coverage
 from head equality. The watermark and any detected fence MUST be durable;
 the completed coverage write MUST precede replay or JWT release. After a
@@ -1685,8 +1695,8 @@ out affected devices, inspect audit and secure the signer before resuming.
 | Proof replay/concurrent retries/restart | Atomic consumed nonces, expiry/skew bounds, start barrier and single replica. A captured JWT remains replayable within homeserver validity; `jti` is audit correlation only. |
 | Registry tampering/rollback | Reviewed signed pin, separate publisher pin, whole-snapshot validation, durable history/tombstones and restore fence. A compromised authorized publisher/maintainer or operator is outside this trust claim. |
 | Clock manipulation | Platform provider evidence, common 1.5-second error cap, 4-second monotonic pre-start hold, fixed barrier and permanent fence on any detected backward step or invalid/expired authority. Option A infers NTS from configuration, not authenticated per-source data; a compromised source can invalidate the error-bound premise. Concurrent instances are outside the proof (§7). |
-| DoS / audit exhaustion | Bounded request/registry/depth, authenticated sliding limits, independent ingress limits and finite audit deadlines. Audit unavailability deliberately denies issuance. Every routing/pre-auth refusal adds an event: unauthenticated floods can exhaust storage and deny issuance despite authenticated limits. HR14 requires audit rate-limit exemption, independent ingress controls and capacity monitoring; exemption does not bound room growth or permit dropping records. Durable incremental coverage avoids mandatory full-history rescans, but a large unchecked interval, lost/unverifiable coverage or an initial scan exceeding 5 seconds still denies startup/recovery; no budget extension is permitted. |
-| Audit-room administration / credential compromise | A homeserver administrator can purge/rewrite history or mint audit-user tokens; stolen tokens can append unsigned chain-valid-looking lines. System-root CAs, including interception roots, can forge PUT/read-back. A leave by the audit identity prevents re-invitation under invite 101 and denies service; readers who leave also lose access. Per-issuance policy/head/predecessor checks fence observed changes, but cannot defeat server equivocation, joint rollback or changes after observation. Retain independent evidence; HR10 permanently excludes ordinary JWT login into current and retired audit accounts; retirement also terminates all devices, revokes the token and deactivates the account without erasure. Retired-list append/retention remains an operator obligation; the registrar does not independently check prior bindings for an omitted or removed retired entry. HR10 exclusion remains independently mandatory. |
+| DoS / audit exhaustion | Bounded request/registry/depth, authenticated sliding limits, independent ingress limits and finite audit deadlines. Audit unavailability deliberately denies issuance. Every routing/pre-auth refusal adds an event: unauthenticated floods can exhaust storage and deny issuance despite authenticated limits. HR14 requires audit rate-limit exemption, independent ingress controls and capacity monitoring; exemption does not bound room growth or permit dropping records. Coverage advances on every acknowledged append, including refusals, so the unchecked interval is limited to events between consecutive appends, not cumulative refusal volume. Excessive events in that interval or lost/unverifiable coverage can still deny issuance, startup or recovery within the 5-second budget; no budget extension is permitted. |
+| Audit-room administration / credential compromise | A homeserver administrator can purge/rewrite history or mint audit-user tokens; stolen tokens can append unsigned chain-valid-looking lines. System-root CAs, including interception roots, can forge PUT/read-back. A leave by the audit identity prevents re-invitation under invite 101 and denies service; readers who leave also lose access. Per-issuance policy/head/predecessor checks fence observed changes, but cannot defeat server equivocation, joint rollback or changes after observation. Retain independent evidence; HR10 permanently excludes ordinary JWT login into current and retired audit accounts; retirement also terminates all devices, revokes the token and deactivates the account without erasure. Retired-list append/retention remains an operator obligation; the registrar does not independently check prior bindings for an omitted or removed retired entry, including an absent list after retirement with the profile disabled. HR10 exclusion remains the mandatory independent control. |
 | Reader membership churn / filter failure | Server-side RoomEventFilter selects audit type for head/prefix walks, excludes only m.room.member for predecessor/non-membership scans, and selects m.room.member separately for unchecked membership changes including audit_user. The first nonmatching event in a filtered timeline array fails closed even within all bounds; context anchor/state arrays are not subject to that filter. With honoured filters, excessive unchecked membership churn can still exceed the 5-second or pagination bounds and keep issuance unavailable. Checks fail closed as audit_room_unavailable with no JWT; no unfiltered fallback or budget extension is permitted. Qualify filter enforcement on the operated server. Persistent timeline violations require incident replacement, not policy restoration. |
 | Bearer interception / retained sessions | TLS, no token logging, bounded JWT validity and explicit logout. Access-token expiry is an activation blocker on the pinned source; do not claim a bound before qualification. |
 
@@ -2204,7 +2214,7 @@ client/helper/service qualification case:
 | I18 | HR12 | Retry an identical transaction within the in-flight budget, including across a server restart: one event, one ID. Record token/device scope. | A fake that creates duplicates MUST fail the event-count assertion; after retention expiry, verified-prefix recovery sends no already-remote line. |
 | I19 | HR13 | Record actual audit-token expiry and qualify protected-file rotation/restart on the same device, including an uncertain suffix and prefix reconciliation. | Expired/revoked credential closes readiness with static diagnostics; valid replacement recovers without duplicate events or changes to HR5 JWT-token expiry. |
 | I20 | HR14 | Audit writes under otherwise rate-limited concurrent refusal load receive no homeserver rate-limit refusal; capacity alerts and ingress bounds operate. | Nonexempt test identity hits the configured limiter; removing the audit exemption MUST fail this qualification. A 429 still fences registrar issuance, never permits bypass. |
-| I21 | HR6, HR9, HR10 | After evidence export and incident replacement, every retired audit device is logged out, the audit token is revoked, the account is deactivated and permanent JWT exclusion remains. An otherwise valid registrar-signed JWT for its localpart refuses with no device/token, account re-creation or old-room membership change; every old bearer token refuses. | Tokens work before retirement in the isolated fixture; the new audit account's separate non-JWT credential sends under final policy. The expected retirement membership event after the terminal head preserves archive acceptance. |
+| I21 | HR6, HR9, HR10 | After evidence export and incident replacement, every retired audit device is logged out, the audit token is revoked, the account is deactivated without erasure and permanent JWT exclusion remains. An otherwise valid registrar-signed JWT for its localpart refuses with no device/token, account re-creation or old-room membership change; every old bearer token refuses. | Tokens work before retirement in the isolated fixture; the new audit account's separate non-JWT credential sends under final policy. Expected retirement membership events after the terminal head preserve archive acceptance and unredacted audit bytes. |
 
 I13 replaces the former R113 homeserver-replay row; it is an integration
 assertion, not a two-domain format verdict. Record and pin the operated
@@ -2436,13 +2446,14 @@ control so an implementation that refuses everything fails the plan.
 | Otherwise valid caller requests exact legacy audit localpart registrar-audit, explicitly enrolled for that caller; audit_user = @registrar-audit:example.org | Row 19b `403 name_not_permitted`; one debit per budget, nonce inserted and retained, one durable acknowledged refused line, no issued line, JWT or new fake-server device; readiness healthy | Explicitly permitted legacy registrar-audit-extra and strict-prefix registrar-aud from the same caller each succeed with a fresh proof/nonce, debit once per budget, retain that nonce, acknowledge one issued line and release JWT; no prefix-based denial |
 | Otherwise valid host node1 with matching structured prefix requests node1_registrar_audit; audit_user = @node1_registrar_audit:example.org | Row 19b `403 name_not_permitted` after own name/audience validation; one debit per budget, nonce inserted and retained, one durable acknowledged refused line, no issued line, JWT or new fake-server device; readiness healthy | Sibling node1_registrar_audit-q1 with the same host/prefix succeeds, debits once per budget, retains its fresh nonce, acknowledges one issued line and releases JWT |
 | Retired legacy registrar-audit or structured node1_registrar_audit remains enrolled for a valid caller after replacement or with §9.1 disabled and another qualified §9 sink; exact entry in protected audit_retired_localparts (legacy/structured and enabled/disabled fixtures) | Row 19b `403 name_not_permitted`; one debit per budget, retained nonce, acknowledged refused line, no issued line, JWT, new device or old-room membership change; readiness healthy | Permitted registrar-aud, registrar-audit-extra and node1_registrar_audit-q1 siblings each issue once under the configured qualified sink |
-| Missing required retired list (enabled profile or disabled after retirement), unsafe custody, wrong type, null, duplicate, current localpart, uppercase, non-§5, full mxid or overlength entry (separate fixtures) | `configuration_invalid` before authenticated calls; no normalization or implicit list repair | Protected root-owned array with empty initial list or valid exact retired localparts passes; with profile off and no retirement history, absent or empty list passes without enabling §9.1 |
+| Missing retired list with the profile enabled, unsafe custody, wrong type, null, duplicate, current localpart, uppercase, non-§5, full mxid or overlength entry (separate fixtures) | `configuration_invalid` before authenticated calls; no normalization or implicit list repair | Protected root-owned array with empty initial list or valid exact retired localparts passes; with profile off and no retirement history, absent or empty list passes without enabling §9.1 |
 | Mixed-case request Registrar-Audit with lowercase configured audit_user | Row 12 `400 name_invalid`, no nonce/debits under Appendix A; never case-folded into row 19b | Exact lowercase audit localpart reaches row 19b with its specified accounting; permitted registrar-aud issues |
 | Another member sends a reader leave/kick or invite rejection; or an audit_user leave/kick is followed by an apparently valid current membership state (separate fixtures) | Separate membership-only unchecked-interval scan detects sender/state-key or transition violation: `audit_room_policy_invalid`, no JWT/recovery PUT; after first remote audit event the fence is durable; runtime delivery effects when in request | Reader self-sent leave/invite rejection or audit_user self-sent joined profile update passes with valid policy; predecessor and audit-head reads alone cannot satisfy this row |
 | Lost head receipt after remote append, then restart and verified prefix reconciliation | Head event ID, bytes, seq/hash durably restored before replay/issuance; no re-PUT of verified prefix; subsequent N-1 ID comparison succeeds | Wrong predecessor event ID with identical-looking bytes fails as `audit_room_head_mismatch`, no JWT |
 | Server ignores requested filter and returns one nonmatching timeline event within bounds, or churn exceeds unfiltered page/budget capacity (separate fixtures for head, replay-prefix, predecessor, non-membership and membership scans) | First filter violation gives `audit_room_unavailable`; no JWT, fallback or budget extension; runtime delivery effects when in request; recovery remains closed | Honoured filters with bounded unchecked interval permit issuance/replay; `/context` anchor or state containing membership is accepted when valid for its purpose, regardless of timeline filter |
-| History exceeds a single 5-second full scan, but valid binding-bound durable coverage leaves a bounded unchecked interval (startup and recovery fixtures) | Startup and recovery pass within their existing budgets by scanning only the unchecked interval and durably advancing coverage; a planted full-rescan implementation MUST fail this row by exhausting the scan budget | Same valid covered history with an empty unchecked interval also passes; assertions verify requested pagination starts at the retained watermark, not the first audit event |
-| Same large history with missing/lost coverage, unavailable anchor, unverifiable position/continuity or mismatched binding (separate fixtures) | `audit_room_unavailable`; no JWT or replay PUT, no full-rescan fallback or fabricated coverage; local chain/fence preserved | Valid coverage on the same history passes the bounded incremental scan; a genuinely fresh binding with no prior coverage and empty audit history passes its initial scan |
+| History exceeds a single 5-second full scan, but coverage advanced on every acknowledged append leaves only events between consecutive appends unchecked, within budget (startup and recovery fixtures) | Startup and recovery pass within their existing budgets by scanning only the unchecked interval and durably advancing coverage; a planted full-rescan implementation MUST fail this row by exhausting the scan budget | Same valid covered history with an empty unchecked interval also passes; assertions verify requested pagination starts at the retained watermark, not the first audit event |
+| N refused lines between two issuances, where N exceeds one 5-second scan capacity but each inter-append interval fits its budget (next-issuance and recovery fixtures) | Every refusal advances durable coverage within its own budget; the next issuance or recovery succeeds without scanning the whole refusal batch; a planted "advance only before issuance" implementation MUST fail this row | A smaller refusal batch also passes; scan or coverage-write failure on a refused append closes readiness as for issuance, preserves its HTTP outcome and never acknowledges uncovered delivery |
+| Same large history with missing/lost coverage, unavailable anchor, unverifiable position/continuity or mismatched binding (separate fixtures) | `audit_room_unavailable`; no JWT or replay PUT, no full-rescan fallback or fabricated coverage; local chain/fence preserved | Valid coverage on the same history passes the bounded incremental scan; a fresh binding with its initial empty-room coverage marker and empty audit history passes its initial scan |
 | Incremental scan finds a violation, exhausts its budget, or coverage durability fails (separate fixtures, including after candidate PUT) | Detected policy violation retains durable `audit_room_policy_invalid`; unavailable/incomplete coverage or failed write gives `audit_room_unavailable` unless already fenced; no JWT or further replay PUT; restart never treats incomplete coverage as verified | Complete non-membership and membership scans to the same tail plus durable watermark before release/replay permit the normal outcome within the unchanged budget |
 | Timeline violation lies before an otherwise matching audit head or after the last audit head; restart and repeated recovery with valid current policy (separate fixtures) | Durable `audit_room_policy_invalid`; no replay PUT/JWT, evidence retained; full offline export rejects; audit-only head equality cannot clear fence | Provisioning before first audit event and permitted membership noise pass; incident replacement alone enables a new binding |
 | Retired audit account after completed export/replacement receives otherwise valid registrar-signed JWT or old bearer token (separate fixtures) | Server refuses; no device/token, account re-creation or old-room membership change; all devices logged out, token revoked, account deactivated without erasure and permanent HR10 exclusion retained | New audit account sends under final policy; multiple post-terminal membership-only events sent by the retired user (profile clear then leave) preserve archived export acceptance and unredacted audit bytes; other senders or post-terminal audit appends are rejected |
@@ -2522,7 +2533,7 @@ Option C has additional proposed activation prerequisites in C.3.
 | HS3 | Accept stock 60-second JWT leeway, including equality; revocation accounts for `exp + 60`. | Accepted; no remaining leeway choice. |
 | HS4 | The reviewed homeserver change must refuse JWT login for deactivated accounts. Keep §11's lock/containment and logout procedure. | Decided; deployment blocked pending that change and its qualification. |
 | Audit profile qualification | HR10–HR14 and B.1 I16–I21: server-side current/retired audit-account JWT exclusion and mandatory retirement closure, off-host/durable-before-ack storage, bounded durable transaction retention, actual token expiry/rotation and rate-limit exemption. | Open activation dependencies; tuwunel qualification evidence is absent. No passing source or plan substitutes for an operated-build result. |
-| Audit runtime budget | B.4 must qualify per-issuance full policy/head reads, exact read-back, predecessor, unchecked-interval non-membership and membership scans, durable coverage writes and final power/tombstone checks within 5 seconds; startup/recovery incremental coverage scans and writes must fit their own existing 5-second check budgets, including history too large for a full rescan. | Open implementation/qualification dependency; no budget extension or stale-cache fallback accepted. |
+| Audit runtime budget | B.4 must qualify both interval scans and durable coverage writes per acknowledged append, including refusals, within each line's existing 5-second budget; per-issuance full policy/head reads, exact read-back, predecessor, unchecked-interval non-membership and membership scans, durable coverage writes and final power/tombstone checks within 5 seconds; startup/recovery incremental coverage scans and writes must fit their own existing 5-second check budgets, including history too large for a full rescan. | Open implementation/qualification dependency; no budget extension or stale-cache fallback accepted. |
 | KM1 | Use the Keymaker specification at landed main head `f5bbba2281c224c2c120cc422644cc8a1fda1bf8` in §1. | Bound; cited helper, peer-UID and enrollment contracts verified at the landed head. |
 | Access-token lifetime | 86,400 seconds without refresh-token issuance. | Accepted; deployment still gated by HS2 qualification. |
 
