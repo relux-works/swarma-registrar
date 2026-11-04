@@ -3,10 +3,10 @@
 ## Release identity
 
 - Version: **v0.1.0**.
-- Release commit: **b0bee3c45f112a4109a92f52bdcc885860e81dfd**.
-- The tag will be created on that commit or on the documentation-only merge of
-  this release-notes change. The binary does not depend on the documentation
-  commit because the build uses `-buildvcs=false` and the source is unchanged.
+- Binary source commit: **b0bee3c45f112a4109a92f52bdcc885860e81dfd**.
+- The release tag will point to the documentation-only commit that pins
+  `GOEXPERIMENT` and `GOFIPS140` in this recipe. The binary is unchanged because
+  the build uses `-buildvcs=false` and the source is unchanged.
 - The tag is signed with the platform release key at installation time.
   No tag is created by this documentation change, and no binary is published.
 
@@ -19,10 +19,12 @@ cache (`GOCACHE`) and a separate module cache (`GOMODCACHE`). Run from the modul
 root:
 
 ```sh
-export GOTOOLCHAIN=local CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=v1 GOFLAGS=-mod=readonly
+export GOTOOLCHAIN=local CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=v1 GOFLAGS=-mod=readonly GOEXPERIMENT= GOFIPS140=off
 go build -trimpath -buildvcs=false -ldflags=-buildid= -o registrar ./cmd/registrar
 sha256sum registrar        # or: shasum -a 256 registrar
 ```
+
+`GOEXPERIMENT` and `GOFIPS140` are pinned because inherited values change the binary; the installer must use the export line verbatim.
 
 Expected output artifact: Linux, amd64, GOAMD64 v1, without cgo.
 
