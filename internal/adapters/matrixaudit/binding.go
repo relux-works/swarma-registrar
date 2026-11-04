@@ -3,7 +3,6 @@ package matrixaudit
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -29,11 +28,15 @@ func (c *Client) startup(ctx context.Context, b *Budget, nonempty bool, emptyRoo
 		return roomUnavailable
 	}
 	device, ok := who["device_id"].(string)
-	if !ok || device == "" {
+	user, userOK := who["user_id"].(string)
+	if !ok || device == "" || !userOK {
 		return roomUnavailable
 	}
-	if who["user_id"] != c.cfg.User {
-		return errors.New("audit_room_policy_invalid")
+	if user != c.cfg.User {
+		return roomPolicyInvalid
+	}
+	if err := c.CheckPolicy(ctx, b); err != nil {
+		return err
 	}
 	path := c.cfg.BindingPath
 	if !filepath.IsAbs(path) {

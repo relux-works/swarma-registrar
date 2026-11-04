@@ -25,24 +25,40 @@ var eventID = "$" + base64.RawURLEncoding.EncodeToString(make([]byte, 32))
 var original = []byte("{\"seq\":1}\n")
 
 type fixture struct {
-	t                      *testing.T
-	server                 *httptest.Server
-	c                      *Client
-	now                    time.Time
-	budget                 *Budget
-	puts, gets             int
-	events                 map[string][]byte
-	putStatus, getStatus   int
-	putBody, getBody       []byte
-	mutate                 func(map[string]any)
-	advancePut, advanceGet time.Duration
-	duplicate              bool
-	paths                  []string
+	t                        *testing.T
+	server                   *httptest.Server
+	c                        *Client
+	now                      time.Time
+	budget                   *Budget
+	puts, gets               int
+	events                   map[string][]byte
+	putStatus, getStatus     int
+	putBody, getBody         []byte
+	mutate                   func(map[string]any)
+	advancePut, advanceGet   time.Duration
+	duplicate                bool
+	paths                    []string
+	state                    []any
+	stateBody                []byte
+	stateStatus              int
+	who                      any
+	advanceWho, advanceState time.Duration
+	pages                    []map[string]any
+	page                     int
+	filters                  []string
 }
 
 func setup(t *testing.T) *fixture {
 	t.Helper()
-	f := &fixture{t: t, now: time.Now(), events: map[string][]byte{}, putStatus: 200, getStatus: 200}
+	f := setupServer(t)
+	if err := f.c.startup(context.Background(), f.budget, false, func(context.Context, *Budget) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	return f
+}
+func setupServer(t *testing.T) *fixture {
+	t.Helper()
+	f := &fixture{t: t, now: time.Now(), events: map[string][]byte{}, putStatus: 200, getStatus: 200, state: validState(), stateStatus: 200, who: map[string]any{"user_id": "@audit:example.org", "device_id": "DEVICE"}}
 	f.server = httptest.NewTLSServer(http.HandlerFunc(f.serve))
 	t.Cleanup(f.server.Close)
 	roots := x509.NewCertPool()
@@ -59,23 +75,56 @@ func setup(t *testing.T) *fixture {
 	f.c = c
 	t.Cleanup(func() { c.Close() })
 	f.budget = newBudget(f.now.Add(5*time.Second), func() time.Time { return f.now })
-	if err = c.startup(context.Background(), f.budget, false, func(context.Context, *Budget) error { return nil }); err != nil {
-		t.Fatal(err)
-	}
 	return f
 }
 func (f *fixture) serve(w http.ResponseWriter, r *http.Request) {
-	if r.Header.Get("Authorization") != "Bearer secret-token" {
+	user := "@audit:example.org"
+	if r.Header.Get("Authorization") == "Bearer reader-token" {
+		user = "@reader:example.org"
+	} else if r.Header.Get("Authorization") != "Bearer secret-token" {
 		f.t.Error("missing bearer")
+		w.WriteHeader(401)
+		return
 	}
-	if r.URL.RawQuery != "" {
+	if r.URL.RawQuery != "" && !strings.HasSuffix(r.URL.Path, "/messages") {
 		f.t.Error("unexpected query")
 	}
 	f.paths = append(f.paths, r.URL.EscapedPath())
 	switch {
 	case strings.HasSuffix(r.URL.Path, "/whoami"):
-		fmt.Fprint(w, `{"user_id":"@audit:example.org","device_id":"DEVICE"}`)
+		f.now = f.now.Add(f.advanceWho)
+		json.NewEncoder(w).Encode(f.who)
+	case strings.HasSuffix(r.URL.Path, "/state"):
+		f.now = f.now.Add(f.advanceState)
+		w.WriteHeader(f.stateStatus)
+		if f.stateBody != nil {
+			w.Write(f.stateBody)
+		} else {
+			json.NewEncoder(w).Encode(f.state)
+		}
+	case strings.HasSuffix(r.URL.Path, "/messages"):
+		f.filters = append(f.filters, r.URL.Query().Get("filter"))
+		if r.URL.Query().Get("dir") != "b" || r.URL.Query().Get("limit") != "1024" {
+			f.t.Error("unbounded or forward head read")
+		}
+		if f.page >= len(f.pages) {
+			f.t.Error("unexpected history page")
+			w.WriteHeader(500)
+			return
+		}
+		json.NewEncoder(w).Encode(f.pages[f.page])
+		f.page++
 	case r.Method == "PUT":
+		typ := EventType
+		if strings.Contains(r.URL.Path, "/redact/") {
+			typ = "m.room.redaction"
+		} else if _, suffix, ok := strings.Cut(r.URL.Path, "/send/"); ok {
+			typ, _, _ = strings.Cut(suffix, "/")
+		}
+		if status := policyPermission(f.state, user, typ); status != 200 {
+			w.WriteHeader(status)
+			return
+		}
 		f.puts++
 		f.now = f.now.Add(f.advancePut)
 		var c map[string]any
@@ -298,7 +347,7 @@ func TestPathsAndProxy(t *testing.T) {
 	}
 	h := sha256.Sum256(original)
 	want := "/_matrix/client/v3/rooms/%21a%2Fb%3Fc%23%20%C3%A9:example.org" + "/send/" + component(EventType) + "/" + component(fmt.Sprintf("audit-v0-%x", h))
-	if f.paths[1] != want || f.paths[2] != "/_matrix/client/v3/rooms/"+component(room)+"/event/"+component(eventID) {
+	if f.paths[2] != want || f.paths[3] != "/_matrix/client/v3/rooms/"+component(room)+"/event/"+component(eventID) {
 		t.Fatalf("paths %q", f.paths)
 	}
 }
@@ -559,7 +608,11 @@ func TestAuthenticatedDeviceContinuity(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `{"user_id":"@audit:example.org","device_id":"CHANGED"}`)
+		if strings.HasSuffix(r.URL.Path, "/whoami") {
+			fmt.Fprint(w, `{"user_id":"@audit:example.org","device_id":"CHANGED"}`)
+		} else {
+			f.serve(w, r)
+		}
 	})
 	roots := x509.NewCertPool()
 	roots.AddCert(f.server.Certificate())

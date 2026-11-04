@@ -50,8 +50,8 @@ joins handlers and detached audit, closes the sink, then exits 75 with
 sink open. The supervisor must exclude the old process before restart and bound
 restart attempts. Test evidence remains injection only.
 
-There is **no production Remote implementation or network sink**. Without one,
-local recording works but Acknowledge returns `audit_unavailable`. A future
+There is **no production Remote implementation connected to issuance**.
+Without one, local recording works but Acknowledge returns `audit_unavailable`. A future
 authenticated, append-only durable sink must acknowledge the SHA-256 of the
 exact line including LF, support idempotent replay and honor cancellation.
 Shipping sends retained prerequisites in sequence before the requested line;
@@ -103,8 +103,14 @@ refusals keep precedence and accounting is never refunded.
 
 The four strings currently enable startup validation and name exclusion only.
 No Matrix Remote is implemented: otherwise issuable requests still refuse with
-`audit_unavailable`, including with the profile enabled. Network delivery,
-read-back, room policy, reconciliation and replay remain unimplemented.
+`audit_unavailable`, including with the profile enabled. The isolated
+`matrixaudit` package implements transport, binding, exact read-back, startup
+identity/policy checks and a reusable bounded filtered-head comparison. These
+primitives are not connected to this adapter or the command. Durable coverage,
+persistent timeline fences, predecessor/membership checks and prefix replay are
+still required before wiring. JWT release must depend on successful `Complete`
+after its coverage hook, never on `Attempt` success or `Position()` alone.
+Code-level gate (c) remains open; live HR10–HR14 and I16–I21 are unqualified.
 Operators must preserve the append-only retired list through replacement,
 disablement and restore. With the profile off, a missing list cannot reveal
 prior retirement history from configuration bytes alone (§11.2).
@@ -220,8 +226,8 @@ install -o root -g root -m 0644 policy.json /etc/timeconf/policy.json
 ```
 
 Other consumers use their own policy and custody rules; this is
-not a shared-file installation contract. Keymaker nests `time_policy` in its own
-`config.json`. At provider pin
+not a shared-file installation contract. The credential broker nests
+`time_policy` in its own `config.json`. At provider pin
 [`e7619df`](https://github.com/relux-works/swarma-credential-broker/tree/e7619dfc4b2a6cf1696d8a21eff603bc80f147c7),
 `LoadPolicy` uses service-UID ownership and exact mode 0600
 ([`timeconf/collect_linux.go:99-136`](https://github.com/relux-works/swarma-credential-broker/blob/e7619dfc4b2a6cf1696d8a21eff603bc80f147c7/timeconf/collect_linux.go#L99-L136)).
@@ -259,5 +265,5 @@ GOTOOLCHAIN=local go vet ./internal/adapters/... ./cmd/registrar/...
 GOTOOLCHAIN=local go mod tidy -diff
 ```
 
-Outputs and fixture scratch belong under `.temp/`. These commands supplement
-the broader repository checks; full and race review runs are separate.
+Outputs and fixture scratch belong in an ignored scratch directory. These
+commands supplement the broader repository checks; full and race review runs are separate.

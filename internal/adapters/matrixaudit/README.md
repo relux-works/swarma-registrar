@@ -1,13 +1,16 @@
 # Matrix audit delivery primitive
 
 This package is deliberately separate from `Audit.Acknowledge`, issuance,
-readiness and replay. It supplies HTTPS transport, an exclusive durable delivery
-binding, immutable per-line PUT attempts, and exact read-back verification.
+complete readiness and replay. It supplies HTTPS transport, an exclusive durable
+delivery binding, immutable per-line PUT attempts, exact read-back verification,
+startup identity/current-state policy validation and filtered head comparison.
 No live homeserver was used for package validation.
 
 ## Caller integration contract
 
-1. Use the protected startup loader once; pass its loaded token bytes to `Start`.
+1. Pass only the protected loader's validated origin, full room ID and user;
+   arbitrary dot path components and aliases are rejected defensively. Use the
+   protected startup loader once; pass its loaded token bytes to `Start`.
    There is no token path, reload callback, login, CA configuration or proxy
    configuration in this package. Production uses system TLS roots, TLS >= 1.2,
    no proxy, and refuses every redirect. Each request uses a fresh HTTP/1.1 TLS
@@ -46,11 +49,53 @@ No live homeserver was used for package validation.
    pagination token or independent proof of homeserver durability.
 
 All exported errors contain static codes only. Network, filesystem, parser and
-callback diagnostics are discarded. A parsed whoami user mismatch yields
-`audit_room_policy_invalid`; missing/changed device or binding and unavailable
-startup evidence yield `audit_room_unavailable`. Delivery failures yield
+callback diagnostics are discarded. A parsed whoami user mismatch or
+parsed room policy violation yields `audit_room_policy_invalid`;
+missing/wrong-type user or device evidence, missing/changed device or binding,
+and unavailable startup evidence yield `audit_room_unavailable`.
+Readiness failures have type `ReadinessCode` with exported constants for callers.
+Delivery failures yield
 `audit_unavailable`. Constructor input failures yield `configuration_invalid`.
 No package logger is used.
+
+## Policy and head observations
+
+`Start` performs whoami, then one complete room-state read, before creating or
+opening a delivery binding. It validates the pinned version-11 nonfederated
+create event and creator, absence of predecessor/encryption/tombstone, same-server
+joined/invited members, joined audit identity, invite/shared/forbidden access,
+and all explicit locked power thresholds and overrides. A malformed state is
+unavailable evidence; missing or violated parsed policy is invalid policy.
+State/history bodies are streaming-bounded to 4 MiB and 1,024 events; identity,
+PUT and read-back bodies retain the 64 KiB cap. Startup keeps the caller's
+separate original budget, at most five seconds, through durable binding work.
+
+`CheckPolicy` repeats that state observation. `ReconcileHead` reads backward
+`/messages` pages using only the JSON/URL-encoded audit-type filter. Every
+returned timeline event must satisfy it, including events after the selected
+head. Empty intermediate pages require continuous, nonrepeating tokens. A
+missing `end` denotes the served beginning; empty history matches only empty
+local history. A nonempty head must match the caller's validated original line
+and retained event ID, room, sequence and hash; redacted or conflicting heads
+return `audit_room_head_mismatch`. Unavailable or incomplete history returns
+`audit_room_unavailable`. No comparison mutates local custody or sends events.
+Repeated calls read fresh evidence within the retained budget.
+
+The caller must own a separate deadline-aware delivery lock and invoke these
+observations at the required points. They do not implement chain-wide prefix
+verification, lost-receipt recovery, predecessor checks, membership transition
+scans, durable coverage or the persistent timeline fence. Policy restoration or
+head equality is never authority to clear such a fence. The initial empty-room
+hook still belongs to the caller. Replay, the operator incident-replacement
+path and `adapters.Remote`/command wiring are pending. No release path was added;
+code-level gate (c), live HR10–HR14 and I16–I21 remain open. Only successful
+`Verified.Complete` after the required coverage hook can gate future JWT release.
+
+The policy-enforcing local TLS fake rejects reader writes and all redactions,
+with an audit-user append as its control. Policy/head/identity negatives have
+adjacent valid controls; time and response limits are tested without live access.
+These package tests establish neither command release behavior nor live policy,
+durability, deduplication, retention or deployment qualification.
 
 ## Tools and evidence
 
@@ -59,4 +104,4 @@ No package logger is used.
 | Go 1.26.10 | `GOTOOLCHAIN=local go test -count=1 ./internal/adapters/matrixaudit` | Native portable fake-TLS-server tests; no external services |
 | Go vet | `GOTOOLCHAIN=local GOOS=linux GOARCH=arm64 go vet ./internal/adapters/matrixaudit` | Static diagnostics only |
 | Go test compiler | `GOTOOLCHAIN=local GOOS=linux GOARCH=arm64 go test -c ./internal/adapters/matrixaudit -o /tmp/matrixaudit.test` | Linux test binary, not executed on macOS |
-| Python 3 | `python3 .scripts/check-hygiene.py --base cae5ab34ffe7cc99edb8b385d6a43c575513aa7e` | Public hygiene diagnostics |
+| Python 3 | `python3 .scripts/check-hygiene.py --base 8402c19c53828c4f81d89677ed4af4613c0e63f3` | Public hygiene diagnostics |

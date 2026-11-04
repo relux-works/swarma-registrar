@@ -3,12 +3,10 @@
 Carrier admission: an enrolled host proves possession of its key, and the
 registrar issues a short-lived Matrix login JWT for a permitted name.
 
-Lore: **Morpheus** — the registrar that admits identities to the carrier.
-
 ## Scope
 
 - **Registrar** (this repository): owns `registration/1`, `enrollment/1`, their envelopes, `uid_map` data semantics, registry verification, HTTPS admission, JWT issuance and audit. It holds only its own JWT private signing key.
-- **Keymaker** (separate module): owns the host helper, socket, peer-UID enforcement, helper refusals and custody of the host registration key. Its operations are `hello` and `sign_registration`; this repository does not implement a host helper.
+- **Credential broker** (separate module): owns the host helper, socket, peer-UID enforcement, helper refusals and custody of the host registration key. Its operations are `hello` and `sign_registration`; this repository does not implement a host helper.
 - Human SSO and credential-broker grants have separate owners.
 
 The design reference is [CIP-0019](https://github.com/relux-works/curator-spec/blob/main/cips/CIP-0019-carrier-admission-by-public-key.md).
@@ -51,7 +49,7 @@ qualified. Specification, vectors and service code continue meanwhile.
 
 The offline enrollment-publisher signature and protected common pins, stock
 60-second JWT leeway, and 86,400-second access-token target are accepted.
-The Keymaker specification is bound to landed main head
+The credential broker specification is bound to landed main head
 `f5bbba2281c224c2c120cc422644cc8a1fda1bf8`; its cited helper, peer-UID and enrollment
 contracts have been checked (KM1). See specification §1, §4.3, §10 and Appendix C.
 
@@ -290,7 +288,7 @@ tracked files. The hygiene check rejects generic attribution metadata in tracked
 content and added committed lines. It does not establish absence of secrets.
 The test timeout is five minutes and the job timeout is ten minutes. Tests use
 Git, OpenSSH, Linux PTYs and loopback networking without root or live services.
-Existing stage-pending conformance rows and subprocess-helper skips retain their
+Existing pending conformance rows and subprocess-helper skips retain their
 reported meanings; a green job does not qualify unimplemented contracts. There
 is no separate dependency-policy test in this module. Diagnostics appear in the
 job log; the workflow uploads no artifacts.
@@ -308,7 +306,7 @@ job log; the workflow uploads no artifacts.
 | Python unittest | Check signed HTTP media-token, structured-name and reachable-accounting regressions against the independent checker. | `python3 -B -m unittest discover -s tools/vectorcheck -p test_regressions.py -v` | Terminal verdicts; fixtures under `tools/vectorcheck/fixtures/` stay separate from the 328 planned vectors. |
 | Python 3 | Check tracked content and added committed lines for attribution metadata. | `python3 .scripts/check-hygiene.py --base "$BASE_SHA"` | Terminal diagnostics; writes nothing. |
 | Git | Inspect scope and check documentation whitespace. | `git diff --check`; `git diff --stat`; `git diff -- spec/registrar.md README.md UNRESOLVED_QUESTIONS.md` | Terminal diagnostics and diff; no generated repository files. |
-| curl | Retrieve the pinned public validator source for inspection. | `mkdir -p .temp/spec-source-review` then `curl --fail --location https://raw.githubusercontent.com/Keats/jsonwebtoken/900010fb1be550ec2cfa8c32038eb154f9ef56d7/src/validation.rs --output .temp/spec-source-review/validation.rs` | Source in the created task-scoped scratch directory. |
+| curl | Retrieve the pinned public validator source for inspection. | `review_dir="$(mktemp -d)"` then `curl --fail --location https://raw.githubusercontent.com/Keats/jsonwebtoken/900010fb1be550ec2cfa8c32038eb154f9ef56d7/src/validation.rs --output "$review_dir/validation.rs"` | Source in the created task-scoped scratch directory. |
 | Python 3 | Count the planned vector rows in the draft. | `python3 -c 'from pathlib import Path; s=Path("spec/registrar.md").read_text().split("## Appendix B.")[1].split("### B.1")[0]; print(sum(line.startswith("\u007c ") for line in s.splitlines())-2)'` | Terminal count only. |
 
 Core tests derive their own inputs from fixed public test seeds and curve
@@ -413,7 +411,13 @@ Production time evidence uses the pinned shared provider and protected
 for policy contents, startup lifecycle, tool commands and qualification limits.
 
 The isolated [Matrix audit delivery primitive](internal/adapters/matrixaudit/README.md)
-provides transport, durable binding and verified append/read-back.
-A later change wires it into issuance and `Audit.Acknowledge`, with readiness,
-reconciliation, coverage and final-release checks. Its README lists
-package-specific validation commands and caller obligations.
+provides transport, durable binding and verified append/read-back. Startup
+checks identity and the complete locked room policy before opening a binding;
+a separate bounded, filtered head-comparison primitive is also available.
+These observations do not establish complete readiness. Durable coverage,
+persistent timeline fences, prefix recovery/replay and issuance integration
+remain unimplemented. The command still has no production `Remote` and releases
+no JWT through this profile. Gate (c) remains open; HR10–HR14 and I16–I21 need
+separate live qualification. Its README lists package validation commands and
+caller obligations. Only successful `Complete`, after durable coverage and final
+checks, may eventually gate JWT release; `Attempt` and `Position` are insufficient.

@@ -23,11 +23,17 @@ import (
 const EventType = "works.relux.registrar.audit.v0"
 
 var unavailable = errors.New("audit_unavailable")
-var roomUnavailable = errors.New("audit_room_unavailable")
+
+const roomUnavailable = RoomUnavailable
+const roomPolicyInvalid = RoomPolicyInvalid
+const roomHeadMismatch = RoomHeadMismatch
+
 var configurationInvalid = errors.New("configuration_invalid")
 
+// Config must come from the protected validated startup configuration.
+// Room is a full room ID, never an alias or an arbitrary path component.
 // Config is copied at startup. Token custody/loading belongs to the startup
-// loader (B1); pass its once-loaded bytes, never a reload callback or token path.
+// loader; pass its once-loaded bytes, never a reload callback or token path.
 // BindingPath must be in the same protected directory as the local audit state.
 type Config struct{ Origin, Room, User, BindingPath string }
 
@@ -69,7 +75,7 @@ func (b *Budget) check(ctx context.Context) error {
 
 // Start authenticates and retains an exclusive durable binding before any send.
 // nonempty is the validated local-chain state. On a fresh chain emptyRoom must
-// verify empty audit history under this same budget; B3 supplies that scan.
+// verify empty audit history under this same budget; the caller supplies that scan.
 func Start(ctx context.Context, cfg Config, token []byte, nonempty bool, emptyRoom func(context.Context, *Budget) error, b *Budget) (*Client, error) {
 	c, err := newClient(cfg, token)
 	if err != nil {
@@ -84,6 +90,11 @@ func Start(ctx context.Context, cfg Config, token []byte, nonempty bool, emptyRo
 
 func newClient(cfg Config, token []byte) (*Client, error) {
 	u, err := url.Parse(cfg.Origin)
+	opaque, roomServer, roomOK := strings.Cut(strings.TrimPrefix(cfg.Room, "!"), ":")
+	_, userServer, userOK := strings.Cut(cfg.User, ":")
+	if !strings.HasPrefix(cfg.Room, "!") || !roomOK || opaque == "" || roomServer == "" || !userOK || roomServer != userServer {
+		return nil, configurationInvalid
+	}
 	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || strings.ContainsAny(cfg.Origin, "?#") || cfg.Room == "" || cfg.User == "" || len(token) == 0 || len(token) > 4096 {
 		return nil, configurationInvalid
 	}
@@ -111,6 +122,20 @@ func (c *Client) Close() error {
 
 func component(s string) string { return url.PathEscape(s) }
 func (c *Client) request(ctx context.Context, b *Budget, method string, parts []string, body []byte) (map[string]any, error) {
+	value, err := c.requestJSON(ctx, b, method, parts, nil, body, 65536)
+	if err != nil {
+		return nil, unavailable
+	}
+	obj, ok := value.(map[string]any)
+	if !ok || obj["errcode"] == "M_UNKNOWN_TOKEN" {
+		return nil, unavailable
+	}
+	return obj, nil
+}
+
+type responseLimitKey struct{}
+
+func (c *Client) requestJSON(ctx context.Context, b *Budget, method string, parts []string, query url.Values, body []byte, limit int64) (any, error) {
 	if err := b.check(ctx); err != nil {
 		return nil, unavailable
 	}
@@ -118,8 +143,12 @@ func (c *Client) request(ctx context.Context, b *Budget, method string, parts []
 	for _, p := range parts {
 		path += "/" + component(p)
 	}
+	if len(query) != 0 {
+		path += "?" + query.Encode()
+	}
 	ctx, cancel := context.WithDeadline(ctx, b.deadline)
 	defer cancel()
+	ctx = context.WithValue(ctx, responseLimitKey{}, limit)
 	req, err := http.NewRequestWithContext(ctx, method, c.cfg.Origin+path, bytes.NewReader(body))
 	if err != nil {
 		return nil, unavailable
@@ -136,27 +165,20 @@ func (c *Client) request(ctx context.Context, b *Budget, method string, parts []
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, unavailable
 	}
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 65537))
-	if err != nil || len(raw) > 65536 || b.check(ctx) != nil {
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+	if err != nil || int64(len(raw)) > limit || b.check(ctx) != nil {
 		return nil, unavailable
 	}
 	value, err := ccj.Parse(raw, "audit_unavailable")
-	if err != nil {
+	if err != nil || b.check(ctx) != nil {
 		return nil, unavailable
 	}
-	obj, ok := value.(map[string]any)
-	if !ok || b.check(ctx) != nil {
-		return nil, unavailable
-	}
-	if obj["errcode"] == "M_UNKNOWN_TOKEN" {
-		return nil, unavailable
-	}
-	return obj, nil
+	return value, nil
 }
 
 // Delivery snapshots the original persisted bytes. It can be retried only with
 // this client's pinned identity and within the same caller budget. Creating this
-// value does not persist or append a local record: B3 owns local-chain validation.
+// value does not persist or append a local record: the caller validates the chain.
 type Delivery struct {
 	c         *Client
 	content   []byte
@@ -167,7 +189,13 @@ type Delivery struct {
 }
 
 func (c *Client) Delivery(persisted []byte) (*Delivery, error) {
-	if !c.ready || len(persisted) < 2 || len(persisted) > 16384 || persisted[len(persisted)-1] != '\n' {
+	if !c.ready {
+		return nil, unavailable
+	}
+	return c.delivery(persisted)
+}
+func (c *Client) delivery(persisted []byte) (*Delivery, error) {
+	if len(persisted) < 2 || len(persisted) > 16384 || persisted[len(persisted)-1] != '\n' {
 		return nil, unavailable
 	}
 	line := bytes.Clone(persisted[:len(persisted)-1])
@@ -210,7 +238,7 @@ type Position struct {
 	SHA256          string
 }
 
-// Verified is a read-back candidate, not acknowledgement. Complete must run B3's
+// Verified is a read-back candidate, not acknowledgement. Complete must run the
 // interval scans, durable coverage write and final checks before success.
 type Verified struct {
 	position  Position
@@ -248,34 +276,41 @@ func (d *Delivery) Attempt(ctx context.Context, b *Budget) (*Verified, error) {
 	if err != nil {
 		return nil, unavailable
 	}
-	if event["event_id"] != id || event["room_id"] != d.c.cfg.Room || event["sender"] != d.c.cfg.User || event["type"] != EventType {
+	if !d.matches(event, id) || b.check(ctx) != nil {
 		return nil, unavailable
+	}
+	return &Verified{position: Position{id, d.c.cfg.Room, d.seq, d.hash}, budget: b}, nil
+}
+
+func (d *Delivery) matches(event map[string]any, id string) bool {
+	if event["event_id"] != id || event["room_id"] != d.c.cfg.Room || event["sender"] != d.c.cfg.User || event["type"] != EventType {
+		return false
 	}
 	for _, key := range []string{"state_key", "redacts", "redacted_because"} {
 		if _, present := event[key]; present {
-			return nil, unavailable
+			return false
 		}
 	}
 	if u, present := event["unsigned"]; present {
 		m, ok := u.(map[string]any)
 		if !ok {
-			return nil, unavailable
+			return false
 		}
 		if _, present = m["redacted_because"]; present {
-			return nil, unavailable
+			return false
 		}
 	}
 	content, ok := event["content"].(map[string]any)
 	if !ok || len(content) != 3 {
-		return nil, unavailable
+		return false
 	}
 	line, ok := content["line"].(string)
 	if !ok || !bytes.Equal([]byte(line), d.line) {
-		return nil, unavailable
+		return false
 	}
 	hash := sha256.Sum256(append([]byte(line), '\n'))
-	if content["seq"] != d.seq || content["sha256"] != d.hash || hex.EncodeToString(hash[:]) != d.hash || b.check(ctx) != nil {
-		return nil, unavailable
+	if content["seq"] != d.seq || content["sha256"] != d.hash || hex.EncodeToString(hash[:]) != d.hash {
+		return false
 	}
-	return &Verified{position: Position{id, d.c.cfg.Room, d.seq, d.hash}, budget: b}, nil
+	return true
 }

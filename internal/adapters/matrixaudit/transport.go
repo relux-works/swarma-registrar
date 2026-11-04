@@ -45,9 +45,14 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		closeConn()
 		return nil, unavailable
 	}
-	// Bound HTTP framing as well as the separately checked 64 KiB body.
+	// Bound HTTP framing as well as the separately checked endpoint body.
 	// This total wire cap prevents unbounded allocation in header parsing.
-	resp, err := http.ReadResponse(bufio.NewReader(io.LimitReader(conn, 128*1024)), req)
+	limit, ok := req.Context().Value(responseLimitKey{}).(int64)
+	if !ok || limit < 1 || limit > 4*1024*1024 {
+		closeConn()
+		return nil, unavailable
+	}
+	resp, err := http.ReadResponse(bufio.NewReader(io.LimitReader(conn, limit+65536)), req)
 	if err != nil {
 		closeConn()
 		return nil, unavailable
