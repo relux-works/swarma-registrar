@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/relux-works/swarma-registrar/ccj"
+	"github.com/relux-works/swarma-registrar/internal/adapters/matrixaudit"
 	"github.com/relux-works/swarma-registrar/internal/enrollment"
 	"github.com/relux-works/swarma-registrar/internal/envelope"
 	"github.com/relux-works/swarma-registrar/internal/refusal"
@@ -38,8 +39,8 @@ type Head struct {
 
 // Remote must be authenticated, append-only and durable, and idempotent for the
 // same exact chained line. Its result is SHA-256 of the committed bytes including
-// LF, never merely an HTTP success. It must honor cancellation. No production
-// implementation or network transport is supplied.
+// LF, never merely an HTTP success. It must honor cancellation. The configured
+// Matrix session supplies reconciliation and transport through Acknowledge.
 type Remote interface {
 	Commit(context.Context, []byte) ([32]byte, error)
 }
@@ -47,6 +48,9 @@ type Remote interface {
 // Audit holds one exclusive local writer and validates the complete retained
 // chain. Local recording is usable without Remote; Acknowledge then fails closed.
 type Audit struct {
+	matrix       *matrixaudit.Session
+	stopDelivery context.CancelFunc
+	deliveryDone chan struct{}
 	mu           sync.Mutex
 	file         *os.File
 	path         string
@@ -327,6 +331,13 @@ func (a *Audit) checkCustody(ctx context.Context) (int64, error) {
 }
 
 func (a *Audit) Acknowledge(ctx context.Context, line []byte) error {
+	if a.matrix != nil {
+		ack, err := a.matrix.Commit(ctx, line)
+		if err != nil || ack != sha256.Sum256(line) || ctx.Err() != nil {
+			return failure(auditUnavailable)
+		}
+		return nil
+	}
 	if a.remote == nil || ctx.Err() != nil {
 		return failure(auditUnavailable)
 	}
@@ -405,6 +416,9 @@ func (a *Audit) Probe(ctx context.Context, expected Head) error {
 	return nil
 }
 func (a *Audit) Close() error {
+	if err := a.stopMatrix(); err != nil {
+		return err
+	}
 	<-a.remoteGate
 	defer func() { a.remoteGate <- struct{}{} }()
 	a.mu.Lock()

@@ -54,7 +54,7 @@ func digest(raw []byte) string { h := sha256.Sum256(raw); return hex.EncodeToStr
 // OpenReconciliation never replaces missing coverage for retained local history.
 // Initialize before the first local append, under the original startup budget.
 func (c *Client) OpenReconciliation(ctx context.Context, b *Budget, local [][]byte) (*Reconciliation, error) {
-	if !c.ready || c.binding == nil || b.check(ctx) != nil {
+	if c.binding == nil || b.check(ctx) != nil {
 		return nil, roomUnavailable
 	}
 	raw, err := io.ReadAll(io.NewSectionReader(c.binding, 0, 65537))

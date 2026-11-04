@@ -119,9 +119,10 @@ Plain HTTP requires the explicit `--loopback-test-http` flag **and** a literal
 loopback listener, for example `127.0.0.1:8443` or `[::1]:8443`. Wildcard,
 non-loopback, DNS and scoped addresses are refused in that mode. This flag does
 not bypass ownership, registry, clock or audit checks. There is no CLI or
-configuration switch that asserts a healthy clock. Audit-profile configuration
-validates the protected identity and token but does not yet supply a Matrix
-Remote: otherwise issuable requests still refuse `audit_unavailable`.
+configuration switch that asserts a healthy clock. The enabled audit profile
+loads its token once at startup and connects the reconciled Matrix delivery
+adapter. With the profile off, otherwise issuable
+requests still refuse `audit_unavailable`.
 
 ### Configuration reference
 
@@ -410,17 +411,18 @@ Production time evidence uses the pinned shared provider and protected
 `time_policy` file. See the [adapter runbook](internal/adapters/README.md#shared-option-a-policy-runbook)
 for policy contents, startup lifecycle, tool commands and qualification limits.
 
-The isolated [Matrix audit delivery primitive](internal/adapters/matrixaudit/README.md)
-provides transport, durable binding and verified append/read-back. Startup
-checks identity and the complete locked room policy before opening a binding;
-a separate bounded, filtered head-comparison primitive is also available.
-A protected reconciliation journal now retains binding-bound coverage for both
-timeline filters, persistent incidents and reconstructed remote-prefix receipts.
-Recovery walks every audit event; head equality alone is insufficient. Append
-completion checks predecessors, both incremental scans and durable coverage
-within the original budget. Replay scheduling and issuance integration remain
-unimplemented. The command still has no production `Remote` and releases
-no JWT through this profile. Gate (c) remains open; HR10–HR14 and I16–I21 need
-separate live qualification. Its README lists package validation commands and
-caller obligations. Only successful `Complete`, after durable coverage and final
-checks, may eventually gate JWT release; `Attempt` and `Position` are insufficient.
+The [Matrix audit adapter](internal/adapters/matrixaudit/README.md) connects
+startup identity/policy validation, protected binding and coverage journals,
+complete remote-prefix recovery and exact append/read-back to issuance.
+Before every candidate, a fresh head/coverage check must pass. JWT release
+requires `Reconciliation.Complete`, including predecessor checks, both interval
+scans and durable coverage, strictly before the original five-second deadline.
+`Attempt` and `Position` cannot authorize release. A delivery reservation uses
+a separate short-held mutex; network I/O never holds admission or local-state
+locks. Automatic recovery uses ordered prefix-only replay with per-line budgets
+and 1/2/4/8/16/30-second backoff. It never restores nonces or reissues JWTs.
+Incidents require the explicit operator replacement procedure in §9.1.4;
+there is no automatic rebind or history repair. Gate (c) awaits independent
+integration review and validation. Live qualification HR10–HR14 and I16–I21
+remains open, including homeserver deduplication and retention guarantees.
+No live homeserver was used.

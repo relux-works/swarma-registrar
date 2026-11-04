@@ -231,7 +231,7 @@ func (r *Reconciliation) Complete(ctx context.Context, v *Verified, lines [][]by
 		r.failure(roomUnavailable)
 		return unavailable
 	}
-	err := v.Complete(ctx, func(ctx context.Context, p Position, b *Budget) error {
+	err := v.complete(ctx, func(ctx context.Context, p Position, b *Budget) error {
 		if r.bad || !r.bound() || r.state.Fence != "" {
 			return r.failure(roomUnavailable)
 		}
@@ -456,4 +456,32 @@ func (r *Reconciliation) sameEvent(a, b map[string]any) bool {
 		return raw
 	}
 	return a != nil && b != nil && string(stable(a)) == string(stable(b))
+}
+
+// Precheck covers the current tail before a candidate exists. Only a complete
+// retained prefix equal to the local head can admit another issuance.
+func (r *Reconciliation) Precheck(ctx context.Context, b *Budget, lines [][]byte) error {
+	if !r.c.ready || r.Readiness() != "" {
+		return r.failure(roomUnavailable)
+	}
+	local, err := r.local(ctx, b, lines)
+	if err != nil {
+		return r.failure(ReadinessCode(err.Error()))
+	}
+	p, line := r.Receipt()
+	var want *Position
+	if p.Sequence != 0 {
+		want = &p
+	}
+	if len(local) != len(r.state.Receipts) {
+		return r.failure(roomHeadMismatch)
+	}
+	if err = r.c.ReconcileHead(ctx, b, want, line); err != nil {
+		return r.failure(ReadinessCode(err.Error()))
+	}
+	page, err := r.c.history(ctx, b, auditFilter, "b", "")
+	if err != nil {
+		return r.failure(roomUnavailable)
+	}
+	return r.cover(ctx, b, local, r.state.Receipts, page.start)
 }

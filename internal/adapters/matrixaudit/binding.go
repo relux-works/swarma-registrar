@@ -38,8 +38,9 @@ func (c *Client) startup(ctx context.Context, b *Budget, nonempty bool, emptyRoo
 	if user != c.cfg.User {
 		return roomPolicyInvalid
 	}
-	if err := c.CheckPolicy(ctx, b); err != nil {
-		return err
+	policyErr := c.CheckPolicy(ctx, b)
+	if policyErr != nil && policyErr != roomPolicyInvalid {
+		return policyErr
 	}
 	path := c.cfg.BindingPath
 	if !filepath.IsAbs(path) {
@@ -54,6 +55,9 @@ func (c *Client) startup(ctx context.Context, b *Budget, nonempty bool, emptyRoo
 	fd, err := syscall.Open(path, syscall.O_RDWR|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
 	fresh := false
 	if err == syscall.ENOENT {
+		if policyErr != nil {
+			return policyErr
+		}
 		if nonempty || emptyRoom == nil || emptyRoom(ctx, b) != nil || b.check(ctx) != nil {
 			return roomUnavailable
 		}
@@ -110,6 +114,6 @@ func (c *Client) startup(ctx context.Context, b *Budget, nonempty bool, emptyRoo
 		return fail()
 	}
 	c.binding = &bindingFile{File: f, fresh: fresh}
-	c.ready = true
-	return nil
+	c.ready = policyErr == nil
+	return policyErr
 }

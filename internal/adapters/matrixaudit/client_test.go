@@ -236,7 +236,7 @@ func TestBudget(t *testing.T) {
 				}
 				v, err := f.attempt()
 				if step == "hook" && err == nil {
-					err = v.Complete(context.Background(), func(context.Context, Position, *Budget) error { f.now = f.now.Add(delta); return nil })
+					err = v.complete(context.Background(), func(context.Context, Position, *Budget) error { f.now = f.now.Add(delta); return nil })
 				}
 				if delta >= 5*time.Second {
 					requireCode(t, err, "audit_unavailable")
@@ -579,9 +579,9 @@ func TestFinalizationAndSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	requireCode(t, v.Complete(context.Background(), nil), "audit_unavailable")
-	requireCode(t, v.Complete(context.Background(), func(context.Context, Position, *Budget) error { return fmt.Errorf("secret-response") }), "audit_unavailable")
-	if err = v.Complete(context.Background(), func(_ context.Context, p Position, b *Budget) error {
+	requireCode(t, v.complete(context.Background(), nil), "audit_unavailable")
+	requireCode(t, v.complete(context.Background(), func(context.Context, Position, *Budget) error { return fmt.Errorf("secret-response") }), "audit_unavailable")
+	if err = v.complete(context.Background(), func(_ context.Context, p Position, b *Budget) error {
 		if p.EventID != eventID || p.RoomID != room || p.Sequence != 1 || b != f.budget {
 			t.Fatal("wrong candidate")
 		}
@@ -589,7 +589,7 @@ func TestFinalizationAndSnapshot(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	requireCode(t, v.Complete(context.Background(), func(context.Context, Position, *Budget) error { return nil }), "audit_unavailable")
+	requireCode(t, v.complete(context.Background(), func(context.Context, Position, *Budget) error { return nil }), "audit_unavailable")
 	_, err = d.Attempt(context.Background(), newBudget(f.now.Add(5*time.Second), func() time.Time { return f.now }))
 	requireCode(t, err, "audit_unavailable")
 	bad := newBudget(f.now.Add(6*time.Second), func() time.Time { return f.now })

@@ -111,6 +111,18 @@ func (a *Admitter) acquireAudit(ctx context.Context) error {
 func (a *Admitter) releaseAudit() { <-a.auditGate }
 
 func (a *Admitter) record(ctx context.Context, m metadata, outcome string, failure *Error, jwtIat int64, requireAck bool) error {
+	if requireAck {
+		if gate, ok := a.sink.(interface {
+			BeginIssue(context.Context) (context.Context, func(), error)
+		}); ok {
+			next, done, err := gate.BeginIssue(ctx)
+			if err != nil {
+				return deny(refusal.AuditUnavailable)
+			}
+			defer done()
+			ctx = next
+		}
+	}
 	line, err := a.appendLocal(ctx, m, outcome, failure, jwtIat)
 	if err != nil {
 		return err

@@ -1,6 +1,6 @@
 // Package adapters supplies offline registry and local service adapters.
 // Production clock evidence uses the shared timeconf provider. Authenticated
-// remote audit remains unavailable and fails closed.
+// remote audit uses reconciled Matrix delivery when enabled.
 package adapters
 
 import (

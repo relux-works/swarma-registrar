@@ -50,12 +50,12 @@ joins handlers and detached audit, closes the sink, then exits 75 with
 sink open. The supervisor must exclude the old process before restart and bound
 restart attempts. Test evidence remains injection only.
 
-There is **no production Remote implementation connected to issuance**.
-Without one, local recording works but Acknowledge returns `audit_unavailable`. A future
-authenticated, append-only durable sink must acknowledge the SHA-256 of the
-exact line including LF, support idempotent replay and honor cancellation.
-Shipping sends retained prerequisites in sequence before the requested line;
-restart replays from the beginning. Acknowledge checks the complete durable local
+`OpenAudit` loads the enabled profile's token once and connects reconciled
+Matrix delivery. With the profile off, `Acknowledge` fails closed.
+Legacy injected `Remote` implementations retain their exact-byte hash contract.
+The Matrix session reconstructs the verified remote prefix on restart and sends
+only the missing suffix; each replay line receives its own five-second budget.
+Acknowledge checks the complete durable local
 chain, file identity and permissions under local serialization before shipping,
 after each successful remote call and before success, including deduplication.
 It does not hold the local mutex across remote calls. Observed custody faults
@@ -101,19 +101,21 @@ and all retired localparts even when enrollment permits them. It runs after
 name/audience validation, both limiter debits and nonce reservation; earlier
 refusals keep precedence and accounting is never refunded.
 
-The four strings currently enable startup validation and name exclusion only.
-No Matrix Remote is implemented: otherwise issuable requests still refuse with
-`audit_unavailable`, including with the profile enabled. The isolated
-`matrixaudit` package implements transport, binding, exact read-back, startup
-identity/policy checks and a reusable bounded filtered-head comparison. These
-primitives are not connected to this adapter or the command. The package also
-provides protected coverage journals, persistent incidents, predecessor and
-membership checks, and durable remote-prefix receipt reconstruction. Its
-completion wrapper requires both scans and persistence inside the original
-budget. Replay scheduling, delivery serialization and command wiring remain
-required. JWT release must depend on successful `Complete`
-after its coverage hook, never on `Attempt` success or `Position()` alone.
-Code-level gate (c) remains open; live HR10–HR14 and I16–I21 are unqualified.
+The four strings enable the production Matrix session and audit-name exclusion.
+Startup opens reconciliation before Recover and before any delivery. Row 21
+checks policy, local/remote head equality and both coverage intervals before
+appending a candidate. Acknowledgement requires `Reconciliation.Complete`,
+strictly before the original deadline, including read-back, predecessor checks,
+both scans and durable coverage. The raw candidate hook is package-private.
+Failures retain nonces, refused lines and spooled suffixes; earlier refusal HTTP
+outcomes remain unchanged when off-host checks fail. Recovery discards the old
+reconciliation and reopens/recovers before replay, including after head or anchor
+mismatch. Its single worker uses 1/2/4/8/16/30-second backoff; no mutex spans
+network I/O. It never repairs policy, resets bindings or releases pending JWTs.
+Use the operator-only incident replacement procedure in spec §9.1.4, preserving
+old evidence and the protected incident manifest before a new empty binding.
+Code-level gate (c) awaits independent integration review and validation;
+live qualification HR10–HR14 and I16–I21 remains open.
 Operators must preserve the append-only retired list through replacement,
 disablement and restore. With the profile off, a missing list cannot reveal
 prior retirement history from configuration bytes alone (§11.2).

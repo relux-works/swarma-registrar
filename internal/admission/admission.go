@@ -122,6 +122,9 @@ func (a *Admitter) Cutover(s Signer) {
 }
 func (a *Admitter) ResumeSigning() { a.mu.Lock(); defer a.mu.Unlock(); a.signing.paused = false }
 func (a *Admitter) Ready() bool {
+	if sink, ok := a.sink.(interface{ DeliveryReady() bool }); ok && !sink.DeliveryReady() {
+		return false
+	}
 	if a.life.stopped() {
 		return false
 	}
@@ -324,7 +327,9 @@ func (a *Admitter) Admit(parent context.Context, request Request) (string, error
 	}
 	a.mu.Lock()
 	_, failure = a.final(&p, &m, generation)
-	if failure == nil && ctx.Err() != nil {
+	// Check the monotonic deadline itself; cancellation delivery may lag it.
+	deadline, hasDeadline := ctx.Deadline()
+	if failure == nil && (ctx.Err() != nil || (hasDeadline && !time.Now().Before(deadline))) {
 		failure = deny(refusal.ServiceUnavailable)
 	}
 	if failure != nil {

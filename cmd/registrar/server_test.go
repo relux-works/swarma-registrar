@@ -131,10 +131,10 @@ func TestLoopbackAdmissionFences(t *testing.T) {
 				t.Fatal(err)
 			}
 			ready.Body.Close()
-			if (!tc.confirm || tc.noClock) && ready.StatusCode != 503 {
+			if (!tc.confirm || tc.noClock || tc.noRemote) && ready.StatusCode != 503 {
 				t.Fatal("fenced readiness opened")
 			}
-			if tc.confirm && !tc.noClock && ready.StatusCode != 200 {
+			if tc.confirm && !tc.noClock && !tc.noRemote && ready.StatusCode != 200 {
 				t.Fatal("confirmed healthy readiness closed")
 			}
 			response, err := client.Post(url+"/v1/registration", "application/json", bytes.NewReader(proof(t)))

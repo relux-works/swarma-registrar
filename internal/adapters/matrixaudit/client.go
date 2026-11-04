@@ -1,5 +1,5 @@
 // Package matrixaudit supplies an isolated Matrix audit delivery primitive.
-// It does not implement admission readiness, replay or Audit.Acknowledge.
+// Reconciled delivery is exposed through Session.
 package matrixaudit
 
 import (
@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -35,7 +36,11 @@ var configurationInvalid = errors.New("configuration_invalid")
 // Config is copied at startup. Token custody/loading belongs to the startup
 // loader; pass its once-loaded bytes, never a reload callback or token path.
 // BindingPath must be in the same protected directory as the local audit state.
-type Config struct{ Origin, Room, User, BindingPath string }
+type Config struct {
+	Origin, Room, User, BindingPath string
+	// Roots is optional isolated TLS trust; nil uses the system trust pool.
+	Roots *x509.CertPool
+}
 
 // Client and its deliveries must be serialized by the caller's delivery lock.
 type Client struct {
@@ -103,7 +108,7 @@ func newClient(cfg Config, token []byte) (*Client, error) {
 			return nil, configurationInvalid
 		}
 	}
-	tr := &transport{tls: &tls.Config{MinVersion: tls.VersionTLS12, NextProtos: []string{"http/1.1"}}}
+	tr := &transport{tls: &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: cfg.Roots, NextProtos: []string{"http/1.1"}}}
 	c := &Client{cfg: cfg, token: string(token), http: &http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return unavailable }}}
 	return c, nil
 }
@@ -248,7 +253,7 @@ type Verified struct {
 }
 
 func (v *Verified) Position() Position { return v.position }
-func (v *Verified) Complete(ctx context.Context, finish func(context.Context, Position, *Budget) error) error {
+func (v *Verified) complete(ctx context.Context, finish func(context.Context, Position, *Budget) error) error {
 	if v.completed || v.budget.check(ctx) != nil || finish == nil {
 		return unavailable
 	}

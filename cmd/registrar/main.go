@@ -1,5 +1,4 @@
-// Command registrar serves the pinned registrar API. Authenticated remote audit
-// remains unconfigured and therefore fails closed.
+// Command registrar serves the pinned registrar API with reconciled audit delivery.
 package main
 
 import (
@@ -16,7 +15,6 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
-	"unsafe"
 
 	"github.com/relux-works/swarma-credential-broker/timeconf"
 	"github.com/relux-works/swarma-registrar/internal/adapters"
@@ -197,21 +195,6 @@ func run(ctx context.Context, args []string, out, _ io.Writer, start time.Time, 
 	return errors.New("server stopped")
 }
 
-// openTerminal rejects redirected stdin and then reads the controlling terminal,
-// not an injectable flag/environment digest. TCGETS establishes a real terminal.
-func openTerminal() (io.ReadCloser, error) {
-	var state syscall.Termios
-	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, os.Stdin.Fd(), syscall.TCGETS, uintptr(unsafe.Pointer(&state)))
-	if errno != 0 {
-		return nil, registryFailure()
-	}
-	f, err := os.OpenFile("/dev/tty", os.O_RDONLY|syscall.O_NONBLOCK, 0)
-	if err != nil {
-		return nil, registryFailure()
-	}
-	return f, nil
-}
-
 type clockBridge struct{ *adapters.Clock }
 
 func (c clockBridge) Now() admission.Reading {
@@ -278,7 +261,7 @@ func openProduction(ctx context.Context, c adapters.Config, start time.Time, con
 	if err != nil {
 		return nil, err
 	}
-	audit, err := adapters.NewAudit(ctx, c.AuditFile, nil, c.ObjectFormat)
+	audit, err := adapters.OpenAudit(ctx, c)
 	if err != nil {
 		return nil, err
 	}
