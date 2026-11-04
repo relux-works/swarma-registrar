@@ -2,7 +2,6 @@ package adapters
 
 import (
 	"context"
-	"crypto/x509"
 	"path/filepath"
 	"time"
 
@@ -11,8 +10,7 @@ import (
 
 // OpenAudit selects the configured profile. Credentials are read once here,
 // before the session/worker exists. A disabled profile has no release authority.
-func OpenAudit(ctx context.Context, c Config) (*Audit, error) { return openAudit(ctx, c, nil) }
-func openAudit(ctx context.Context, c Config, roots *x509.CertPool) (*Audit, error) {
+func OpenAudit(ctx context.Context, c Config) (*Audit, error) {
 	a, err := NewAudit(ctx, c.AuditFile, nil, c.ObjectFormat)
 	if err != nil {
 		return nil, err
@@ -22,7 +20,7 @@ func openAudit(ctx context.Context, c Config, roots *x509.CertPool) (*Audit, err
 	}
 	token, err := loadAuditToken(c.AuditToken, privateFile)
 	if err == nil {
-		err = a.ConnectMatrix(ctx, matrixaudit.Config{Origin: c.AuditHomeserver, Room: c.AuditRoom, User: c.AuditUser, BindingPath: filepath.Join(filepath.Dir(c.AuditFile), "audit-binding"), Roots: roots}, token)
+		err = a.ConnectMatrix(ctx, matrixaudit.Config{Origin: c.AuditHomeserver, Room: c.AuditRoom, User: c.AuditUser, BindingPath: filepath.Join(filepath.Dir(c.AuditFile), "audit-binding")}, token)
 	}
 	if err != nil {
 		a.Close()

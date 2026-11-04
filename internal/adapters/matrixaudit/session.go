@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"crypto/x509"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/relux-works/swarma-registrar/internal/testtrust"
 )
 
 // Snapshot validates local custody/schema and returns an immutable complete chain.
@@ -16,20 +19,38 @@ type Snapshot func(context.Context) ([][]byte, error)
 // The mutex protects reservation transitions only; it never spans network I/O.
 // Start Run once, cancel its context and join it before Close.
 type Session struct {
-	mu         sync.Mutex
-	busy       bool
-	changed    chan struct{}
-	wake       chan struct{}
-	cfg        Config
-	token      []byte
-	snapshot   Snapshot
-	c          *Client
-	r          *Reconciliation
-	ready      atomic.Bool
-	diagnostic atomic.Value
+	mu          sync.Mutex
+	reservation *reservation
+	changed     chan struct{}
+	wake        chan struct{}
+	cfg         Config
+	testRoots   *x509.CertPool
+	token       []byte
+	snapshot    Snapshot
+	c           *Client
+	r           *Reconciliation
+	ready       atomic.Bool
+	diagnostic  atomic.Value
 }
 
 type reservationKey struct{}
+
+// Each allocation is a unique generation; released contexts never regain it.
+type reservation struct {
+	session              *Session
+	released, committing bool
+}
+
+func (s *Session) release(r *reservation) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r.released = true
+	if s.reservation == r && !r.committing {
+		s.reservation = nil
+		close(s.changed)
+		s.changed = make(chan struct{})
+	}
+}
 
 func (s *Session) reserve(ctx context.Context) (func(), error) {
 	for {
@@ -37,10 +58,11 @@ func (s *Session) reserve(ctx context.Context) (func(), error) {
 			return nil, unavailable
 		}
 		s.mu.Lock()
-		if !s.busy {
-			s.busy = true
+		if s.reservation == nil {
+			r := &reservation{session: s}
+			s.reservation = r
 			s.mu.Unlock()
-			return func() { s.mu.Lock(); s.busy = false; close(s.changed); s.changed = make(chan struct{}); s.mu.Unlock() }, nil
+			return func() { s.release(r) }, nil
 		}
 		changed := s.changed
 		s.mu.Unlock()
@@ -86,7 +108,7 @@ func (s *Session) discard() {
 // StartSession loads no files or credentials: token must be loaded once by startup.
 // OpenReconciliation always precedes Recover; neither may be skipped on retry.
 func StartSession(ctx context.Context, cfg Config, token []byte, snapshot Snapshot) (*Session, error) {
-	s := &Session{cfg: cfg, token: bytes.Clone(token), snapshot: snapshot, changed: make(chan struct{}), wake: make(chan struct{}, 1)}
+	s := &Session{testRoots: testtrust.Roots(ctx), cfg: cfg, token: bytes.Clone(token), snapshot: snapshot, changed: make(chan struct{}), wake: make(chan struct{}, 1)}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	if snapshot == nil {
@@ -114,6 +136,7 @@ func (s *Session) open(ctx context.Context, b *Budget) error {
 	if err != nil {
 		return err
 	}
+	c.http.Transport.(*transport).tls.RootCAs = s.testRoots
 	s.c = c
 	startupErr := c.startup(ctx, b, len(lines) != 0, func(ctx context.Context, b *Budget) error { return c.ReconcileHead(ctx, b, nil, nil) })
 	if startupErr != nil && (startupErr != roomPolicyInvalid || c.binding == nil) {
@@ -143,13 +166,33 @@ func (s *Session) Begin(ctx context.Context) (context.Context, func(), error) {
 		done()
 		return ctx, nil, unavailable
 	}
-	return context.WithValue(ctx, reservationKey{}, s), done, nil
+	s.mu.Lock()
+	r := s.reservation
+	s.mu.Unlock()
+	return context.WithValue(ctx, reservationKey{}, r), done, nil
 }
 
 // Commit returns a hash only after Reconciliation.Complete durably covers this
 // exact read-back. Attempt success and Position alone never acknowledge a line.
 func (s *Session) Commit(ctx context.Context, line []byte) ([32]byte, error) {
-	if ctx.Value(reservationKey{}) != s {
+	if r, ok := ctx.Value(reservationKey{}).(*reservation); ok {
+		s.mu.Lock()
+		if r.session != s || s.reservation != r || r.released || r.committing {
+			s.mu.Unlock()
+			return [32]byte{}, unavailable
+		}
+		r.committing = true
+		s.mu.Unlock()
+		defer func() {
+			s.mu.Lock()
+			r.committing = false
+			released := r.released
+			s.mu.Unlock()
+			if released {
+				s.release(r)
+			}
+		}()
+	} else {
 		done, err := s.reserve(ctx)
 		if err != nil {
 			return [32]byte{}, err

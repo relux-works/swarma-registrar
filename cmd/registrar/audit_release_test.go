@@ -28,7 +28,7 @@ func matrixCommand(t *testing.T, f *fixtureData, hs *audittest.Server, clocks ..
 		if err != nil {
 			return nil, err
 		}
-		if err = a.ConnectMatrix(ctx, hs.Config(filepath.Join(filepath.Dir(c.AuditFile), "binding")), []byte(audittest.Token)); err != nil {
+		if err = a.ConnectMatrix(hs.Context(ctx), hs.Config(filepath.Join(filepath.Dir(c.AuditFile), "binding")), []byte(audittest.Token)); err != nil {
 			a.Close()
 			return nil, err
 		}

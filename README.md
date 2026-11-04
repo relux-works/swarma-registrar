@@ -299,6 +299,7 @@ job log; the workflow uploads no artifacts.
 | Tool | Purpose | Exact entry point | Output |
 | --- | --- | --- | --- |
 | Go 1.26.10 (module language version 1.26.10) | Test the module, examples and public API inventories; run static validation. | `go test ./...`; `go test ./internal/...`; `go test -race ./internal/admission/...`; `go vet ./...` | Terminal diagnostics and Go build cache; no generated repository files. |
+| Go 1.26.10 | Verify that the internal TLS fixture hook is unavailable in ordinary binaries. | `GOTOOLCHAIN=local go test ./internal/testtrust -count=1` | Test diagnostics; the production fixture binary is built in the Go test temporary directory. |
 | Registrar command | Build and run the HTTPS service; confirm rollback evidence interactively. | `go build ./cmd/registrar`; `./registrar serve --config /etc/registrar/config.json --reconcile`; command checks: `go test ./cmd/registrar` | The build writes `registrar` in the current directory; service writes protected high-water/audit files configured below. Terminal diagnostics contain no key paths. |
 | Go conformance harness | Compare committed vectors against landed code and report pass/fail/pending counts per domain. | `go test -v ./internal/conformance`; narrow internal validation: `go test ./internal/...` | Terminal diagnostics; `CONFORMANCE_VECTORS` optionally selects a scratch vector copy. |
 | Go 1.26.10, Git and OpenSSH ssh-keygen | Check local adapters and internal packages; create disposable signed Git fixtures with generated test keys. | `GOMAXPROCS=2 go test ./internal/...`; `GOMAXPROCS=2 go vet ./...`; focused adapter checks: `go test ./internal/adapters` | Terminal verdicts; fixture files in Go's temporary directory (set `TMPDIR` to a scratch directory). No network. |
@@ -426,3 +427,6 @@ there is no automatic rebind or history repair. Gate (c) awaits independent
 integration review and validation. Live qualification HR10–HR14 and I16–I21
 remains open, including homeserver deduplication and retention guarantees.
 No live homeserver was used.
+
+The Matrix audit client exposes no custom CA configuration. Integration fixtures
+use an internal trust hook restricted to Go test binaries.

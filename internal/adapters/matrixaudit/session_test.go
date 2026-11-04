@@ -7,9 +7,13 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/relux-works/swarma-registrar/internal/testtrust"
 )
 
 type sessionFixture struct {
@@ -26,10 +30,9 @@ func newSessionFixture(t *testing.T) *sessionFixture {
 	roots := x509.NewCertPool()
 	roots.AddCert(x.f.server.Certificate())
 	cfg := x.f.c.cfg
-	cfg.Roots = roots
 	f := &sessionFixture{x: x}
 	var err error
-	f.s, err = StartSession(context.Background(), cfg, []byte("secret-token"), func(ctx context.Context) ([][]byte, error) {
+	f.s, err = StartSession(testtrust.WithRoots(context.Background(), roots), cfg, []byte("secret-token"), func(ctx context.Context) ([][]byte, error) {
 		if ctx.Err() != nil {
 			return nil, unavailable
 		}
@@ -289,12 +292,157 @@ func TestSessionStartupPersistentPolicy(t *testing.T) {
 	}
 	f.s.Close()
 	content(f.x.f, 4)["redact"] = 100
-	_, err := StartSession(context.Background(), f.s.cfg, f.s.token, f.s.snapshot)
+	_, err := StartSession(testtrust.WithRoots(context.Background(), f.s.testRoots), f.s.cfg, f.s.token, f.s.snapshot)
 	requireCode(t, err, "audit_room_policy_invalid")
 	f.x.f.state = validState()
-	_, err = StartSession(context.Background(), f.s.cfg, f.s.token, f.s.snapshot)
+	_, err = StartSession(testtrust.WithRoots(context.Background(), f.s.testRoots), f.s.cfg, f.s.token, f.s.snapshot)
 	requireCode(t, err, "audit_room_policy_invalid")
 	if f.x.f.puts != 0 {
 		t.Fatal("startup policy fence sent replay")
+	}
+}
+
+// Released generations, including duplicate done calls, cannot bypass a later
+// owner's reservation or mutate coverage; a fresh generation commits normally.
+func TestSessionStaleReservationContext(t *testing.T) {
+	f := newSessionFixture(t)
+	ctx, cancel := attemptContext(t)
+	defer cancel()
+	stale, done, err := f.s.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done()
+	for _, held := range []bool{false, true} {
+		var release func()
+		if held {
+			release, err = f.s.reserve(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		done()
+		lines, _ := chain(1)
+		f.lines = lines
+		_, err = f.s.Commit(stale, lines[0])
+		if err != unavailable {
+			t.Fatalf("stale reservation context accepted: %v", err)
+		}
+		p, _ := f.s.r.Receipt()
+		if p.Sequence != 0 || f.x.f.puts != 0 || !f.s.Ready() {
+			t.Fatal("stale reservation changed delivery state")
+		}
+		if held {
+			waiter, stop := context.WithTimeout(ctx, 10*time.Millisecond)
+			_, err = f.s.reserve(waiter)
+			stop()
+			if err != unavailable {
+				t.Fatal("duplicate done released another generation")
+			}
+			release()
+		}
+		f.lines = nil
+	}
+	fresh, release, err := f.s.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	f.lines, _ = chain(1)
+	if _, err = f.s.Commit(fresh, f.lines[0]); err != nil {
+		t.Fatalf("fresh reservation control failed: %v", err)
+	}
+}
+
+// done invalidates the context immediately but keeps the reservation held while
+// an already-running Commit finishes; neither a waiter nor a second Commit wins.
+func TestSessionReleaseDuringCommit(t *testing.T) {
+	f := newSessionFixture(t)
+	ctx, cancel := attemptContext(t)
+	defer cancel()
+	reserved, done, err := f.s.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer done()
+	f.lines, _ = chain(1)
+	entered, proceed := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	unblock := func() { once.Do(func() { close(proceed) }) }
+	defer unblock()
+	snapshot := f.s.snapshot
+	f.s.snapshot = func(ctx context.Context) ([][]byte, error) {
+		select {
+		case entered <- struct{}{}:
+			select {
+			case <-proceed:
+			case <-ctx.Done():
+				return nil, unavailable
+			}
+		default:
+		}
+		return snapshot(ctx)
+	}
+	result := make(chan error, 1)
+	go func() { _, err := f.s.Commit(reserved, f.lines[0]); result <- err }()
+	select {
+	case <-entered:
+	case <-ctx.Done():
+		t.Fatal("commit did not reach snapshot")
+	}
+	if _, err = f.s.Commit(reserved, f.lines[0]); err != unavailable {
+		t.Fatal("concurrent Commit reused generation")
+	}
+	done()
+	waiter, stop := context.WithTimeout(ctx, 10*time.Millisecond)
+	_, err = f.s.reserve(waiter)
+	stop()
+	if err != unavailable {
+		t.Fatal("done released a running Commit")
+	}
+	unblock()
+	if err = <-result; err != nil {
+		t.Fatalf("running Commit control failed: %v", err)
+	}
+	release, err := f.s.reserve(ctx)
+	if err != nil {
+		t.Fatal("completed Commit did not release reservation")
+	}
+	release()
+	if _, err = f.s.Commit(reserved, f.lines[0]); err != unavailable {
+		t.Fatal("done context revived after Commit")
+	}
+}
+
+// Public construction exposes no roots field and rejects the fixture's private
+// CA; only the internal test-context hook admits the same TLS session.
+func TestSessionProductionTrust(t *testing.T) {
+	if _, exposed := reflect.TypeFor[Config]().FieldByName("Roots"); exposed {
+		t.Fatal("public configuration exposes custom roots")
+	}
+	f := newSessionFixture(t)
+	if err := f.s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	c, err := newClient(f.s.cfg, f.s.token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if c.http.Transport.(*transport).tls.RootCAs != nil {
+		t.Fatal("production client selected custom roots")
+	}
+	_, err = StartSession(context.Background(), f.s.cfg, f.s.token, f.s.snapshot)
+	requireCode(t, err, "audit_room_unavailable")
+	if f.x.f.puts != 0 {
+		t.Fatal("untrusted construction sent an audit event")
+	}
+	s, err := StartSession(testtrust.WithRoots(context.Background(), f.s.testRoots), f.s.cfg, f.s.token, f.s.snapshot)
+	if err != nil {
+		t.Fatalf("isolated test trust control failed: %v", err)
+	}
+	defer s.Close()
+	if !s.Ready() {
+		t.Fatal("trusted session did not become ready")
 	}
 }

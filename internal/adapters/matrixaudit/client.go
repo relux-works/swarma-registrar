@@ -7,7 +7,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -38,8 +37,6 @@ var configurationInvalid = errors.New("configuration_invalid")
 // BindingPath must be in the same protected directory as the local audit state.
 type Config struct {
 	Origin, Room, User, BindingPath string
-	// Roots is optional isolated TLS trust; nil uses the system trust pool.
-	Roots *x509.CertPool
 }
 
 // Client and its deliveries must be serialized by the caller's delivery lock.
@@ -108,7 +105,7 @@ func newClient(cfg Config, token []byte) (*Client, error) {
 			return nil, configurationInvalid
 		}
 	}
-	tr := &transport{tls: &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: cfg.Roots, NextProtos: []string{"http/1.1"}}}
+	tr := &transport{tls: &tls.Config{MinVersion: tls.VersionTLS12, NextProtos: []string{"http/1.1"}}}
 	c := &Client{cfg: cfg, token: string(token), http: &http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return unavailable }}}
 	return c, nil
 }

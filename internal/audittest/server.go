@@ -2,6 +2,7 @@
 package audittest
 
 import (
+	"context"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
@@ -16,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/relux-works/swarma-registrar/internal/adapters/matrixaudit"
+	"github.com/relux-works/swarma-registrar/internal/testtrust"
 )
 
 const User = "@registrar-audit:example.org"
@@ -42,9 +44,14 @@ func New(t *testing.T) *Server {
 	return s
 }
 func (s *Server) Config(binding string) matrixaudit.Config {
+	return matrixaudit.Config{Origin: s.TLS.URL, Room: Room, User: User, BindingPath: binding}
+}
+
+// Context scopes isolated trust to this test session, including its recovery.
+func (s *Server) Context(ctx context.Context) context.Context {
 	roots := x509.NewCertPool()
 	roots.AddCert(s.TLS.Certificate())
-	return matrixaudit.Config{Origin: s.TLS.URL, Room: Room, User: User, BindingPath: binding, Roots: roots}
+	return testtrust.WithRoots(ctx, roots)
 }
 func (s *Server) Set(mode string, hook func()) {
 	s.mu.Lock()

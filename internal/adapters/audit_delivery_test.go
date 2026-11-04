@@ -27,7 +27,7 @@ func TestAuditStartupTokenAndDisabledProfile(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			a, err := openAudit(context.Background(), c, cfg.Roots)
+			a, err := OpenAudit(hs.Context(context.Background()), c)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -50,5 +50,33 @@ func TestAuditStartupTokenAndDisabledProfile(t *testing.T) {
 				t.Fatal("disabled profile opened issuance")
 			}
 		})
+	}
+}
+
+// ConnectMatrix cannot select a private CA through public configuration. The
+// same server works with the internal test hook, without changing audit custody.
+func TestAuditProductionTrust(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	hs := audittest.New(t)
+	a, err := NewAudit(context.Background(), filepath.Join(dir, "audit"), nil, "sha1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	cfg := hs.Config(filepath.Join(dir, "binding"))
+	if err = a.ConnectMatrix(context.Background(), cfg, []byte(audittest.Token)); err == nil || err.Error() != "audit_room_unavailable" {
+		t.Fatalf("production construction accepted private roots: %v", err)
+	}
+	if a.DeliveryReady() {
+		t.Fatal("untrusted construction opened delivery")
+	}
+	if err = a.ConnectMatrix(hs.Context(context.Background()), cfg, []byte(audittest.Token)); err != nil {
+		t.Fatalf("isolated trust control failed: %v", err)
+	}
+	if !a.DeliveryReady() {
+		t.Fatal("trusted construction did not open delivery")
 	}
 }

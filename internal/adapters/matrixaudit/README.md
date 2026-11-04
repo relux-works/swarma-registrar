@@ -14,8 +14,9 @@ No live homeserver was used; HR10–HR14 and I16–I21 remain open.
    no proxy, and refuses every redirect. Each request uses a fresh HTTP/1.1 TLS
    connection via `tls.Dialer`, `Request.Write` and `ReadResponse`; this avoids
    `http.Transport` idle-response logging of peer bytes. Explicit delivery
-   attempts are the only retries. `Config.Roots` permits an isolated test trust
-   pool; production leaves it nil.
+   attempts are the only retries. The internal TLS fixture hook is enabled only
+   in Go test binaries; ordinary binaries always use system roots and reject
+   that hook.
 2. Supply `Config.BindingPath` in the same private directory/custody as the local
    audit state. Startup checks the private directory and opened file ownership,
    exact modes 0700/0600, no-follow final open, exclusive lock, file and directory

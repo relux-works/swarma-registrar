@@ -446,3 +446,50 @@ func TestAuditStatusTable(t *testing.T) {
 		t.Fatal("unknown audit detail leaked")
 	}
 }
+
+// Deadline expiry bars release after a successful ACK even when cancellation
+// delivery lags. The future-deadline control still issues with the same clock.
+type laggingDeadlineContext struct {
+	context.Context
+	deadline time.Time
+}
+
+func (c laggingDeadlineContext) Deadline() (time.Time, bool) { return c.deadline, true }
+func (c laggingDeadlineContext) Err() error                  { return nil }
+func (c laggingDeadlineContext) Done() <-chan struct{}       { return nil }
+
+type laggingDeadlineClock struct {
+	*fakeClock
+	deadline time.Time
+}
+
+func (c laggingDeadlineClock) Deadline(parent context.Context, _ time.Duration) (context.Context, context.CancelFunc) {
+	return laggingDeadlineContext{parent, c.deadline}, func() {}
+}
+
+func TestPostAckDeadlineLag(t *testing.T) {
+	for _, expired := range []bool{true, false} {
+		t.Run(map[bool]string{true: "expired", false: "future"}[expired], func(t *testing.T) {
+			f := setup(t)
+			deadline := time.Now().Add(time.Minute)
+			if expired {
+				deadline = time.Now().Add(-time.Second)
+			}
+			f.a.clock = laggingDeadlineClock{f.clock, deadline}
+			token, err := f.a.Admit(context.Background(), Request{Proof: valid(t, 1)})
+			if expired {
+				if token != "" || !refusal.Is(err, refusal.ServiceUnavailable) {
+					t.Fatalf("past-deadline lagging context released: token=%t err=%v", token != "", err)
+				}
+			} else if err != nil || token == "" {
+				t.Fatalf("future-deadline control refused: %v", err)
+			}
+			checkRetained(t, f.a, 1)
+			f.audit.mu.Lock()
+			defer f.audit.mu.Unlock()
+			if len(f.audit.acks) == 0 || !strings.Contains(string(f.audit.acks[0]), `"outcome":"issued"`) {
+				t.Fatal("probe did not complete the issued acknowledgement")
+			}
+		})
+	}
+}
