@@ -1,5 +1,7 @@
 # swarma-registrar
 
+[v0.1.0 release notes and reproducible build](docs/release-v0.1.0.md).
+
 Carrier admission: an enrolled host proves possession of its key, and the
 registrar issues a short-lived Matrix login JWT for a permitted name.
 
