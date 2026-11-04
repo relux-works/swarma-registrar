@@ -4,8 +4,8 @@
 
 - Version: **v0.1.0**.
 - Binary source commit: **b0bee3c45f112a4109a92f52bdcc885860e81dfd**.
-- The release tag will point to the documentation-only commit that pins
-  `GOEXPERIMENT` and `GOFIPS140` in this recipe. The binary is unchanged because
+- The release tag will point to the documentation-only commit that defines
+  the `env -i` allowlist in this recipe. The binary is unchanged because
   the build uses `-buildvcs=false` and the source is unchanged.
 - The tag is signed with the platform release key at installation time.
   No tag is created by this documentation change, and no binary is published.
@@ -14,17 +14,28 @@
 
 Use the **official Go 1.26.10 toolchain**. Confirm that `go version` reports
 `go1.26.10`; automatic toolchain selection must not substitute another version.
-Start from a fresh clean checkout of the release commit, with an empty Go build
-cache (`GOCACHE`) and a separate module cache (`GOMODCACHE`). Run from the module
-root:
+Start from a fresh clean checkout of the release commit. `GOCACHE` must point
+at an empty directory; `PATH` must resolve the official Go 1.26.10 first.
+Use a separate module cache (`GOMODCACHE`).
+
+**`GOENV=off` is required.** Without it, a user Go env file written with
+`go env -w` under `$HOME` overrides an empty `GOEXPERIMENT=`, because an empty
+environment value means "unset". A measured control with a poisoned env file
+containing `GOEXPERIMENT=jsonv2` changed the digest when `GOENV=off` was absent.
+
+The installer runs the block verbatim from the module root. Stop on any mismatch.
+The expected SHA-256 and size remain
+`8b3c3f18d71a8350de406e6dae2bf58d9073c0af371c5143d61cadac4cde2e7b`,
+11,668,143 bytes.
 
 ```sh
-export GOTOOLCHAIN=local CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=v1 GOFLAGS=-mod=readonly GOEXPERIMENT= GOFIPS140=off
-go build -trimpath -buildvcs=false -ldflags=-buildid= -o registrar ./cmd/registrar
+env -i PATH="$PATH" HOME="$HOME" TMPDIR="${TMPDIR:-/tmp}" GOCACHE="$GOCACHE" \
+  ${GOMODCACHE:+GOMODCACHE="$GOMODCACHE"} ${GOPROXY:+GOPROXY="$GOPROXY"} ${GOSUMDB:+GOSUMDB="$GOSUMDB"} \
+  ${HTTPS_PROXY:+HTTPS_PROXY="$HTTPS_PROXY"} ${SSL_CERT_FILE:+SSL_CERT_FILE="$SSL_CERT_FILE"} \
+  GOENV=off GOTOOLCHAIN=local CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=v1 GOFLAGS=-mod=readonly GOEXPERIMENT= GOFIPS140=off \
+  go build -trimpath -buildvcs=false -ldflags=-buildid= -o registrar ./cmd/registrar
 sha256sum registrar        # or: shasum -a 256 registrar
 ```
-
-`GOEXPERIMENT` and `GOFIPS140` are pinned because inherited values change the binary; the installer must use the export line verbatim.
 
 Expected output artifact: Linux, amd64, GOAMD64 v1, without cgo.
 
