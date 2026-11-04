@@ -5,8 +5,8 @@
 - Version: **v0.1.0**.
 - Binary source commit: **b0bee3c45f112a4109a92f52bdcc885860e81dfd**.
 - The release tag will point to the documentation-only commit that defines
-  the `env -i` allowlist in this recipe. The binary is unchanged because
-  the build uses `-buildvcs=false` and the source is unchanged.
+  the `env -i` allowlist and mandatory module-cache verification in this recipe.
+  The binary is unchanged because the build uses `-buildvcs=false` and the source is unchanged.
 - The tag is signed with the platform release key at installation time.
   No tag is created by this documentation change, and no binary is published.
 
@@ -14,14 +14,21 @@
 
 Use the **official Go 1.26.10 toolchain**. Confirm that `go version` reports
 `go1.26.10`; automatic toolchain selection must not substitute another version.
-Start from a fresh clean checkout of the release commit. `GOCACHE` must point
-at an empty directory; `PATH` must resolve the official Go 1.26.10 first.
-Use a separate module cache (`GOMODCACHE`).
+Start from a fresh clean checkout of the release commit. `GOMODCACHE` must be
+set to a fresh, **empty** directory, and `GOCACHE` likewise. `PATH` must resolve
+the official Go 1.26.10 first. `GOMODCACHE` is passed unconditionally.
+
+`go.sum` is checked only when a module is downloaded. An already extracted
+module cache that was modified still builds with exit 0 and different bytes.
+`go mod verify` detects that ("dir has been modified"), and the chain stops
+before the build. Do not continue after any non-zero exit.
 
 **`GOENV=off` is required.** Without it, a user Go env file written with
 `go env -w` under `$HOME` overrides an empty `GOEXPERIMENT=`, because an empty
 environment value means "unset". A measured control with a poisoned env file
 containing `GOEXPERIMENT=jsonv2` changed the digest when `GOENV=off` was absent.
+
+`GOWORK=off` prevents parent workspaces from changing module resolution.
 
 The installer runs the block verbatim from the module root. Stop on any mismatch.
 The expected SHA-256 and size remain
@@ -29,11 +36,15 @@ The expected SHA-256 and size remain
 11,668,143 bytes.
 
 ```sh
-env -i PATH="$PATH" HOME="$HOME" TMPDIR="${TMPDIR:-/tmp}" GOCACHE="$GOCACHE" \
-  ${GOMODCACHE:+GOMODCACHE="$GOMODCACHE"} ${GOPROXY:+GOPROXY="$GOPROXY"} ${GOSUMDB:+GOSUMDB="$GOSUMDB"} \
-  ${HTTPS_PROXY:+HTTPS_PROXY="$HTTPS_PROXY"} ${SSL_CERT_FILE:+SSL_CERT_FILE="$SSL_CERT_FILE"} \
-  GOENV=off GOWORK=off LC_ALL=C GOTOOLCHAIN=local CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=v1 GOFLAGS=-mod=readonly GOEXPERIMENT= GOFIPS140=off \
-  go build -trimpath -buildvcs=false -ldflags=-buildid= -o registrar ./cmd/registrar
+iso() {
+  env -i PATH="$PATH" HOME="$HOME" TMPDIR="${TMPDIR:-/tmp}" GOCACHE="$GOCACHE" GOMODCACHE="$GOMODCACHE" \
+    ${GOPROXY:+GOPROXY="$GOPROXY"} ${GOSUMDB:+GOSUMDB="$GOSUMDB"} \
+    ${HTTPS_PROXY:+HTTPS_PROXY="$HTTPS_PROXY"} ${SSL_CERT_FILE:+SSL_CERT_FILE="$SSL_CERT_FILE"} \
+    GOENV=off GOWORK=off LC_ALL=C GOTOOLCHAIN=local CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=v1 GOFLAGS=-mod=readonly GOEXPERIMENT= GOFIPS140=off \
+    "$@"
+}
+iso go mod download && iso go mod verify && \
+  iso go build -trimpath -buildvcs=false -ldflags=-buildid= -o registrar ./cmd/registrar
 sha256sum registrar        # or: shasum -a 256 registrar
 ```
 
