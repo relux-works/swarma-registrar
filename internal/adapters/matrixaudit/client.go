@@ -241,6 +241,7 @@ type Position struct {
 // Verified is a read-back candidate, not acknowledgement. Complete must run the
 // interval scans, durable coverage write and final checks before success.
 type Verified struct {
+	client    *Client
 	position  Position
 	budget    *Budget
 	completed bool
@@ -279,7 +280,7 @@ func (d *Delivery) Attempt(ctx context.Context, b *Budget) (*Verified, error) {
 	if !d.matches(event, id) || b.check(ctx) != nil {
 		return nil, unavailable
 	}
-	return &Verified{position: Position{id, d.c.cfg.Room, d.seq, d.hash}, budget: b}, nil
+	return &Verified{client: d.c, position: Position{id, d.c.cfg.Room, d.seq, d.hash}, budget: b}, nil
 }
 
 func (d *Delivery) matches(event map[string]any, id string) bool {

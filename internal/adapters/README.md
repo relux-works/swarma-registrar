@@ -106,9 +106,12 @@ No Matrix Remote is implemented: otherwise issuable requests still refuse with
 `audit_unavailable`, including with the profile enabled. The isolated
 `matrixaudit` package implements transport, binding, exact read-back, startup
 identity/policy checks and a reusable bounded filtered-head comparison. These
-primitives are not connected to this adapter or the command. Durable coverage,
-persistent timeline fences, predecessor/membership checks and prefix replay are
-still required before wiring. JWT release must depend on successful `Complete`
+primitives are not connected to this adapter or the command. The package also
+provides protected coverage journals, persistent incidents, predecessor and
+membership checks, and durable remote-prefix receipt reconstruction. Its
+completion wrapper requires both scans and persistence inside the original
+budget. Replay scheduling, delivery serialization and command wiring remain
+required. JWT release must depend on successful `Complete`
 after its coverage hook, never on `Attempt` success or `Position()` alone.
 Code-level gate (c) remains open; live HR10–HR14 and I16–I21 are unqualified.
 Operators must preserve the append-only retired list through replacement,

@@ -414,9 +414,12 @@ The isolated [Matrix audit delivery primitive](internal/adapters/matrixaudit/REA
 provides transport, durable binding and verified append/read-back. Startup
 checks identity and the complete locked room policy before opening a binding;
 a separate bounded, filtered head-comparison primitive is also available.
-These observations do not establish complete readiness. Durable coverage,
-persistent timeline fences, prefix recovery/replay and issuance integration
-remain unimplemented. The command still has no production `Remote` and releases
+A protected reconciliation journal now retains binding-bound coverage for both
+timeline filters, persistent incidents and reconstructed remote-prefix receipts.
+Recovery walks every audit event; head equality alone is insufficient. Append
+completion checks predecessors, both incremental scans and durable coverage
+within the original budget. Replay scheduling and issuance integration remain
+unimplemented. The command still has no production `Remote` and releases
 no JWT through this profile. Gate (c) remains open; HR10–HR14 and I16–I21 need
 separate live qualification. Its README lists package validation commands and
 caller obligations. Only successful `Complete`, after durable coverage and final

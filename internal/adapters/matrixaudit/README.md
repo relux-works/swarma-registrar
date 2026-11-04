@@ -1,7 +1,7 @@
 # Matrix audit delivery primitive
 
 This package is deliberately separate from `Audit.Acknowledge`, issuance,
-complete readiness and replay. It supplies HTTPS transport, an exclusive durable
+command readiness and replay scheduling. It supplies HTTPS transport, an exclusive durable
 delivery binding, immutable per-line PUT attempts, exact read-back verification,
 startup identity/current-state policy validation and filtered head comparison.
 No live homeserver was used for package validation.
@@ -81,15 +81,65 @@ return `audit_room_head_mismatch`. Unavailable or incomplete history returns
 `audit_room_unavailable`. No comparison mutates local custody or sends events.
 Repeated calls read fresh evidence within the retained budget.
 
-The caller must own a separate deadline-aware delivery lock and invoke these
-observations at the required points. They do not implement chain-wide prefix
-verification, lost-receipt recovery, predecessor checks, membership transition
-scans, durable coverage or the persistent timeline fence. Policy restoration or
-head equality is never authority to clear such a fence. The initial empty-room
-hook still belongs to the caller. Replay, the operator incident-replacement
-path and `adapters.Remote`/command wiring are pending. No release path was added;
-code-level gate (c), live HR10–HR14 and I16–I21 remain open. Only successful
-`Verified.Complete` after the required coverage hook can gate future JWT release.
+## Durable reconciliation
+
+Under the caller's separate deadline-aware delivery lock, call
+`OpenReconciliation` after startup and before the first local append. It opens
+an exclusive, no-follow, owner-only append journal at `BindingPath + ".coverage"`.
+Checkpoints carry the binding digest, a checksum, prior-checkpoint digest,
+newly verified receipts, exact head bytes and one anchor/position per filter.
+Receipt deltas preserve prior IDs without rewriting the retained prefix on
+every append. New journals are
+permitted only during fresh binding creation with empty local and remote audit
+history. An existing binding with missing coverage fails even if both heads are
+empty. Missing journals on
+retained chains, partial records, checksum failures, permission changes and
+binding mismatches fail closed; nothing is truncated, reset or repaired.
+Checkpoint records are bounded to 16 MiB; exhaustion closes readiness.
+
+`Recover` validates local sequence/hash continuity and walks **every** remote
+audit event backward with the audit-only filter. It verifies exact original
+bytes, sender, sequence, hash and retained IDs, reconstructs lost receipts and
+persists the verified remote prefix before returning. It never sends events.
+The caller must still validate the full local audit schema and custody.
+`ReconcileHead` remains only a head observation and never proves a prefix.
+
+`Reconciliation.Complete` wraps the read-back candidate's `Verified.Complete`
+with predecessor verification, fresh policy observations, both interval scans
+and a durable checkpoint. It accepts candidates only from the same client and
+uses the original Attempt budget. Call it for every issued, refused and replay
+line; it contains no outcome-specific bypass. A fresh audit-only read supplies
+the common served-tail upper boundary for both forward scans. Each filter's
+saved anchor is re-read with context limit zero and its pagination position
+verified before scanning the unchecked interval from the saved served-tail
+position. The anchor boundary and coverage boundary are retained separately so
+filtered noise cannot cause repeated scans of an already covered interval. Missing coverage never falls
+back to a full rescan. Every before/after timeline entry must honor its filter;
+anchors and context state receive their own validation. Volatile event age does
+not change anchor identity. Policy is re-read after both scans.
+
+Self-sent reader profile updates, joins from approved invitations and leaves
+are permitted with previous-membership evidence. Foreign changes, invitations,
+bans, kicks and changes by or targeting the audit identity are forbidden except
+its own joined profile updates. Incomplete evidence closes readiness. A detected
+post-first-event policy/timeline violation records an incident and offending ID
+when available; restoration and restart cannot clear a persisted incident.
+Non-prefix conflicts are also retained. Scan or checkpoint failure closes
+client delivery readiness; `Readiness` retains the diagnostic separately from
+the delivery error. A failed/partial write poisons the journal in the
+current process; restart validates all retained records before recovery.
+Filesystem synchronization cannot be forcibly cancelled: an over-budget sync
+may retain evidence, but never acknowledges. Keep the original Budget through
+all subsequent caller checks.
+
+The caller must initialize/recover this state and use the completion wrapper;
+raw `Attempt`, `Position`, `CheckPolicy` and `ReconcileHead` do not do so.
+Delivery serialization, automatic ordered replay/backoff, operator incident
+replacement and `adapters.Remote`/command wiring remain pending. No release
+path was added; code-level gate (c), live HR10–HR14 and I16–I21 remain open.
+A refusal's HTTP outcome is not changed by this package; preserving that outcome
+when invoking completion remains an integration obligation. Successful
+`Complete` remains necessary for future release, never sufficient by itself.
 
 The policy-enforcing local TLS fake rejects reader writes and all redactions,
 with an audit-user append as its control. Policy/head/identity negatives have
@@ -104,4 +154,4 @@ durability, deduplication, retention or deployment qualification.
 | Go 1.26.10 | `GOTOOLCHAIN=local go test -count=1 ./internal/adapters/matrixaudit` | Native portable fake-TLS-server tests; no external services |
 | Go vet | `GOTOOLCHAIN=local GOOS=linux GOARCH=arm64 go vet ./internal/adapters/matrixaudit` | Static diagnostics only |
 | Go test compiler | `GOTOOLCHAIN=local GOOS=linux GOARCH=arm64 go test -c ./internal/adapters/matrixaudit -o /tmp/matrixaudit.test` | Linux test binary, not executed on macOS |
-| Python 3 | `python3 .scripts/check-hygiene.py --base 8402c19c53828c4f81d89677ed4af4613c0e63f3` | Public hygiene diagnostics |
+| Python 3 | `python3 .scripts/check-hygiene.py --base 32e8675cfddffd30f440653b5428e98a84261158` | Public hygiene diagnostics |

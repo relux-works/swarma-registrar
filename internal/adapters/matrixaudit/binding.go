@@ -11,7 +11,10 @@ import (
 	"github.com/relux-works/swarma-registrar/ccj"
 )
 
-type bindingFile struct{ *os.File }
+type bindingFile struct {
+	*os.File
+	fresh bool
+}
 
 func private(info os.FileInfo, mode os.FileMode) bool {
 	stat, ok := info.Sys().(*syscall.Stat_t)
@@ -106,7 +109,7 @@ func (c *Client) startup(ctx context.Context, b *Budget, nonempty bool, emptyRoo
 	if b.check(ctx) != nil {
 		return fail()
 	}
-	c.binding = &bindingFile{f}
+	c.binding = &bindingFile{File: f, fresh: fresh}
 	c.ready = true
 	return nil
 }

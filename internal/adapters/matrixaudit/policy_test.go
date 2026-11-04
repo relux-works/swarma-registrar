@@ -74,6 +74,11 @@ func TestStartupPolicy(t *testing.T) {
 		cases["missing-"+field] = func(f *fixture) { delete(content(f, 4), field) }
 		cases["string-"+field] = func(f *fixture) { content(f, 4)[field] = "101" }
 	}
+	// Locked thresholds must exclude power 100, while the audit override is exactly 100.
+	for _, field := range []string{"events_default", "state_default", "invite", "kick", "ban", "redact"} {
+		cases[field+"-100"] = func(f *fixture) { content(f, 4)[field] = 100 }
+	}
+	cases["audit-threshold-101"] = func(f *fixture) { content(f, 4)["events"].(map[string]any)[EventType] = 101 }
 	for name, change := range cases {
 		t.Run(name, func(t *testing.T) {
 			f := setupServer(t)
