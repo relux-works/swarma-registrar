@@ -32,7 +32,7 @@ The expected SHA-256 and size remain
 env -i PATH="$PATH" HOME="$HOME" TMPDIR="${TMPDIR:-/tmp}" GOCACHE="$GOCACHE" \
   ${GOMODCACHE:+GOMODCACHE="$GOMODCACHE"} ${GOPROXY:+GOPROXY="$GOPROXY"} ${GOSUMDB:+GOSUMDB="$GOSUMDB"} \
   ${HTTPS_PROXY:+HTTPS_PROXY="$HTTPS_PROXY"} ${SSL_CERT_FILE:+SSL_CERT_FILE="$SSL_CERT_FILE"} \
-  GOENV=off GOTOOLCHAIN=local CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=v1 GOFLAGS=-mod=readonly GOEXPERIMENT= GOFIPS140=off \
+  GOENV=off GOWORK=off LC_ALL=C GOTOOLCHAIN=local CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=v1 GOFLAGS=-mod=readonly GOEXPERIMENT= GOFIPS140=off \
   go build -trimpath -buildvcs=false -ldflags=-buildid= -o registrar ./cmd/registrar
 sha256sum registrar        # or: shasum -a 256 registrar
 ```
