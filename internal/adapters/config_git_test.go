@@ -229,7 +229,9 @@ func TestFixtureCommandEnvironment(t *testing.T) {
 		env[key] = value
 	}
 	for key, want := range map[string]string{
+		"PATH": "/usr/bin:/bin", "LANG": "C",
 		"GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null",
+		"GIT_CONFIG_NOSYSTEM": "1", "GIT_NO_LAZY_FETCH": "1",
 		"GIT_AUTHOR_NAME": "Fixture Maintainer", "GIT_AUTHOR_EMAIL": "fixture@example.org",
 		"GIT_COMMITTER_NAME": "Fixture Maintainer", "GIT_COMMITTER_EMAIL": "fixture@example.org",
 		"GIT_TERMINAL_PROMPT": "0",
@@ -238,7 +240,7 @@ func TestFixtureCommandEnvironment(t *testing.T) {
 			t.Errorf("fixture %s = %q, want %q", key, env[key], want)
 		}
 	}
-	for _, key := range []string{"HOME", "XDG_CONFIG_HOME"} {
+	for _, key := range []string{"HOME", "XDG_CONFIG_HOME", "TMPDIR"} {
 		if env[key] == "" {
 			t.Fatalf("fixture %s is unset", key)
 		}
@@ -246,11 +248,77 @@ func TestFixtureCommandEnvironment(t *testing.T) {
 		if err != nil || len(entries) != 0 {
 			t.Fatalf("fixture %s is not an empty private directory", key)
 		}
+		info, err := os.Lstat(env[key])
+		if err != nil {
+			t.Fatalf("fixture %s metadata: %v", key, err)
+		}
+		owner, ok := info.Sys().(*syscall.Stat_t)
+		if !info.IsDir() || info.Mode().Perm() != 0700 || !ok || owner.Uid != uint32(os.Geteuid()) {
+			t.Errorf("fixture %s is not a private owned directory", key)
+		}
 	}
 	for _, key := range []string{"GIT_CONFIG_COUNT", "SSH_AUTH_SOCK"} {
 		if _, ok := env[key]; ok {
 			t.Errorf("fixture inherited %s", key)
 		}
+	}
+}
+
+func TestFixtureCommandDoesNotInheritEnvironment(t *testing.T) {
+	poisonDir := tempDir(t)
+	for key, value := range map[string]string{
+		"PATH": poisonDir, "LANG": "fixture-poison",
+		"HOME": poisonDir, "XDG_CONFIG_HOME": poisonDir, "TMPDIR": poisonDir,
+		"GIT_CONFIG_NOSYSTEM": "0", "GIT_NO_LAZY_FETCH": "0", "GIT_TERMINAL_PROMPT": "1",
+		"GIT_CONFIG_GLOBAL": filepath.Join(poisonDir, "global"),
+		"GIT_CONFIG_SYSTEM": filepath.Join(poisonDir, "system"),
+		"GIT_CONFIG_COUNT":  "1", "GIT_CONFIG_KEY_0": "fixture.poison", "GIT_CONFIG_VALUE_0": "inherited",
+		"GIT_AUTHOR_NAME": "Inherited Author", "GIT_AUTHOR_EMAIL": "inherited-author@example.org",
+		"GIT_COMMITTER_NAME": "Inherited Committer", "GIT_COMMITTER_EMAIL": "inherited-committer@example.org",
+		"SSH_AUTH_SOCK":              filepath.Join(poisonDir, "unused-agent"),
+		"FIXTURE_INHERITANCE_POISON": "inherited",
+	} {
+		t.Setenv(key, value)
+	}
+
+	// Use an absolute executable so the poisoned parent PATH cannot affect lookup.
+	out := command(t, tempDir(t), "/usr/bin/env")
+	env := map[string]string{}
+	for _, entry := range strings.Split(out, "\n") {
+		key, value, ok := strings.Cut(entry, "=")
+		if !ok {
+			t.Fatalf("invalid child environment entry %q", entry)
+		}
+		if _, duplicate := env[key]; duplicate {
+			t.Errorf("duplicate child environment variable %s", key)
+		}
+		env[key] = value
+	}
+	for key, want := range map[string]string{
+		"PATH": "/usr/bin:/bin", "LANG": "C",
+		"GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null",
+		"GIT_CONFIG_NOSYSTEM": "1", "GIT_NO_LAZY_FETCH": "1", "GIT_TERMINAL_PROMPT": "0",
+		"GIT_AUTHOR_NAME": "Fixture Maintainer", "GIT_AUTHOR_EMAIL": "fixture@example.org",
+		"GIT_COMMITTER_NAME": "Fixture Maintainer", "GIT_COMMITTER_EMAIL": "fixture@example.org",
+	} {
+		if env[key] != want {
+			t.Errorf("child %s = %q, want %q", key, env[key], want)
+		}
+		delete(env, key)
+	}
+	for _, key := range []string{"HOME", "XDG_CONFIG_HOME", "TMPDIR"} {
+		if env[key] == "" || env[key] == poisonDir {
+			t.Errorf("child %s did not use a fresh fixture directory", key)
+		} else {
+			entries, err := os.ReadDir(env[key])
+			if err != nil || len(entries) != 0 {
+				t.Errorf("child %s is not an empty fixture directory", key)
+			}
+		}
+		delete(env, key)
+	}
+	for key := range env {
+		t.Errorf("child inherited unexpected environment variable %s", key)
 	}
 }
 
