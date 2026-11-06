@@ -195,11 +195,70 @@ func TestConfigSymlink(t *testing.T) {
 
 type gitFixture struct{ dir, key, allowed, pin string }
 
+func fixtureCommandEnv(t *testing.T) []string {
+	t.Helper()
+	tmp := tempDir(t)
+	info, err := os.Lstat(tmp)
+	if err != nil {
+		t.Fatal("fixture temporary directory metadata")
+	}
+	owner, ok := info.Sys().(*syscall.Stat_t)
+	if !info.IsDir() || info.Mode().Perm() != 0700 || !ok || owner.Uid != uint32(os.Geteuid()) {
+		t.Fatal("fixture temporary directory is not private and owned")
+	}
+	return []string{
+		"PATH=/usr/bin:/bin", "LANG=C",
+		"HOME=" + tempDir(t), "XDG_CONFIG_HOME=" + tempDir(t), "TMPDIR=" + tmp,
+		"GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
+		"GIT_NO_LAZY_FETCH=1", "GIT_TERMINAL_PROMPT=0",
+		"GIT_AUTHOR_NAME=Fixture Maintainer", "GIT_AUTHOR_EMAIL=fixture@example.org",
+		"GIT_COMMITTER_NAME=Fixture Maintainer", "GIT_COMMITTER_EMAIL=fixture@example.org",
+	}
+}
+
+func TestFixtureCommandEnvironment(t *testing.T) {
+	// Poison only synthetic values; constructing the environment never runs Git.
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("SSH_AUTH_SOCK", "/fixture-unused-agent")
+	env := map[string]string{}
+	for _, entry := range fixtureCommandEnv(t) {
+		key, value, ok := strings.Cut(entry, "=")
+		if !ok {
+			t.Fatal("invalid fixture environment")
+		}
+		env[key] = value
+	}
+	for key, want := range map[string]string{
+		"GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null",
+		"GIT_AUTHOR_NAME": "Fixture Maintainer", "GIT_AUTHOR_EMAIL": "fixture@example.org",
+		"GIT_COMMITTER_NAME": "Fixture Maintainer", "GIT_COMMITTER_EMAIL": "fixture@example.org",
+		"GIT_TERMINAL_PROMPT": "0",
+	} {
+		if env[key] != want {
+			t.Errorf("fixture %s = %q, want %q", key, env[key], want)
+		}
+	}
+	for _, key := range []string{"HOME", "XDG_CONFIG_HOME"} {
+		if env[key] == "" {
+			t.Fatalf("fixture %s is unset", key)
+		}
+		entries, err := os.ReadDir(env[key])
+		if err != nil || len(entries) != 0 {
+			t.Fatalf("fixture %s is not an empty private directory", key)
+		}
+	}
+	for _, key := range []string{"GIT_CONFIG_COUNT", "SSH_AUTH_SOCK"} {
+		if _, ok := env[key]; ok {
+			t.Errorf("fixture inherited %s", key)
+		}
+	}
+}
+
 func command(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Dir = dir
-	cmd.Env = []string{"PATH=/usr/bin:/bin", "LANG=C", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_NO_LAZY_FETCH=1"}
+	cmd.Env = fixtureCommandEnv(t)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("fixture command %s failed", args[0])

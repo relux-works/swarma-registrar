@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -274,10 +275,21 @@ func TestMatrixCommandAutomaticRecovery(t *testing.T) {
 	}
 }
 
-type shortAuditClock struct{ testClock }
+type shortAuditClock struct {
+	testClock
+	requests atomic.Uint32
+}
 
-func (shortAuditClock) Deadline(ctx context.Context, _ time.Duration) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(ctx, 2*time.Second)
+func (c *shortAuditClock) Deadline(ctx context.Context, _ time.Duration) (context.Context, context.CancelFunc) {
+	timeout := 2 * time.Second
+	// The replay must finish its ACK wait while the first request still owns
+	// delivery. Equal timeouts race the owner's expiry against that refusal.
+	// Keep the owner's original bound and shorten only the replay's wait;
+	// detached refusal cleanup retains the original two-second budget.
+	if c.requests.Add(1) == 2 {
+		timeout = 250 * time.Millisecond
+	}
+	return context.WithTimeout(ctx, timeout)
 }
 
 // A blocked off-host read cannot hold admission/local state: a concurrent
@@ -286,7 +298,7 @@ func (shortAuditClock) Deadline(ctx context.Context, _ time.Duration) (context.C
 func TestMatrixCommandSlowDelivery(t *testing.T) {
 	f := fixture(t)
 	hs := audittest.New(t)
-	url, client := matrixCommand(t, f, hs, shortAuditClock{})
+	url, client := matrixCommand(t, f, hs, &shortAuditClock{})
 	entered := make(chan struct{})
 	release := make(chan struct{})
 	hs.Set("valid", func() { close(entered); <-release })
