@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -659,6 +660,66 @@ func TestStreamingLimit(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// The wire cap includes status, headers and body; a two-byte JSON body cannot
+// hide an oversized header. The exact-limit response remains valid.
+func TestResponseWireLimit(t *testing.T) {
+	const wireLimit = 131072
+	const prefix = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nX-Pad: "
+	const suffix = "\r\n\r\n{}"
+	for _, size := range []int{wireLimit + 1, wireLimit} {
+		t.Run(fmt.Sprint(size), func(t *testing.T) {
+			f := setup(t)
+			wire := prefix + strings.Repeat("x", size-len(prefix)-len(suffix)) + suffix
+			if len(wire) != size {
+				t.Fatalf("response wire length = %d, want %d", len(wire), size)
+			}
+			type writeResult struct {
+				n   int
+				err error
+			}
+			done := make(chan writeResult, 1)
+			f.server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var result writeResult
+				defer func() { done <- result }()
+				conn, _, err := w.(http.Hijacker).Hijack()
+				if err != nil {
+					result.err = err
+					return
+				}
+				defer conn.Close()
+				if err := conn.SetDeadline(f.budget.deadline); err != nil {
+					result.err = err
+					return
+				}
+				result.n, result.err = io.WriteString(conn, wire)
+			})
+			// Hijacked connections are outside httptest.Server.Close's tracking.
+			// Bound their writes above and wait for handler completion on all exits.
+			t.Cleanup(func() {
+				timer := time.NewTimer(time.Until(f.budget.deadline))
+				defer timer.Stop()
+				select {
+				case result := <-done:
+					if result.err != nil || result.n != size {
+						t.Errorf("response write = %d bytes, %v; want %d bytes", result.n, result.err, size)
+					}
+				case <-timer.C:
+					t.Error("response handler exceeded request budget")
+				}
+			})
+			obj, err := f.c.request(context.Background(), f.budget, http.MethodGet, []string{"wire-limit"}, nil)
+			if size > wireLimit {
+				requireCode(t, err, "audit_unavailable")
+				if obj != nil {
+					t.Fatal("oversized response returned a decoded object")
+				}
+			} else if err != nil || obj == nil || len(obj) != 0 {
+				t.Fatalf("exact-limit response = %v, %v; want an empty object", obj, err)
+			}
+		})
 	}
 }
 
